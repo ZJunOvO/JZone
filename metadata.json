@@ -1,0 +1,5 @@
+{
+  "name": "JZone Player",
+  "description": "A private, collaborative music player with audio cropping and switchable UI skins.",
+  "requestFramePermissions": []
+}
