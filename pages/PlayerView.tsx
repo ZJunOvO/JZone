@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { CommentsSheet } from '../components/CommentsSheet';
+import { MemoryCardModal } from '../components/MemoryCardModal';
 
 interface PlayerViewProps {
   onClose: () => void;
@@ -17,6 +18,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
   const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, seek, setVolume, playSong, removeFromQueue } = useStore();
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [isSeeking, setIsSeeking] = useState(false);
   const [isChangingVolume, setIsChangingVolume] = useState(false);
   
@@ -187,8 +189,11 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
             >
               <Icons.MessageSquareQuote size={20} strokeWidth={1.5} />
             </button>
-            <button className="p-2 text-white/40 hover:text-white transition active:opacity-60">
-              <Icons.Radio size={20} strokeWidth={1.5} />
+            <button 
+              onClick={() => setIsMemoryOpen(true)}
+              className={`p-2 transition active:opacity-60 ${isMemoryOpen ? 'text-white' : 'text-white/40 hover:text-white'}`}
+            >
+              <Icons.Sparkles size={20} strokeWidth={1.5} />
             </button>
             <button 
               onClick={() => setIsQueueOpen(true)}
@@ -199,6 +204,9 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
           </div>
         </div>
       </div>
+
+      {/* Memory Card Overlay */}
+      <MemoryCardModal song={isMemoryOpen ? song : null} onClose={() => setIsMemoryOpen(false)} />
 
       {/* Queue/List Overlay */}
       {isQueueOpen && (

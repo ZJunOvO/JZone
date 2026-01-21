@@ -10,6 +10,9 @@ export interface SongRow {
   title: string;
   artist: string;
   album: string | null;
+  genre: string | null;
+  story: string | null;
+  file_size: number | null;
   duration: number;
   trim_start: number;
   trim_end: number;
@@ -160,6 +163,9 @@ export const supabaseApi = {
     title: string;
     artist: string;
     album?: string;
+    genre?: string;
+    story?: string;
+    fileSize?: number;
     duration: number;
     trimStart: number;
     trimEnd: number;
@@ -197,23 +203,36 @@ export const supabaseApi = {
     }
 
     try {
-      const { data, error } = await client
-        .from('songs')
-        .insert({
-          id: songId,
-          owner_id: input.userId,
-          visibility: input.visibility ?? 'private',
-          title: input.title,
-          artist: input.artist,
-          album: input.album ?? null,
-          duration: input.duration,
-          trim_start: input.trimStart,
-          trim_end: input.trimEnd,
-          audio_path: audioPath,
-          cover_path: coverPath,
-        })
-        .select('*')
-        .single();
+      const insertBase = {
+        id: songId,
+        owner_id: input.userId,
+        visibility: input.visibility ?? 'private',
+        title: input.title,
+        artist: input.artist,
+        album: input.album ?? null,
+        genre: input.genre ?? null,
+        duration: input.duration,
+        trim_start: input.trimStart,
+        trim_end: input.trimEnd,
+        audio_path: audioPath,
+        cover_path: coverPath,
+      };
+
+      const insertWithExtras = {
+        ...insertBase,
+        story: input.story ?? null,
+        file_size: input.fileSize ?? null,
+      };
+
+      const tryInsert = async (payload: any) => {
+        return client.from('songs').insert(payload).select('*').single();
+      };
+
+      let { data, error } = await tryInsert(insertWithExtras);
+      const message = typeof (error as any)?.message === 'string' ? (error as any).message : '';
+      if (error && (message.includes('story') || message.includes('file_size'))) {
+        ({ data, error } = await tryInsert(insertBase));
+      }
 
       if (error) throw error;
       return data as SongRow;

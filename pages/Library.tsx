@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { LibraryCanvas } from '../components/LibraryCanvas';
+import { UploadModal } from '../components/UploadModal';
+import { MemoryCardModal } from '../components/MemoryCardModal';
+import { Song } from '../types';
 import { motion, PanInfo, useAnimation } from 'framer-motion';
 
 const SwipeableListItem = ({ song, index, playSong, deleteSong, currentSongId, isPlaying }: any) => {
@@ -71,6 +74,13 @@ const SwipeableListItem = ({ song, index, playSong, deleteSong, currentSongId, i
 export const Library: React.FC = () => {
   const { songs, playSong, deleteSong, playerState } = useStore();
   const [viewMode, setViewMode] = useState<'list' | 'canvas'>('list');
+  const [showUpload, setShowUpload] = useState(false);
+  const [memorySong, setMemorySong] = useState<Song | null>(null);
+
+  const handleBentoLongPress = (songId: string) => {
+    const song = songs.find(s => s.id === songId);
+    if (song) setMemorySong(song);
+  };
 
   return (
     <div className={`min-h-screen ${viewMode === 'list' ? 'pb-24 pt-12 px-6' : 'pt-0 pb-0'}`}>
@@ -81,19 +91,28 @@ export const Library: React.FC = () => {
              <h1 className="text-3xl font-extrabold text-white tracking-tight pointer-events-auto drop-shadow-md">资料库</h1>
            )}
            
-           <div className="bg-zinc-800/50 backdrop-blur-2xl rounded-full p-1 flex gap-1 border border-white/10 pointer-events-auto shadow-2xl transition-colors duration-300">
+           <div className="flex gap-2 pointer-events-auto">
                <button 
-                  onClick={() => setViewMode('list')}
-                  className={`p-2 rounded-full transition-all ${viewMode === 'list' ? 'bg-zinc-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
+                  onClick={() => setShowUpload(true)}
+                  className="bg-zinc-800/50 backdrop-blur-2xl rounded-full p-3 border border-white/10 shadow-2xl hover:bg-zinc-700 transition-colors text-white"
                >
-                   <Icons.ListMusic size={18} />
+                   <Icons.PlusCircle size={18} />
                </button>
-               <button 
-                  onClick={() => setViewMode('canvas')}
-                  className={`p-2 rounded-full transition-all ${viewMode === 'canvas' ? 'bg-zinc-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
-               >
-                   <Icons.Search size={18} /> {/* Using Search icon as a metaphor for exploration */}
-               </button>
+
+               <div className="bg-zinc-800/50 backdrop-blur-2xl rounded-full p-1 flex gap-1 border border-white/10 shadow-2xl transition-colors duration-300">
+                   <button 
+                      onClick={() => setViewMode('list')}
+                      className={`p-2 rounded-full transition-all ${viewMode === 'list' ? 'bg-zinc-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
+                   >
+                       <Icons.ListMusic size={18} />
+                   </button>
+                   <button 
+                      onClick={() => setViewMode('canvas')}
+                      className={`p-2 rounded-full transition-all ${viewMode === 'canvas' ? 'bg-zinc-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
+                   >
+                       <Icons.Search size={18} /> {/* Using Search icon as a metaphor for exploration */}
+                   </button>
+               </div>
            </div>
        </div>
        
@@ -131,11 +150,15 @@ export const Library: React.FC = () => {
            <LibraryCanvas 
                songs={songs} 
                onPlay={playSong} 
-               onDelete={deleteSong}
+               // Bento view no longer deletes directly
+               onLongPress={handleBentoLongPress}
                currentSongId={playerState.currentSongId} 
                isPlaying={playerState.isPlaying}
            />
        )}
+
+       {showUpload && <UploadModal onClose={() => setShowUpload(false)} />}
+       <MemoryCardModal song={memorySong} onClose={() => setMemorySong(null)} />
     </div>
   );
 };

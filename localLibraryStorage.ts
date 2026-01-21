@@ -1,4 +1,4 @@
-const DB_NAME = 'jzone-player';
+const DB_NAME = 'jzone-player-library';
 const DB_VERSION = 1;
 const STORE_NAME = 'library-songs';
 
@@ -38,6 +38,9 @@ export interface LocalSongMeta {
   title: string;
   artist: string;
   album?: string;
+  genre?: string;
+  story?: string;
+  fileSize?: number;
   duration: number;
   trimStart: number;
   trimEnd: number;

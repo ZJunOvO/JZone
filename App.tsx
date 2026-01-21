@@ -18,17 +18,22 @@ const Navigation = ({ currentTab, setTab }: { currentTab: string, setTab: (t: st
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-zinc-900/70 backdrop-blur-xl backdrop-saturate-150 border-t border-white/10 pb-safe pt-2 px-8 flex justify-between items-start z-30 h-[52px]">
+    <div className="fixed bottom-0 left-0 right-0 bg-zinc-900/80 backdrop-blur-2xl backdrop-saturate-150 border-t border-white/5 pb-safe px-6 flex justify-around items-center z-30 h-[84px] pt-2">
       {tabs.map(tab => {
         const isActive = currentTab === tab.id;
         return (
           <button 
             key={tab.id} 
             onClick={() => setTab(tab.id)}
-            className={`flex flex-col items-center justify-center w-12 transition-all duration-200`}
+            className={`flex flex-col items-center justify-center w-16 h-full transition-all duration-300 group`}
           >
-            <div className={`${isActive ? 'text-red-500 scale-110' : 'text-zinc-500 hover:text-zinc-300 scale-100'}`}>
-                <tab.icon size={22} strokeWidth={isActive ? 2.5 : 2} fill={isActive ? "currentColor" : "none"} />
+            <div className={`relative transition-transform duration-300 ${isActive ? 'scale-110' : 'scale-100 group-active:scale-90'}`}>
+                <tab.icon 
+                    size={28} 
+                    strokeWidth={isActive ? 2.5 : 1.8} 
+                    className={`transition-colors duration-300 ${isActive ? 'text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.4)]' : 'text-zinc-500 group-hover:text-zinc-300'}`}
+                    fill={isActive ? "currentColor" : "none"} 
+                />
             </div>
           </button>
         );

@@ -5,7 +5,7 @@ import { Song } from '../types';
 interface LibraryCanvasProps {
   songs: Song[];
   onPlay: (id: string) => void;
-  onDelete?: (id: string) => void;
+  onLongPress?: (id: string) => void;
   currentSongId: string | null;
   isPlaying: boolean;
 }
@@ -96,12 +96,11 @@ const generateGrid = (songs: Song[]): { items: GridItem[], totalHeight: number, 
 };
 
 // --- Memoized Tile Component for Performance ---
-const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onDelete }: { item: GridItem, isPlaying: boolean, isCurrent: boolean, onPlay: (id: string) => void, onDelete?: (id: string) => void }) => {
+const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onLongPress }: { item: GridItem, isPlaying: boolean, isCurrent: boolean, onPlay: (id: string) => void, onLongPress?: (id: string) => void }) => {
     // Dynamic border radius based on size for that polished look
     const borderRadius = item.type === 'large' ? 28 : 16;
     
     // Long Press Logic
-    const [showMenu, setShowMenu] = useState(false);
     const timerRef = useRef<number | null>(null);
     const isLongPress = useRef(false);
 
@@ -110,7 +109,7 @@ const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onDelete }: { ite
         timerRef.current = window.setTimeout(() => {
             isLongPress.current = true;
             if (navigator.vibrate) navigator.vibrate(50);
-            setShowMenu(true);
+            if (onLongPress) onLongPress(item.song.id);
         }, 600);
     };
 
@@ -134,14 +133,6 @@ const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onDelete }: { ite
             return;
         }
         onPlay(item.song.id);
-    };
-
-    const handleDelete = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        setShowMenu(false);
-        if (onDelete && window.confirm(`确定要删除 "${item.song.title}" 吗？`)) {
-            onDelete(item.song.id);
-        }
     };
 
     return (
@@ -209,26 +200,6 @@ const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onDelete }: { ite
                         </motion.h3>
                     </div>
                 )}
-                
-                {/* 4. Context Menu Overlay */}
-                {showMenu && (
-                    <div 
-                        className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200"
-                        onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}
-                    >
-                        <motion.button
-                            initial={{ scale: 0.8, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={handleDelete}
-                            className="bg-red-600 text-white px-4 py-2 rounded-full font-medium shadow-lg flex items-center gap-2"
-                        >
-                            {/* Trash Icon Inline */}
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                            删除
-                        </motion.button>
-                    </div>
-                )}
             </div>
         </motion.div>
     );
@@ -237,7 +208,7 @@ const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onDelete }: { ite
 });
 
 
-export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, onDelete, currentSongId, isPlaying }) => {
+export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, onLongPress, currentSongId, isPlaying }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const { items, totalHeight, totalWidth } = useMemo(() => generateGrid(songs), [songs]);
@@ -376,7 +347,7 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, onD
                 isPlaying={isPlaying} 
                 isCurrent={currentSongId === item.song.id}
                 onPlay={onPlay}
-                onDelete={onDelete}
+                onLongPress={onLongPress}
             />
         ))}
       </motion.div>

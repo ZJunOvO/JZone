@@ -1,4 +1,4 @@
-const DB_NAME = 'jzone-player';
+const DB_NAME = 'jzone-player-upload-draft';
 const DB_VERSION = 1;
 const STORE_NAME = 'upload-draft';
 
@@ -69,6 +69,8 @@ export interface UploadDraftMeta {
   title: string;
   artist: string;
   album: string;
+  genre?: string;
+  story?: string;
   range?: [number, number];
   duration?: number;
 }
