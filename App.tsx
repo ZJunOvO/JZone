@@ -42,7 +42,7 @@ const Profile = () => {
   const { signOut } = useAuth();
   // Mocking stats for the demo
   const totalUploads = songs.length;
-  const totalPlays = 1248; // Mock value
+  const totalPlays = songs.reduce((sum, s) => sum + (s.playsCount ?? 0), 0);
 
   return (
     <div className="bg-black min-h-screen pb-32">
@@ -131,7 +131,13 @@ const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 const MainLayout = () => {
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem('jzone.activeTab') || 'home';
+    } catch {
+      return 'home';
+    }
+  });
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
 
   const renderContent = () => {
@@ -159,7 +165,15 @@ const MainLayout = () => {
       )}
 
       {/* Bottom Navigation */}
-      <Navigation currentTab={activeTab} setTab={setActiveTab} />
+      <Navigation
+        currentTab={activeTab}
+        setTab={(t) => {
+          setActiveTab(t);
+          try {
+            localStorage.setItem('jzone.activeTab', t);
+          } catch {}
+        }}
+      />
 
       {/* Full Screen Player Overlay */}
       {isPlayerOpen && (

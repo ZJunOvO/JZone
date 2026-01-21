@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icons } from '../components/Icons';
 import { useAuth } from '../auth';
 
@@ -11,12 +11,50 @@ export const Auth: React.FC = () => {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diagOpen, setDiagOpen] = useState(false);
+  const [networkHint, setNetworkHint] = useState<string | null>(null);
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
   const canSubmit = useMemo(() => {
     return isValidEmail(email) && password.length >= 6 && !busy;
   }, [busy, email, password.length]);
 
   const title = mode === 'login' ? '登录' : '注册';
+
+  useEffect(() => {
+    if (!supabaseUrl) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 6000);
+
+    fetch(`${supabaseUrl}/auth/v1/health`, {
+      signal: controller.signal,
+      headers: {
+        apikey: supabaseAnonKey || '',
+        Authorization: supabaseAnonKey ? `Bearer ${supabaseAnonKey}` : '',
+      },
+    })
+      .then((r) => {
+        if (cancelled) return;
+        if (r.ok || r.status === 401 || r.status === 404) {
+          setNetworkHint(null);
+        } else {
+          setNetworkHint(`Supabase 可达性检查失败（HTTP ${r.status}），可能导致登录/上传失败。`);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setNetworkHint('Supabase 网络不可达（failed to fetch）。常见原因：浏览器拦截/网络 DNS/代理屏蔽 supabase.co。');
+      })
+      .finally(() => window.clearTimeout(timeout));
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [supabaseUrl]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +92,20 @@ export const Auth: React.FC = () => {
         {status === 'misconfigured' && (
           <div className="mb-5 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm">
             Supabase 环境变量未配置：请在 Vercel/本地设置 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY。
+          </div>
+        )}
+        <div className="flex justify-end mb-3">
+          <button
+            onClick={() => setDiagOpen((v) => !v)}
+            className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-300 transition"
+            type="button"
+          >
+            诊断
+          </button>
+        </div>
+        {diagOpen && (
+          <div className="mb-5 p-4 rounded-2xl bg-zinc-800/50 border border-white/10 text-zinc-200 text-sm">
+            {networkHint ?? 'Supabase 可达性检查正常。'}
           </div>
         )}
 

@@ -54,14 +54,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       enableSignup,
       signInWithPassword: async (email, password) => {
         if (!hasSupabaseConfig) return { ok: false, error: 'Supabase 未配置' };
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        return error ? { ok: false, error: error.message } : { ok: true };
+        try {
+          const { error } = await supabase.auth.signInWithPassword({ email, password });
+          return error ? { ok: false, error: error.message } : { ok: true };
+        } catch (e: any) {
+          const msg = typeof e?.message === 'string' ? e.message : '登录失败';
+          if (/failed to fetch/i.test(msg)) {
+            return { ok: false, error: '网络请求被浏览器/网络拦截（failed to fetch）。请检查是否屏蔽了 supabase.co，或换网络/浏览器再试。' };
+          }
+          return { ok: false, error: msg };
+        }
       },
       signUpWithPassword: async (email, password) => {
         if (!hasSupabaseConfig) return { ok: false, error: 'Supabase 未配置' };
         if (!enableSignup) return { ok: false, error: '注册已关闭' };
-        const { error } = await supabase.auth.signUp({ email, password });
-        return error ? { ok: false, error: error.message } : { ok: true };
+        try {
+          const { error } = await supabase.auth.signUp({ email, password });
+          return error ? { ok: false, error: error.message } : { ok: true };
+        } catch (e: any) {
+          const msg = typeof e?.message === 'string' ? e.message : '注册失败';
+          if (/failed to fetch/i.test(msg)) {
+            return { ok: false, error: '网络请求被浏览器/网络拦截（failed to fetch）。请检查是否屏蔽了 supabase.co，或换网络/浏览器再试。' };
+          }
+          return { ok: false, error: msg };
+        }
       },
       signOut: async () => {
         if (!hasSupabaseConfig) return;

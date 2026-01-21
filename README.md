@@ -29,3 +29,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1_C3snw5r0RrZt-EwqmApJH
 - The app is protected by a login gate: unauthenticated users cannot access any content.
 - Signup can be temporarily enabled by setting `VITE_ENABLE_SIGNUP=true` (UI only).
 - After you have created the initial accounts, disable new signups in Supabase Auth settings (recommended). This is the effective protection.
+
+## Supabase Backend
+
+- Setup guide: [supabase/README.md](supabase/README.md)

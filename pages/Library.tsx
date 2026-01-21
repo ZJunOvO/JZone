@@ -2,9 +2,74 @@ import React, { useState } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { LibraryCanvas } from '../components/LibraryCanvas';
+import { motion, PanInfo, useAnimation } from 'framer-motion';
+
+const SwipeableListItem = ({ song, index, playSong, deleteSong, currentSongId, isPlaying }: any) => {
+  const controls = useAnimation();
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDragEnd = async (event: any, info: PanInfo) => {
+    if (info.offset.x < -100) {
+      // Trigger delete
+      if (window.confirm(`确定要删除 "${song.title}" 吗？此操作不可恢复。`)) {
+        setIsDeleting(true);
+        await deleteSong(song.id);
+      } else {
+        controls.start({ x: 0 });
+      }
+    } else {
+      controls.start({ x: 0 });
+    }
+  };
+
+  if (isDeleting) return null;
+
+  return (
+    <div className="relative overflow-hidden rounded-xl mb-1">
+      {/* Background Delete Action */}
+      <div className="absolute inset-y-0 right-0 w-full bg-red-600 flex items-center justify-end pr-6 rounded-xl">
+        <Icons.Trash size={20} className="text-white" />
+      </div>
+
+      {/* Foreground Content */}
+      <motion.div 
+        drag="x"
+        dragConstraints={{ left: -100, right: 0 }}
+        dragElastic={0.1}
+        onDragEnd={handleDragEnd}
+        animate={controls}
+        className={`relative bg-black flex items-center p-3 cursor-pointer hover:bg-zinc-900 transition active:scale-[0.99] ${currentSongId === song.id ? 'bg-zinc-900' : ''}`}
+        onClick={() => playSong(song.id)}
+      >
+        <div className="w-6 mr-3 flex justify-center">
+            {currentSongId === song.id && isPlaying ? 
+                <div className="flex gap-[2px] justify-center items-end h-3">
+                     <div className="w-0.5 bg-red-500 animate-[bounce_1s_infinite] h-full"></div>
+                     <div className="w-0.5 bg-red-500 animate-[bounce_1.2s_infinite] h-2/3"></div>
+                     <div className="w-0.5 bg-red-500 animate-[bounce_0.8s_infinite] h-1/2"></div>
+                </div> 
+                : <span className="text-zinc-500 text-xs font-mono">{index + 1}</span>
+            }
+        </div>
+        
+        <img src={song.coverUrl} className="w-12 h-12 rounded-md object-cover mr-3 bg-zinc-800" alt="art" />
+        
+        <div className="flex-1 overflow-hidden pointer-events-none">
+            <h4 className={`text-sm font-medium truncate mb-0.5 ${currentSongId === song.id ? 'text-red-500' : 'text-zinc-200'}`}>{song.title}</h4>
+            <p className="text-xs text-zinc-500 truncate">{song.artist}</p>
+        </div>
+        
+        <div className="text-xs text-zinc-600 font-mono">
+           {/* Hint arrow or spacer */}
+           <Icons.ChevronLeft size={14} className="opacity-20" />
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 export const Library: React.FC = () => {
-  const { songs, playSong, playerState } = useStore();
+  const { songs, playSong, deleteSong, playerState } = useStore();
   const [viewMode, setViewMode] = useState<'list' | 'canvas'>('list');
 
   return (
@@ -49,33 +114,15 @@ export const Library: React.FC = () => {
                {/* List View */}
                <div className="space-y-1">
                  {songs.map((song, index) => (
-                     <div 
+                    <SwipeableListItem 
                         key={song.id} 
-                        onClick={() => playSong(song.id)}
-                        className={`flex items-center p-3 rounded-xl cursor-pointer hover:bg-zinc-900 transition active:scale-[0.99] ${playerState.currentSongId === song.id ? 'bg-zinc-900' : ''}`}
-                     >
-                        <div className="w-6 mr-3 flex justify-center">
-                            {playerState.currentSongId === song.id && playerState.isPlaying ? 
-                                <div className="flex gap-[2px] justify-center items-end h-3">
-                                     <div className="w-0.5 bg-red-500 animate-[bounce_1s_infinite] h-full"></div>
-                                     <div className="w-0.5 bg-red-500 animate-[bounce_1.2s_infinite] h-2/3"></div>
-                                     <div className="w-0.5 bg-red-500 animate-[bounce_0.8s_infinite] h-1/2"></div>
-                                </div> 
-                                : <span className="text-zinc-500 text-xs font-mono">{index + 1}</span>
-                            }
-                        </div>
-                        
-                        <img src={song.coverUrl} className="w-12 h-12 rounded-md object-cover mr-3 bg-zinc-800" alt="art" />
-                        
-                        <div className="flex-1 overflow-hidden border-b border-zinc-900 pb-3">
-                            <h4 className={`text-sm font-medium truncate mb-0.5 ${playerState.currentSongId === song.id ? 'text-red-500' : 'text-zinc-200'}`}>{song.title}</h4>
-                            <p className="text-xs text-zinc-500 truncate">{song.artist}</p>
-                        </div>
-                        
-                        <div className="text-xs text-zinc-600 font-mono pb-3 border-b border-zinc-900">
-                            <Icons.Play size={14} className="opacity-0" /> {/* Spacer */}
-                        </div>
-                     </div>
+                        song={song} 
+                        index={index} 
+                        playSong={playSong}
+                        deleteSong={deleteSong}
+                        currentSongId={playerState.currentSongId}
+                        isPlaying={playerState.isPlaying}
+                    />
                  ))}
                </div>
            </>
@@ -84,6 +131,7 @@ export const Library: React.FC = () => {
            <LibraryCanvas 
                songs={songs} 
                onPlay={playSong} 
+               onDelete={deleteSong}
                currentSongId={playerState.currentSongId} 
                isPlaying={playerState.isPlaying}
            />

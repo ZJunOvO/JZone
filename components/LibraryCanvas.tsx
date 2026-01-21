@@ -5,6 +5,7 @@ import { Song } from '../types';
 interface LibraryCanvasProps {
   songs: Song[];
   onPlay: (id: string) => void;
+  onDelete?: (id: string) => void;
   currentSongId: string | null;
   isPlaying: boolean;
 }
@@ -95,10 +96,54 @@ const generateGrid = (songs: Song[]): { items: GridItem[], totalHeight: number, 
 };
 
 // --- Memoized Tile Component for Performance ---
-const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay }: { item: GridItem, isPlaying: boolean, isCurrent: boolean, onPlay: (id: string) => void }) => {
+const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onDelete }: { item: GridItem, isPlaying: boolean, isCurrent: boolean, onPlay: (id: string) => void, onDelete?: (id: string) => void }) => {
     // Dynamic border radius based on size for that polished look
     const borderRadius = item.type === 'large' ? 28 : 16;
     
+    // Long Press Logic
+    const [showMenu, setShowMenu] = useState(false);
+    const timerRef = useRef<number | null>(null);
+    const isLongPress = useRef(false);
+
+    const handlePointerDown = (e: React.PointerEvent) => {
+        isLongPress.current = false;
+        timerRef.current = window.setTimeout(() => {
+            isLongPress.current = true;
+            if (navigator.vibrate) navigator.vibrate(50);
+            setShowMenu(true);
+        }, 600);
+    };
+
+    const handlePointerUp = (e: React.PointerEvent) => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+    };
+
+    const handlePointerLeave = () => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+    };
+
+    const handleClick = (e: React.MouseEvent) => {
+        if (isLongPress.current) {
+            e.stopPropagation();
+            return;
+        }
+        onPlay(item.song.id);
+    };
+
+    const handleDelete = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setShowMenu(false);
+        if (onDelete && window.confirm(`确定要删除 "${item.song.title}" 吗？`)) {
+            onDelete(item.song.id);
+        }
+    };
+
     return (
         <motion.div
             className={`absolute bg-zinc-900 overflow-hidden group
@@ -117,7 +162,10 @@ const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay }: { item: GridIte
                 borderRadius: borderRadius,
             }}
             whileTap={{ scale: 0.96 }}
-            onClick={() => onPlay(item.song.id)}
+            onPointerDown={handlePointerDown}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerLeave}
+            onClick={handleClick}
         >
             <div className="w-full h-full relative">
                 {/* 1. Image Layer - Strict Cover */}
@@ -161,6 +209,26 @@ const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay }: { item: GridIte
                         </motion.h3>
                     </div>
                 )}
+                
+                {/* 4. Context Menu Overlay */}
+                {showMenu && (
+                    <div 
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200"
+                        onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}
+                    >
+                        <motion.button
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={handleDelete}
+                            className="bg-red-600 text-white px-4 py-2 rounded-full font-medium shadow-lg flex items-center gap-2"
+                        >
+                            {/* Trash Icon Inline */}
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            删除
+                        </motion.button>
+                    </div>
+                )}
             </div>
         </motion.div>
     );
@@ -169,7 +237,7 @@ const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay }: { item: GridIte
 });
 
 
-export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, currentSongId, isPlaying }) => {
+export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, onDelete, currentSongId, isPlaying }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const { items, totalHeight, totalWidth } = useMemo(() => generateGrid(songs), [songs]);
@@ -182,31 +250,59 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, cur
   const scaleSpring = useSpring(scale, { stiffness: 300, damping: 30 });
 
   const [constraints, setConstraints] = useState({ top: 0, bottom: 0, left: 0, right: 0 });
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
+  const [scaleValue, setScaleValue] = useState(1);
+  const initializedRef = useRef(false);
+
+  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
   useEffect(() => {
-    if (containerRef.current) {
-        const cw = containerRef.current.clientWidth;
-        const ch = containerRef.current.clientHeight;
-        
-        // --- 3. Initial Positioning Logic ---
-        // Requirement: Focus on first Large tile with ~24px padding.
-        // Assuming first item is at 0,0.
-        const initialX = 24; 
-        const initialY = 24 + 50; // Extra top padding to clear header visually
-        
-        x.set(initialX);
-        y.set(initialY);
+    const el = containerRef.current;
+    if (!el) return;
 
-        // Calculate drag constraints to allow full panning
-        // We want to be able to drag until the edge of content hits the center or edge of screen
-        setConstraints({
-            top: -totalHeight + ch / 2,
-            bottom: ch / 2,
-            left: -totalWidth + cw / 2,
-            right: cw / 2
-        });
+    const ro = new ResizeObserver(() => {
+      setContainerSize({ w: el.clientWidth, h: el.clientHeight });
+    });
+    ro.observe(el);
+    setContainerSize({ w: el.clientWidth, h: el.clientHeight });
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const unsub = scale.on('change', (v) => setScaleValue(v));
+    return () => unsub();
+  }, [scale]);
+
+  useEffect(() => {
+    const { w: cw, h: ch } = containerSize;
+    if (!cw || !ch) return;
+
+    if (!initializedRef.current) {
+      const initialX = 24;
+      const initialY = 24 + 50;
+      x.set(initialX);
+      y.set(initialY);
+      initializedRef.current = true;
     }
-  }, [totalWidth, totalHeight]);
+
+    const paddingX = 24;
+    const paddingY = 24;
+    const headerOffsetY = 50;
+    const overscroll = Math.max(cw, ch) * 3 * Math.max(1, scaleValue);
+
+    const scaledW = totalWidth * scaleValue;
+    const scaledH = totalHeight * scaleValue;
+
+    const right = paddingX + overscroll;
+    const bottom = paddingY + headerOffsetY + overscroll;
+    const left = Math.min(right, cw - scaledW - paddingX - overscroll);
+    const top = Math.min(bottom, ch - scaledH - paddingY - overscroll);
+
+    setConstraints({ top, bottom, left, right });
+
+    x.set(clamp(x.get(), left, right));
+    y.set(clamp(y.get(), top, bottom));
+  }, [containerSize, scaleValue, totalHeight, totalWidth, x, y]);
 
   // --- Pinch to Zoom Logic (Keep existing logic) ---
   const lastDist = useRef<number | null>(null);
@@ -280,6 +376,7 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, cur
                 isPlaying={isPlaying} 
                 isCurrent={currentSongId === item.song.id}
                 onPlay={onPlay}
+                onDelete={onDelete}
             />
         ))}
       </motion.div>
