@@ -6,8 +6,6 @@ import { Library } from './pages/Library';
 import { Upload } from './pages/Upload';
 import { PlayerBar } from './components/PlayerBar';
 import { PlayerView } from './pages/PlayerView';
-import { AuthProvider, useAuth } from './auth';
-import { Auth } from './pages/Auth';
 
 const Navigation = ({ currentTab, setTab }: { currentTab: string, setTab: (t: string) => void }) => {
   const tabs = [
@@ -18,22 +16,17 @@ const Navigation = ({ currentTab, setTab }: { currentTab: string, setTab: (t: st
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-zinc-900/80 backdrop-blur-2xl backdrop-saturate-150 border-t border-white/5 pb-safe px-6 flex justify-around items-center z-30 h-[84px] pt-2">
+    <div className="fixed bottom-0 left-0 right-0 bg-zinc-900/70 backdrop-blur-xl backdrop-saturate-150 border-t border-white/10 pb-safe pt-2 px-8 flex justify-between items-start z-30 h-[52px]">
       {tabs.map(tab => {
         const isActive = currentTab === tab.id;
         return (
           <button 
             key={tab.id} 
             onClick={() => setTab(tab.id)}
-            className={`flex flex-col items-center justify-center w-16 h-full transition-all duration-300 group`}
+            className={`flex flex-col items-center justify-center w-12 transition-all duration-200`}
           >
-            <div className={`relative transition-transform duration-300 ${isActive ? 'scale-110' : 'scale-100 group-active:scale-90'}`}>
-                <tab.icon 
-                    size={28} 
-                    strokeWidth={isActive ? 2.5 : 1.8} 
-                    className={`transition-colors duration-300 ${isActive ? 'text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.4)]' : 'text-zinc-500 group-hover:text-zinc-300'}`}
-                    fill={isActive ? "currentColor" : "none"} 
-                />
+            <div className={`${isActive ? 'text-red-500 scale-110' : 'text-zinc-500 hover:text-zinc-300 scale-100'}`}>
+                <tab.icon size={22} strokeWidth={isActive ? 2.5 : 2} fill={isActive ? "currentColor" : "none"} />
             </div>
           </button>
         );
@@ -44,10 +37,9 @@ const Navigation = ({ currentTab, setTab }: { currentTab: string, setTab: (t: st
 
 const Profile = () => {
   const { songs } = useStore();
-  const { signOut } = useAuth();
   // Mocking stats for the demo
   const totalUploads = songs.length;
-  const totalPlays = songs.reduce((sum, s) => sum + (s.playsCount ?? 0), 0);
+  const totalPlays = 1248; // Mock value
 
   return (
     <div className="bg-black min-h-screen pb-32">
@@ -105,10 +97,7 @@ const Profile = () => {
             </div>
             <span className="text-zinc-500 text-sm font-mono">24%</span>
           </button>
-          <button
-            onClick={() => signOut()}
-            className="w-full bg-zinc-900/50 p-4 rounded-2xl text-left text-red-500 flex justify-between items-center border border-white/5 mt-4 transition active:scale-[0.98]"
-          >
+          <button className="w-full bg-zinc-900/50 p-4 rounded-2xl text-left text-red-500 flex justify-between items-center border border-white/5 mt-4 transition active:scale-[0.98]">
             <span className="font-bold pl-1">退出登录</span>
           </button>
         </div>
@@ -117,32 +106,8 @@ const Profile = () => {
   );
 };
 
-const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { status } = useAuth();
-
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-zinc-500 text-sm font-bold tracking-widest uppercase">Loading</div>
-      </div>
-    );
-  }
-
-  if (status === 'signed_out' || status === 'misconfigured') {
-    return <Auth />;
-  }
-
-  return <>{children}</>;
-};
-
 const MainLayout = () => {
-  const [activeTab, setActiveTab] = useState(() => {
-    try {
-      return localStorage.getItem('jzone.activeTab') || 'home';
-    } catch {
-      return 'home';
-    }
-  });
+  const [activeTab, setActiveTab] = useState('home');
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
 
   const renderContent = () => {
@@ -170,15 +135,7 @@ const MainLayout = () => {
       )}
 
       {/* Bottom Navigation */}
-      <Navigation
-        currentTab={activeTab}
-        setTab={(t) => {
-          setActiveTab(t);
-          try {
-            localStorage.setItem('jzone.activeTab', t);
-          } catch {}
-        }}
-      />
+      <Navigation currentTab={activeTab} setTab={setActiveTab} />
 
       {/* Full Screen Player Overlay */}
       {isPlayerOpen && (
@@ -190,13 +147,9 @@ const MainLayout = () => {
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <AppProvider>
-        <AuthGate>
-          <MainLayout />
-        </AuthGate>
-      </AppProvider>
-    </AuthProvider>
+    <AppProvider>
+      <MainLayout />
+    </AppProvider>
   );
 };
 

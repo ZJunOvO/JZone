@@ -5,7 +5,6 @@ import { Song } from '../types';
 interface LibraryCanvasProps {
   songs: Song[];
   onPlay: (id: string) => void;
-  onLongPress?: (id: string) => void;
   currentSongId: string | null;
   isPlaying: boolean;
 }
@@ -96,45 +95,10 @@ const generateGrid = (songs: Song[]): { items: GridItem[], totalHeight: number, 
 };
 
 // --- Memoized Tile Component for Performance ---
-const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onLongPress }: { item: GridItem, isPlaying: boolean, isCurrent: boolean, onPlay: (id: string) => void, onLongPress?: (id: string) => void }) => {
+const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay }: { item: GridItem, isPlaying: boolean, isCurrent: boolean, onPlay: (id: string) => void }) => {
     // Dynamic border radius based on size for that polished look
     const borderRadius = item.type === 'large' ? 28 : 16;
     
-    // Long Press Logic
-    const timerRef = useRef<number | null>(null);
-    const isLongPress = useRef(false);
-
-    const handlePointerDown = (e: React.PointerEvent) => {
-        isLongPress.current = false;
-        timerRef.current = window.setTimeout(() => {
-            isLongPress.current = true;
-            if (navigator.vibrate) navigator.vibrate(50);
-            if (onLongPress) onLongPress(item.song.id);
-        }, 600);
-    };
-
-    const handlePointerUp = (e: React.PointerEvent) => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
-    };
-
-    const handlePointerLeave = () => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
-    };
-
-    const handleClick = (e: React.MouseEvent) => {
-        if (isLongPress.current) {
-            e.stopPropagation();
-            return;
-        }
-        onPlay(item.song.id);
-    };
-
     return (
         <motion.div
             className={`absolute bg-zinc-900 overflow-hidden group
@@ -153,10 +117,7 @@ const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onLongPress }: { 
                 borderRadius: borderRadius,
             }}
             whileTap={{ scale: 0.96 }}
-            onPointerDown={handlePointerDown}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerLeave}
-            onClick={handleClick}
+            onClick={() => onPlay(item.song.id)}
         >
             <div className="w-full h-full relative">
                 {/* 1. Image Layer - Strict Cover */}
@@ -208,7 +169,7 @@ const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onLongPress }: { 
 });
 
 
-export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, onLongPress, currentSongId, isPlaying }) => {
+export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, currentSongId, isPlaying }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const { items, totalHeight, totalWidth } = useMemo(() => generateGrid(songs), [songs]);
@@ -221,59 +182,31 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, onL
   const scaleSpring = useSpring(scale, { stiffness: 300, damping: 30 });
 
   const [constraints, setConstraints] = useState({ top: 0, bottom: 0, left: 0, right: 0 });
-  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
-  const [scaleValue, setScaleValue] = useState(1);
-  const initializedRef = useRef(false);
-
-  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    if (containerRef.current) {
+        const cw = containerRef.current.clientWidth;
+        const ch = containerRef.current.clientHeight;
+        
+        // --- 3. Initial Positioning Logic ---
+        // Requirement: Focus on first Large tile with ~24px padding.
+        // Assuming first item is at 0,0.
+        const initialX = 24; 
+        const initialY = 24 + 50; // Extra top padding to clear header visually
+        
+        x.set(initialX);
+        y.set(initialY);
 
-    const ro = new ResizeObserver(() => {
-      setContainerSize({ w: el.clientWidth, h: el.clientHeight });
-    });
-    ro.observe(el);
-    setContainerSize({ w: el.clientWidth, h: el.clientHeight });
-    return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const unsub = scale.on('change', (v) => setScaleValue(v));
-    return () => unsub();
-  }, [scale]);
-
-  useEffect(() => {
-    const { w: cw, h: ch } = containerSize;
-    if (!cw || !ch) return;
-
-    if (!initializedRef.current) {
-      const initialX = 24;
-      const initialY = 24 + 50;
-      x.set(initialX);
-      y.set(initialY);
-      initializedRef.current = true;
+        // Calculate drag constraints to allow full panning
+        // We want to be able to drag until the edge of content hits the center or edge of screen
+        setConstraints({
+            top: -totalHeight + ch / 2,
+            bottom: ch / 2,
+            left: -totalWidth + cw / 2,
+            right: cw / 2
+        });
     }
-
-    const paddingX = 24;
-    const paddingY = 24;
-    const headerOffsetY = 50;
-    const overscroll = Math.max(cw, ch) * 3 * Math.max(1, scaleValue);
-
-    const scaledW = totalWidth * scaleValue;
-    const scaledH = totalHeight * scaleValue;
-
-    const right = paddingX + overscroll;
-    const bottom = paddingY + headerOffsetY + overscroll;
-    const left = Math.min(right, cw - scaledW - paddingX - overscroll);
-    const top = Math.min(bottom, ch - scaledH - paddingY - overscroll);
-
-    setConstraints({ top, bottom, left, right });
-
-    x.set(clamp(x.get(), left, right));
-    y.set(clamp(y.get(), top, bottom));
-  }, [containerSize, scaleValue, totalHeight, totalWidth, x, y]);
+  }, [totalWidth, totalHeight]);
 
   // --- Pinch to Zoom Logic (Keep existing logic) ---
   const lastDist = useRef<number | null>(null);
@@ -347,7 +280,6 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, onL
                 isPlaying={isPlaying} 
                 isCurrent={currentSongId === item.song.id}
                 onPlay={onPlay}
-                onLongPress={onLongPress}
             />
         ))}
       </motion.div>

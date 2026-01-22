@@ -2,11 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { Song } from '../types';
-import { uploadDraftStorage } from '../uploadDraftStorage';
-import { localLibraryStorage } from '../localLibraryStorage';
-import { useAuth } from '../auth';
-import { hasSupabaseConfig } from '../supabaseClient';
-import { supabaseApi } from '../supabaseApi';
+import { DEMO_AUDIO_URL } from '../constants';
 
 const WaveformCropper = ({ 
     duration, 
@@ -115,7 +111,6 @@ const WaveformCropper = ({
 
 export const Upload: React.FC = () => {
   const { addSong, songs, playSong, playerState } = useStore();
-  const { user } = useAuth();
   const [step, setStep] = useState<1 | 2>(1);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
@@ -123,159 +118,27 @@ export const Upload: React.FC = () => {
   const [artist, setArtist] = useState('');
   const [album, setAlbum] = useState('');
   const [coverUrl, setCoverUrl] = useState(`https://picsum.photos/seed/${Math.random()}/400/400`);
-  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [duration, setDuration] = useState(240);
   const [range, setRange] = useState<[number, number]>([0, 240]);
   const [currentPreviewTime, setCurrentPreviewTime] = useState(0);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
-  const previewUrlRef = useRef<string>('');
-  const coverUrlRef = useRef<string>('');
 
-  const myUploads = songs.filter((s) => (s.ownerId ? s.ownerId === user?.id : s.uploadedBy === 'Me'));
-
-  const guessAudioMime = (filename: string) => {
-    const idx = filename.lastIndexOf('.');
-    const ext = idx === -1 ? '' : filename.slice(idx + 1).toLowerCase();
-    if (ext === 'mp3') return 'audio/mpeg';
-    if (ext === 'm4a' || ext === 'mp4') return 'audio/mp4';
-    if (ext === 'wav') return 'audio/wav';
-    if (ext === 'flac') return 'audio/flac';
-    if (ext === 'amr') return 'audio/amr';
-    return '';
-  };
-
-  const makePreviewBlob = (audioFile: File) => {
-    const mime = audioFile.type || guessAudioMime(audioFile.name);
-    if (!mime) return audioFile;
-    if (audioFile.type === mime) return audioFile;
-    return audioFile.slice(0, audioFile.size, mime);
-  };
-
-  const persistDraftAudio = (audioFile: File) => {
-    const maxPersistBytes = 25 * 1024 * 1024;
-    if (audioFile.size > maxPersistBytes) return;
-    const fn = () => {
-      uploadDraftStorage.setAudio(audioFile).catch(() => {});
-    };
-    if ('requestIdleCallback' in window) {
-      (window as any).requestIdleCallback(fn, { timeout: 1500 });
-      return;
-    }
-    window.setTimeout(fn, 0);
-  };
+  const myUploads = songs.filter(s => s.uploadedBy === 'Me' || s.uploadedBy === 'User A');
 
   useEffect(() => {
     const audio = audioPreviewRef.current;
     if (!audio) return;
     
-    const updateTime = () => {
-      setCurrentPreviewTime(audio.currentTime);
-      if (step === 2 && !audio.paused && Number.isFinite(range[1]) && audio.currentTime >= range[1]) {
-        audio.pause();
-      }
-    };
+    const updateTime = () => setCurrentPreviewTime(audio.currentTime);
     audio.addEventListener('timeupdate', updateTime);
     return () => audio.removeEventListener('timeupdate', updateTime);
-  }, [range, step]);
-
-  useEffect(() => {
-    previewUrlRef.current = previewUrl;
-  }, [previewUrl]);
-
-  useEffect(() => {
-    const audio = audioPreviewRef.current;
-    if (!audio) return;
-    if (!previewUrl) return;
-    audio.load();
-  }, [previewUrl]);
-
-  useEffect(() => {
-    coverUrlRef.current = coverUrl;
-  }, [coverUrl]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const restore = async () => {
-      const [draftMeta, draftAudio, draftCover] = await Promise.all([
-        uploadDraftStorage.getMeta().catch(() => null),
-        uploadDraftStorage.getAudio().catch(() => null),
-        uploadDraftStorage.getCover().catch(() => null),
-      ]);
-
-      if (cancelled) return;
-
-      if (draftMeta) {
-        setTitle(draftMeta.title ?? '');
-        setArtist(draftMeta.artist ?? '');
-        setAlbum(draftMeta.album ?? '');
-        if (typeof draftMeta.duration === 'number' && Number.isFinite(draftMeta.duration) && draftMeta.duration > 0) {
-          setDuration(draftMeta.duration);
-        }
-        if (
-          draftMeta.range &&
-          Array.isArray(draftMeta.range) &&
-          draftMeta.range.length === 2 &&
-          Number.isFinite(draftMeta.range[0]) &&
-          Number.isFinite(draftMeta.range[1])
-        ) {
-          setRange(draftMeta.range as [number, number]);
-        }
-      }
-
-      if (draftAudio) {
-        setFile(draftAudio);
-        const url = URL.createObjectURL(makePreviewBlob(draftAudio));
-        setPreviewUrl(url);
-        setStep(2);
-      }
-
-      if (draftCover) {
-        setCoverFile(draftCover);
-        const url = URL.createObjectURL(draftCover);
-        setCoverUrl(url);
-      }
-    };
-
-    restore();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    uploadDraftStorage.setMeta({ title, artist, album, duration, range }).catch(() => {});
-  }, [album, artist, duration, range, title]);
-
-  const resetDraft = () => {
-    uploadDraftStorage.clearAll().catch(() => {});
-    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-    if (coverUrlRef.current.startsWith('blob:')) URL.revokeObjectURL(coverUrlRef.current);
-    setPreviewUrl('');
-    setFile(null);
-    setTitle('');
-    setArtist('');
-    setAlbum('');
-    setDuration(240);
-    setRange([0, 240]);
-    setCurrentPreviewTime(0);
-    setCoverFile(null);
-    setCoverUrl(`https://picsum.photos/seed/${Math.random()}/400/400`);
-    setStep(1);
-  };
+  }, [step]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
-      setPreviewError(null);
       setFile(selectedFile);
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-      const url = URL.createObjectURL(makePreviewBlob(selectedFile));
-      setPreviewUrl(url);
-      persistDraftAudio(selectedFile);
+      setPreviewUrl(URL.createObjectURL(selectedFile)); 
       setStep(2);
 
       // Auto-extract metadata from filename
@@ -292,43 +155,14 @@ export const Upload: React.FC = () => {
   const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
         const file = e.target.files[0];
-        if (coverUrlRef.current.startsWith('blob:')) URL.revokeObjectURL(coverUrlRef.current);
-        const url = URL.createObjectURL(file);
-        setCoverUrl(url);
-        setCoverFile(file);
-        uploadDraftStorage.setCover(file).catch(() => {});
+        setCoverUrl(URL.createObjectURL(file));
     }
   };
 
   const playPreviewSection = () => {
     if (audioPreviewRef.current) {
-        const audio = audioPreviewRef.current;
-        setPreviewError(null);
-        const startTime = range[0];
-
-        const start = async () => {
-          if (audio.readyState === 0) audio.load();
-          await new Promise<void>((resolve) => {
-            if (audio.readyState >= 1) return resolve();
-            const onLoaded = () => {
-              audio.removeEventListener('loadedmetadata', onLoaded);
-              resolve();
-            };
-            audio.addEventListener('loadedmetadata', onLoaded);
-          });
-          audio.currentTime = Number.isFinite(startTime) ? startTime : 0;
-          await audio.play();
-        };
-
-        start().catch((e) => {
-          const detail =
-            typeof e?.message === 'string'
-              ? e.message
-              : audio.error?.code
-                ? `MediaError(${audio.error.code})`
-                : '未知错误';
-          setPreviewError(`无法播放预览：${detail}`);
-        });
+        audioPreviewRef.current.currentTime = range[0];
+        audioPreviewRef.current.play();
     }
   };
 
@@ -339,117 +173,41 @@ export const Upload: React.FC = () => {
       }
   };
 
-  const handleSave = async () => {
-    if (!file) return;
-    if (isSaving) return;
-    setPreviewError(null);
-    setSaveError(null);
-    setIsSaving(true);
-
-    try {
-      if (hasSupabaseConfig && user) {
-        const row = await supabaseApi.uploadAndCreateSong({
-          userId: user.id,
+  const handleSave = () => {
+      const newSong: Song = {
+          id: Math.random().toString(36).substr(2, 9),
           title: title || '未命名',
           artist: artist || '未知艺人',
           album: album || '未知专辑',
-          fileSize: file.size,
+          coverUrl: coverUrl,
+          audioUrl: previewUrl,
           duration: duration,
           trimStart: range[0],
           trimEnd: range[1],
-          audioFile: file,
-          coverFile: coverFile ?? undefined,
-          visibility: 'private',
-        });
-
-        let signedCoverUrl = coverUrl;
-        if (row.cover_path) {
-          try {
-            signedCoverUrl = await supabaseApi.createSignedCoverUrl(row.cover_path);
-          } catch {}
-        }
-
-        const newSong: Song = {
-          id: row.id,
-          title: row.title,
-          artist: row.artist,
-          album: row.album ?? undefined,
-          fileSize: typeof row.file_size === 'number' ? row.file_size : undefined,
-          coverUrl: signedCoverUrl,
-          audioUrl: '',
-          audioPath: row.audio_path,
-          coverPath: row.cover_path ?? undefined,
-          ownerId: row.owner_id,
-          visibility: row.visibility,
-          duration: row.duration,
-          trimStart: row.trim_start,
-          trimEnd: row.trim_end,
           uploadedBy: 'Me',
-          addedAt: new Date(row.created_at).getTime(),
-        };
-
-        addSong(newSong);
-        alert('歌曲已成功保存！');
-        resetDraft();
-        setIsSaving(false);
-        return;
-      }
-
-      const songId = Math.random().toString(36).substr(2, 9);
-      const persistedMeta = {
-        id: songId,
-        title: title || '未命名',
-        artist: artist || '未知艺人',
-        album: album || '未知专辑',
-        fileSize: file.size,
-        duration: duration,
-        trimStart: range[0],
-        trimEnd: range[1],
-        uploadedBy: 'Me',
-        addedAt: Date.now(),
-        coverUrl: coverFile ? undefined : coverUrl,
-      };
-
-      localLibraryStorage.saveSong({ meta: persistedMeta, audioFile: file, coverFile: coverFile ?? undefined }).catch(() => {});
-
-      const songAudioUrl = URL.createObjectURL(file);
-      const songCoverUrl = coverFile ? URL.createObjectURL(coverFile) : coverUrl;
-
-      const newSong: Song = {
-        id: songId,
-        title: persistedMeta.title,
-        artist: persistedMeta.artist,
-        album: persistedMeta.album,
-        fileSize: persistedMeta.fileSize,
-        coverUrl: songCoverUrl,
-        audioUrl: songAudioUrl,
-        duration: duration,
-        trimStart: range[0],
-        trimEnd: range[1],
-        uploadedBy: 'Me',
-        addedAt: persistedMeta.addedAt,
+          addedAt: Date.now()
       };
       addSong(newSong);
-      alert('歌曲已成功保存！');
-      resetDraft();
-    } catch (e: any) {
-      setSaveError(e?.message || '保存失败（请确认已创建 songs 表、storage bucket 与 RLS 策略）');
-    } finally {
-      setIsSaving(false);
-    }
+      alert("歌曲已成功保存！");
+      setStep(1);
+      setFile(null);
+      setTitle('');
+      setArtist('');
+      setAlbum('');
   };
 
   return (
     <div className="pb-32 pt-14 px-6 space-y-10 min-h-screen">
       <div>
         <h1 className="text-3xl font-extrabold text-white mb-2 tracking-tight">上传音乐</h1>
+        <p className="text-zinc-500 text-sm font-medium">裁剪精彩片段，完善音乐资料。</p>
       </div>
 
       {step === 1 && (
         <div className="border-2 border-dashed border-zinc-800 rounded-[28px] p-8 flex flex-col items-center justify-center h-56 bg-zinc-900/30 hover:bg-zinc-900/50 transition group">
             <input 
                 type="file" 
-                accept="audio/*,.m4a,.mp4,.flac,.amr" 
+                accept="audio/*" 
                 onChange={handleFileChange} 
                 className="hidden" 
                 id="audio-upload"
@@ -459,7 +217,7 @@ export const Upload: React.FC = () => {
                     <Icons.Upload className="text-white" size={24} />
                 </div>
                 <span className="text-zinc-300 font-bold">点击选择音频文件</span>
-                <span className="text-zinc-500 text-[11px] mt-2 font-medium tracking-wide">MP3 / M4A / MP4 / WAV / FLAC / AMR</span>
+                <span className="text-zinc-500 text-[11px] mt-2 font-medium tracking-wide">SUPPORT: MP3, WAV, FLAC</span>
             </label>
         </div>
       )}
@@ -503,24 +261,15 @@ export const Upload: React.FC = () => {
                     <div className="text-center text-red-500/80">LENGTH: {(range[1] - range[0]).toFixed(1)}s</div>
                     <div className="text-right">OUT: {range[1].toFixed(1)}s</div>
                 </div>
-                {/* TODO: 修复 M4A 文件在部分浏览器下的预览播放问题 (MediaError code 4) */}
                 <audio 
                     ref={audioPreviewRef} 
-                    src={previewUrl || undefined}
-                    preload="metadata"
-                    playsInline
-                    onError={(e) => {
-                      const a = e.currentTarget;
-                      const code = a.error?.code ? `MediaError(${a.error.code})` : 'unknown';
-                      setPreviewError(`音频加载失败：${code}`);
-                    }}
+                    src={previewUrl} 
                     onLoadedMetadata={(e) => {
                         const dur = e.currentTarget.duration;
                         setDuration(dur);
                         setRange([0, dur]);
                     }}
-                >
-                </audio>
+                />
             </div>
 
             {/* Metadata Forms */}
@@ -563,27 +312,14 @@ export const Upload: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-3 pt-4">
-                {previewError && (
-                  <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-2xl p-3">
-                    {previewError}
-                  </div>
-                )}
-                {saveError && (
-                  <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-2xl p-3">
-                    {saveError}
-                  </div>
-                )}
                 <button 
                     onClick={handleSave}
-                    disabled={isSaving}
-                    className={`w-full text-white font-bold py-4 rounded-2xl shadow-xl active:scale-[0.98] transition-all ${
-                      isSaving ? 'bg-zinc-800 text-zinc-500 shadow-none' : 'bg-red-600 shadow-red-600/20'
-                    }`}
+                    className="w-full bg-red-600 text-white font-bold py-4 rounded-2xl shadow-xl shadow-red-600/20 active:scale-[0.98] transition-all"
                 >
-                    {isSaving ? '上传中...' : '确认保存至资料库'}
+                    确认保存至资料库
                 </button>
                 <button 
-                    onClick={resetDraft}
+                    onClick={() => setStep(1)}
                     className="w-full text-zinc-500 text-[11px] font-bold py-2 hover:text-white transition uppercase tracking-widest"
                 >
                     弃置并重新选择
@@ -633,7 +369,7 @@ export const Upload: React.FC = () => {
                           
                           <div className="text-right ml-4 px-2">
                               <p className="text-[9px] text-zinc-600 font-black uppercase tracking-tighter mb-0.5">PLAYS</p>
-                              <p className="text-[13px] font-mono text-zinc-400 font-bold tracking-tighter">{(song.playsCount ?? 0).toLocaleString()}</p>
+                              <p className="text-[13px] font-mono text-zinc-400 font-bold tracking-tighter">{(Math.floor(Math.random() * 500) + 1).toLocaleString()}</p>
                           </div>
                       </div>
                   ))

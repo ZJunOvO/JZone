@@ -8,14 +8,6 @@ export interface Song {
   album?: string;
   coverUrl: string;
   audioUrl: string;
-  audioPath?: string;
-  coverPath?: string;
-  visibility?: 'private' | 'public';
-  ownerId?: string;
-  playsCount?: number;
-  genre?: string;
-  story?: string;
-  fileSize?: number;
   duration: number; // in seconds
   trimStart: number; // start time in seconds
   trimEnd: number; // end time in seconds

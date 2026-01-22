@@ -12,9 +12,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand }) => {
 
   if (!song) return null;
 
-  const denom = Math.max(0.1, (song.trimEnd ?? song.duration) - (song.trimStart ?? 0));
-  const progress = Math.max(0, Math.min(1, ((playerState.currentTime - (song.trimStart ?? 0)) / denom)));
-
   return (
     <div 
       className="fixed bottom-[64px] left-3 right-3 h-[56px] bg-zinc-800/80 backdrop-blur-xl rounded-xl flex items-center shadow-2xl border border-white/5 z-40 cursor-pointer overflow-hidden"
@@ -59,7 +56,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand }) => {
       <div className="absolute bottom-0 left-0 h-[1px] bg-white/10 w-full">
          <div 
             className="h-full bg-white/50" 
-            style={{ width: `${progress * 100}%` }}
+            style={{ width: `${(playerState.currentTime / song.duration) * 100}%` }}
          ></div>
       </div>
     </div>

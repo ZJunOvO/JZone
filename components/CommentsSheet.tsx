@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store';
 import { Icons } from './Icons';
 import { Comment } from '../types';
-import { useAuth } from '../auth';
 
 interface CommentsSheetProps {
   isOpen: boolean;
@@ -25,17 +24,14 @@ const formatRelativeTime = (timestamp: number) => {
 
 export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose }) => {
   const { comments, getCurrentSong, playerState, addComment, seek } = useStore();
-  const { user } = useAuth();
   const [inputText, setInputText] = useState('');
   const [anchorTime, setAnchorTime] = useState<number | null>(null);
   const [isFocused, setIsFocused] = useState(false);
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
   
   const currentSong = getCurrentSong();
   const filteredComments = comments.filter(c => c.songId === currentSong?.id).sort((a, b) => b.timestamp - a.timestamp);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputWrapRef = useRef<HTMLDivElement>(null);
 
   // Focus Lock Logic
   const handleFocus = () => {
@@ -43,9 +39,6 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
     if (anchorTime === null) {
       setAnchorTime(playerState.currentTime);
     }
-    window.setTimeout(() => {
-      inputWrapRef.current?.scrollIntoView({ block: 'end' });
-    }, 50);
   };
 
   const handleBlur = () => {
@@ -54,24 +47,6 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
     // to allow user to resume editing with the same timestamp.
     // It clears on send or explicit reset.
   };
-
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-
-    const update = () => {
-      const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      setKeyboardOffset(offset);
-    };
-
-    update();
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-    };
-  }, []);
 
   const resetAnchor = () => {
     setAnchorTime(playerState.currentTime);
@@ -86,14 +61,13 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !currentSong) return;
-    if (!user) return;
 
     const newComment: Comment = {
       id: Math.random().toString(36).substr(2, 9),
       songId: currentSong.id,
-      userId: user.id,
-      username: user.email || 'Member',
-      avatarUrl: `https://picsum.photos/seed/${user.id}/100/100`,
+      userId: 'me',
+      username: 'Music Lover', // Hardcoded for demo
+      avatarUrl: 'https://picsum.photos/seed/me/100/100',
       text: inputText,
       timestamp: Date.now(),
       playbackTime: anchorTime !== null ? anchorTime : playerState.currentTime,
@@ -194,11 +168,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
         </div>
 
         {/* Input Area with Mixed Time-Anchor System */}
-        <div
-          ref={inputWrapRef}
-          className="shrink-0 pt-3 px-4 bg-zinc-900 border-t border-white/5 z-20"
-          style={{ paddingBottom: `calc(env(safe-area-inset-bottom) + 16px + ${keyboardOffset}px)` }}
-        >
+        <div className="shrink-0 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-3 px-4 bg-zinc-900 border-t border-white/5 z-20">
            
            {/* Time Anchor Controls - Only visible when we have an anchor time (focused or editing) */}
            {(isFocused || anchorTime !== null) && (
@@ -239,7 +209,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
            {/* Input Bar */}
            <form onSubmit={handleSubmit} className="flex items-end gap-2">
               <img 
-                src={user ? `https://picsum.photos/seed/${user.id}/100/100` : 'https://picsum.photos/seed/me/100/100'} 
+                src="https://picsum.photos/seed/me/100/100" 
                 className="w-8 h-8 rounded-full mb-1 border border-white/10"
                 alt="Me"
               />
