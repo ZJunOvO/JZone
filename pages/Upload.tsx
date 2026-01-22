@@ -2,7 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { Song } from '../types';
-import { DEMO_AUDIO_URL } from '../constants';
+import { uploadDraftStorage } from '../uploadDraftStorage';
+import { localLibraryStorage } from '../localLibraryStorage';
+import { useAuth } from '../auth';
+import { hasSupabaseConfig } from '../supabaseClient';
+import { supabaseApi } from '../supabaseApi';
+import { CollectionCreatableSelect, CollectionSelectValue } from '../components/CollectionCreatableSelect';
 
 const WaveformCropper = ({ 
     duration, 
@@ -111,34 +116,206 @@ const WaveformCropper = ({
 
 export const Upload: React.FC = () => {
   const { addSong, songs, playSong, playerState } = useStore();
+  const { user } = useAuth();
   const [step, setStep] = useState<1 | 2>(1);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
   const [album, setAlbum] = useState('');
+  const [collectionSelection, setCollectionSelection] = useState<CollectionSelectValue>({ kind: 'none' });
+  const [genre, setGenre] = useState('');
+  const [story, setStory] = useState('');
+  const [isPublic, setIsPublic] = useState(true);
   const [coverUrl, setCoverUrl] = useState(`https://picsum.photos/seed/${Math.random()}/400/400`);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [duration, setDuration] = useState(240);
   const [range, setRange] = useState<[number, number]>([0, 240]);
   const [currentPreviewTime, setCurrentPreviewTime] = useState(0);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPreviewSupported, setIsPreviewSupported] = useState(true);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+  const previewUrlRef = useRef<string>('');
+  const coverUrlRef = useRef<string>('');
+  const durationJobRef = useRef(0);
 
-  const myUploads = songs.filter(s => s.uploadedBy === 'Me' || s.uploadedBy === 'User A');
+  const myUploads = songs.filter((s) => (s.ownerId ? s.ownerId === user?.id : s.uploadedBy === 'Me'));
+
+  const guessAudioMime = (filename: string) => {
+    const idx = filename.lastIndexOf('.');
+    const ext = idx === -1 ? '' : filename.slice(idx + 1).toLowerCase();
+    if (ext === 'mp3') return 'audio/mpeg';
+    if (ext === 'm4a' || ext === 'mp4') return 'audio/mp4';
+    if (ext === 'wav') return 'audio/wav';
+    if (ext === 'flac') return 'audio/flac';
+    if (ext === 'amr') return 'audio/amr';
+    return '';
+  };
+
+  const makePreviewBlob = (audioFile: File) => {
+    const mime = audioFile.type || guessAudioMime(audioFile.name);
+    if (!mime) return audioFile;
+    if (audioFile.type === mime) return audioFile;
+    return audioFile.slice(0, audioFile.size, mime);
+  };
+
+  const persistDraftAudio = (audioFile: File) => {
+    const maxPersistBytes = 25 * 1024 * 1024;
+    if (audioFile.size > maxPersistBytes) return;
+    const fn = () => {
+      uploadDraftStorage.setAudio(audioFile).catch(() => {});
+    };
+    if ('requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(fn, { timeout: 1500 });
+      return;
+    }
+    window.setTimeout(fn, 0);
+  };
 
   useEffect(() => {
     const audio = audioPreviewRef.current;
     if (!audio) return;
     
-    const updateTime = () => setCurrentPreviewTime(audio.currentTime);
+    const updateTime = () => {
+      setCurrentPreviewTime(audio.currentTime);
+      if (step === 2 && !audio.paused && Number.isFinite(range[1]) && audio.currentTime >= range[1]) {
+        audio.pause();
+      }
+    };
     audio.addEventListener('timeupdate', updateTime);
     return () => audio.removeEventListener('timeupdate', updateTime);
-  }, [step]);
+  }, [range, step]);
+
+  useEffect(() => {
+    previewUrlRef.current = previewUrl;
+  }, [previewUrl]);
+
+  useEffect(() => {
+    const audio = audioPreviewRef.current;
+    if (!audio) return;
+    if (!previewUrl) return;
+    audio.load();
+  }, [previewUrl]);
+
+  useEffect(() => {
+    coverUrlRef.current = coverUrl;
+  }, [coverUrl]);
+
+  useEffect(() => {
+    if (!file) return;
+    const job = ++durationJobRef.current;
+    (async () => {
+      try {
+        const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextCtor) return;
+        const ctx = new AudioContextCtor();
+        const buf = await file.arrayBuffer();
+        const decoded = await ctx.decodeAudioData(buf.slice(0));
+        const dur = decoded.duration;
+        try {
+          await ctx.close();
+        } catch {}
+        if (job !== durationJobRef.current) return;
+        if (!Number.isFinite(dur) || dur <= 0) return;
+        setDuration(dur);
+        setRange((prev) => {
+          const prevEnd = prev[1];
+          if (!Number.isFinite(prevEnd) || prevEnd <= 0) return [0, dur];
+          if (Math.abs(prevEnd - 240) < 1.5) return [0, dur];
+          if (prevEnd > dur) return [prev[0], dur];
+          return prev;
+        });
+      } catch {}
+    })();
+  }, [file]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const restore = async () => {
+      const [draftMeta, draftAudio, draftCover] = await Promise.all([
+        uploadDraftStorage.getMeta().catch(() => null),
+        uploadDraftStorage.getAudio().catch(() => null),
+        uploadDraftStorage.getCover().catch(() => null),
+      ]);
+
+      if (cancelled) return;
+
+      if (draftMeta) {
+        setTitle(draftMeta.title ?? '');
+        setArtist(draftMeta.artist ?? '');
+        setAlbum(draftMeta.album ?? '');
+        if (typeof draftMeta.duration === 'number' && Number.isFinite(draftMeta.duration) && draftMeta.duration > 0) {
+          setDuration(draftMeta.duration);
+        }
+        if (
+          draftMeta.range &&
+          Array.isArray(draftMeta.range) &&
+          draftMeta.range.length === 2 &&
+          Number.isFinite(draftMeta.range[0]) &&
+          Number.isFinite(draftMeta.range[1])
+        ) {
+          setRange(draftMeta.range as [number, number]);
+        }
+      }
+
+      if (draftAudio) {
+        setFile(draftAudio);
+        const url = URL.createObjectURL(makePreviewBlob(draftAudio));
+        setPreviewUrl(url);
+        setStep(2);
+      }
+
+      if (draftCover) {
+        setCoverFile(draftCover);
+        const url = URL.createObjectURL(draftCover);
+        setCoverUrl(url);
+      }
+    };
+
+    restore();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    uploadDraftStorage.setMeta({ title, artist, album, duration, range }).catch(() => {});
+  }, [album, artist, duration, range, title]);
+
+  const resetDraft = () => {
+    uploadDraftStorage.clearAll().catch(() => {});
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    if (coverUrlRef.current.startsWith('blob:')) URL.revokeObjectURL(coverUrlRef.current);
+    setPreviewUrl('');
+    setFile(null);
+    setTitle('');
+    setArtist('');
+    setAlbum('');
+    setCollectionSelection({ kind: 'none' });
+    setGenre('');
+    setStory('');
+    setIsPublic(true);
+    setDuration(240);
+    setRange([0, 240]);
+    setCurrentPreviewTime(0);
+    setCoverFile(null);
+    setCoverUrl(`https://picsum.photos/seed/${Math.random()}/400/400`);
+    setStep(1);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
+      setPreviewError(null);
+      setIsPreviewSupported(true);
       setFile(selectedFile);
-      setPreviewUrl(URL.createObjectURL(selectedFile)); 
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      const url = URL.createObjectURL(makePreviewBlob(selectedFile));
+      setPreviewUrl(url);
+      persistDraftAudio(selectedFile);
       setStep(2);
 
       // Auto-extract metadata from filename
@@ -155,14 +332,43 @@ export const Upload: React.FC = () => {
   const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
         const file = e.target.files[0];
-        setCoverUrl(URL.createObjectURL(file));
+        if (coverUrlRef.current.startsWith('blob:')) URL.revokeObjectURL(coverUrlRef.current);
+        const url = URL.createObjectURL(file);
+        setCoverUrl(url);
+        setCoverFile(file);
+        uploadDraftStorage.setCover(file).catch(() => {});
     }
   };
 
   const playPreviewSection = () => {
     if (audioPreviewRef.current) {
-        audioPreviewRef.current.currentTime = range[0];
-        audioPreviewRef.current.play();
+        const audio = audioPreviewRef.current;
+        setPreviewError(null);
+        const startTime = range[0];
+
+        const start = async () => {
+          if (audio.readyState === 0) audio.load();
+          await new Promise<void>((resolve) => {
+            if (audio.readyState >= 1) return resolve();
+            const onLoaded = () => {
+              audio.removeEventListener('loadedmetadata', onLoaded);
+              resolve();
+            };
+            audio.addEventListener('loadedmetadata', onLoaded);
+          });
+          audio.currentTime = Number.isFinite(startTime) ? startTime : 0;
+          await audio.play();
+        };
+
+        start().catch((e) => {
+          const detail =
+            typeof e?.message === 'string'
+              ? e.message
+              : audio.error?.code
+                ? `MediaError(${audio.error.code})`
+                : '未知错误';
+          setPreviewError(`无法播放预览：${detail}`);
+        });
     }
   };
 
@@ -173,41 +379,145 @@ export const Upload: React.FC = () => {
       }
   };
 
-  const handleSave = () => {
-      const newSong: Song = {
-          id: Math.random().toString(36).substr(2, 9),
+  const handleSave = async () => {
+    if (!file) return;
+    if (isSaving) return;
+    setPreviewError(null);
+    setSaveError(null);
+    setIsSaving(true);
+
+    try {
+      if (hasSupabaseConfig && user) {
+        const albumForSong =
+          collectionSelection.kind === 'existing' && collectionSelection.type === 'album'
+            ? collectionSelection.title
+            : collectionSelection.kind === 'create' && collectionSelection.type === 'album'
+              ? collectionSelection.title
+              : album;
+
+        const row = await supabaseApi.uploadAndCreateSong({
+          userId: user.id,
           title: title || '未命名',
           artist: artist || '未知艺人',
-          album: album || '未知专辑',
-          coverUrl: coverUrl,
-          audioUrl: previewUrl,
+          album: albumForSong || '未知专辑',
+          genre: genre || undefined,
+          story: story || undefined,
+          fileSize: file.size,
           duration: duration,
           trimStart: range[0],
           trimEnd: range[1],
+          audioFile: file,
+          coverFile: coverFile ?? undefined,
+          visibility: isPublic ? 'public' : 'private',
+        });
+
+        let signedCoverUrl = coverUrl;
+        if (row.cover_path) {
+          try {
+            signedCoverUrl = await supabaseApi.createSignedCoverUrl(row.cover_path);
+          } catch {}
+        }
+
+        const newSong: Song = {
+          id: row.id,
+          title: row.title,
+          artist: row.artist,
+          album: row.album ?? undefined,
+          fileSize: typeof row.file_size === 'number' ? row.file_size : undefined,
+          coverUrl: signedCoverUrl,
+          audioUrl: '',
+          audioPath: row.audio_path,
+          coverPath: row.cover_path ?? undefined,
+          ownerId: row.owner_id,
+          visibility: row.visibility,
+          duration: row.duration,
+          trimStart: row.trim_start,
+          trimEnd: row.trim_end,
           uploadedBy: 'Me',
-          addedAt: Date.now()
+          addedAt: new Date(row.created_at).getTime(),
+        };
+
+        addSong(newSong);
+
+        try {
+          if (collectionSelection.kind === 'existing') {
+            await supabaseApi.addSongsToCollection(collectionSelection.id, [row.id]);
+          } else if (collectionSelection.kind === 'create') {
+            const newId = await supabaseApi.createCollection({
+              type: collectionSelection.type,
+              title: collectionSelection.title,
+              visibility: 'public',
+              coverUrl: null,
+              description: null,
+              releaseYear: null,
+              genre: null,
+            });
+            await supabaseApi.addSongsToCollection(newId, [row.id]);
+          }
+        } catch {}
+
+        alert('歌曲已成功保存！');
+        resetDraft();
+        setIsSaving(false);
+        return;
+      }
+
+      const songId = Math.random().toString(36).substr(2, 9);
+      const persistedMeta = {
+        id: songId,
+        title: title || '未命名',
+        artist: artist || '未知艺人',
+        album: album || '未知专辑',
+        fileSize: file.size,
+        duration: duration,
+        trimStart: range[0],
+        trimEnd: range[1],
+        uploadedBy: 'Me',
+        addedAt: Date.now(),
+        coverUrl: coverFile ? undefined : coverUrl,
+      };
+
+      localLibraryStorage.saveSong({ meta: persistedMeta, audioFile: file, coverFile: coverFile ?? undefined }).catch(() => {});
+
+      const songAudioUrl = URL.createObjectURL(file);
+      const songCoverUrl = coverFile ? URL.createObjectURL(coverFile) : coverUrl;
+
+      const newSong: Song = {
+        id: songId,
+        title: persistedMeta.title,
+        artist: persistedMeta.artist,
+        album: persistedMeta.album,
+        fileSize: persistedMeta.fileSize,
+        coverUrl: songCoverUrl,
+        audioUrl: songAudioUrl,
+        duration: duration,
+        trimStart: range[0],
+        trimEnd: range[1],
+        uploadedBy: 'Me',
+        addedAt: persistedMeta.addedAt,
       };
       addSong(newSong);
-      alert("歌曲已成功保存！");
-      setStep(1);
-      setFile(null);
-      setTitle('');
-      setArtist('');
-      setAlbum('');
+      alert('歌曲已成功保存！');
+      resetDraft();
+    } catch (e: any) {
+      const msg = typeof e?.message === 'string' ? e.message : '';
+      setSaveError(msg || '上传失败：请检查腾讯云 COS 是否欠费、密钥权限与 Bucket 区域配置');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="pb-32 pt-14 px-6 space-y-10 min-h-screen">
       <div>
         <h1 className="text-3xl font-extrabold text-white mb-2 tracking-tight">上传音乐</h1>
-        <p className="text-zinc-500 text-sm font-medium">裁剪精彩片段，完善音乐资料。</p>
       </div>
 
       {step === 1 && (
         <div className="border-2 border-dashed border-zinc-800 rounded-[28px] p-8 flex flex-col items-center justify-center h-56 bg-zinc-900/30 hover:bg-zinc-900/50 transition group">
             <input 
                 type="file" 
-                accept="audio/*" 
+                accept="audio/*,.m4a,.mp4,.flac,.amr" 
                 onChange={handleFileChange} 
                 className="hidden" 
                 id="audio-upload"
@@ -217,7 +527,7 @@ export const Upload: React.FC = () => {
                     <Icons.Upload className="text-white" size={24} />
                 </div>
                 <span className="text-zinc-300 font-bold">点击选择音频文件</span>
-                <span className="text-zinc-500 text-[11px] mt-2 font-medium tracking-wide">SUPPORT: MP3, WAV, FLAC</span>
+                <span className="text-zinc-500 text-[11px] mt-2 font-medium tracking-wide">MP3 / M4A / MP4 / WAV / FLAC / AMR</span>
             </label>
         </div>
       )}
@@ -245,7 +555,7 @@ export const Upload: React.FC = () => {
             <div className="space-y-4">
                 <div className="flex justify-between items-center">
                     <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">裁剪选段</label>
-                    <button onClick={playPreviewSection} className="text-[11px] font-bold text-red-500 flex items-center gap-1.5 px-3 py-1 bg-red-500/10 rounded-full active:scale-95 transition">
+                    <button disabled={!isPreviewSupported} onClick={playPreviewSection} className={`text-[11px] font-bold flex items-center gap-1.5 px-3 py-1 rounded-full active:scale-95 transition ${isPreviewSupported ? 'text-red-500 bg-red-500/10' : 'text-zinc-600 bg-white/5'}`}>
                         <Icons.Play size={12} fill="currentColor" /> 播放选段
                     </button>
                 </div>
@@ -261,15 +571,49 @@ export const Upload: React.FC = () => {
                     <div className="text-center text-red-500/80">LENGTH: {(range[1] - range[0]).toFixed(1)}s</div>
                     <div className="text-right">OUT: {range[1].toFixed(1)}s</div>
                 </div>
+                {/* TODO: 修复 M4A 文件在部分浏览器下的预览播放问题 (MediaError code 4) */}
                 <audio 
                     ref={audioPreviewRef} 
-                    src={previewUrl} 
+                    src={previewUrl || undefined}
+                    preload="metadata"
+                    playsInline
+                    onError={(e) => {
+                      const a = e.currentTarget;
+                      const code = a.error?.code ? `MediaError(${a.error.code})` : 'unknown';
+                      setIsPreviewSupported(false);
+                      setDuration((d) => (Number.isFinite(d) && d > 0 ? d : 240));
+                      setRange((r) => {
+                        const end = r[1];
+                        if (Number.isFinite(end) && end > 0) return r;
+                        return [0, 240];
+                      });
+                      setCurrentPreviewTime(0);
+                      setPreviewError(code === 'MediaError(4)' ? '音频预览失败：当前浏览器不支持该 M4A/MP4 编码，仍可直接上传' : `音频加载失败：${code}`);
+                    }}
                     onLoadedMetadata={(e) => {
                         const dur = e.currentTarget.duration;
+                        if (!Number.isFinite(dur) || dur <= 0) {
+                          setIsPreviewSupported(false);
+                          setDuration((d) => (Number.isFinite(d) && d > 0 ? d : 240));
+                          setRange((r) => {
+                            const end = r[1];
+                            if (Number.isFinite(end) && end > 0) return r;
+                            return [0, 240];
+                          });
+                          setCurrentPreviewTime(0);
+                          setPreviewError('音频预览失败：无法读取时长，仍可直接上传');
+                          return;
+                        }
                         setDuration(dur);
                         setRange([0, dur]);
                     }}
-                />
+                >
+                </audio>
+                {previewError ? (
+                  <div className="text-[11px] font-semibold text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+                    {previewError}
+                  </div>
+                ) : null}
             </div>
 
             {/* Metadata Forms */}
@@ -296,30 +640,80 @@ export const Upload: React.FC = () => {
                                 placeholder="艺术家名称"
                             />
                         </div>
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">专辑</label>
-                            <input 
-                                type="text" 
-                                value={album}
-                                onChange={e => setAlbum(e.target.value)}
-                                className="w-full bg-black/40 text-white p-4 rounded-2xl border border-white/5 focus:border-red-500/50 focus:outline-none text-sm font-medium transition placeholder:text-zinc-700"
-                                placeholder="所属专辑"
-                            />
-                        </div>
+                        <CollectionCreatableSelect
+                          label="专辑 / 歌单"
+                          value={collectionSelection}
+                          onChange={(v) => {
+                            setCollectionSelection(v);
+                            if (v.kind === 'none') setAlbum('');
+                            else if (v.type === 'album') setAlbum(v.title);
+                            else setAlbum('');
+                          }}
+                          placeholder="搜索或创建…"
+                        />
                     </div>
-                    {/* TODO: Add Genre, Year, Lyrics tags for future compatibility */}
+                    
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">流派 / 标签</label>
+                        <input 
+                            type="text" 
+                            value={genre}
+                            onChange={e => setGenre(e.target.value)}
+                            className="w-full bg-black/40 text-white p-4 rounded-2xl border border-white/5 focus:border-red-500/50 focus:outline-none text-sm font-medium transition placeholder:text-zinc-700"
+                            placeholder="Pop, R&B, Electronic..."
+                        />
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">灵感札记</label>
+                        <textarea 
+                            value={story}
+                            onChange={e => setStory(e.target.value)}
+                            className="w-full bg-black/40 text-white p-4 rounded-2xl border border-white/5 focus:border-red-500/50 focus:outline-none text-sm font-medium transition placeholder:text-zinc-700 min-h-[100px] resize-none"
+                            placeholder="分享这首歌背后的故事..."
+                        />
+                    </div>
+
+                    {/* Visibility Toggle */}
+                    <div className="flex items-center justify-between p-4 bg-black/20 rounded-2xl border border-white/5 mt-2">
+                        <div className="flex flex-col">
+                            <span className="text-sm font-bold text-white">发布到广场</span>
+                            <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
+                                {isPublic ? 'PUBLIC 🌍' : 'PRIVATE 🔒'}
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => setIsPublic(!isPublic)}
+                            className={`w-14 h-8 rounded-full transition-colors relative ${isPublic ? 'bg-green-500' : 'bg-zinc-700'}`}
+                        >
+                            <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all ${isPublic ? 'left-7' : 'left-1'}`} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
             <div className="flex flex-col gap-3 pt-4">
+                {previewError && (
+                  <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-2xl p-3">
+                    {previewError}
+                  </div>
+                )}
+                {saveError && (
+                  <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-2xl p-3">
+                    {saveError}
+                  </div>
+                )}
                 <button 
                     onClick={handleSave}
-                    className="w-full bg-red-600 text-white font-bold py-4 rounded-2xl shadow-xl shadow-red-600/20 active:scale-[0.98] transition-all"
+                    disabled={isSaving}
+                    className={`w-full text-white font-bold py-4 rounded-2xl shadow-xl active:scale-[0.98] transition-all ${
+                      isSaving ? 'bg-zinc-800 text-zinc-500 shadow-none' : 'bg-red-600 shadow-red-600/20'
+                    }`}
                 >
-                    确认保存至资料库
+                    {isSaving ? '上传中...' : '确认保存至资料库'}
                 </button>
                 <button 
-                    onClick={() => setStep(1)}
+                    onClick={resetDraft}
                     className="w-full text-zinc-500 text-[11px] font-bold py-2 hover:text-white transition uppercase tracking-widest"
                 >
                     弃置并重新选择
@@ -369,7 +763,7 @@ export const Upload: React.FC = () => {
                           
                           <div className="text-right ml-4 px-2">
                               <p className="text-[9px] text-zinc-600 font-black uppercase tracking-tighter mb-0.5">PLAYS</p>
-                              <p className="text-[13px] font-mono text-zinc-400 font-bold tracking-tighter">{(Math.floor(Math.random() * 500) + 1).toLocaleString()}</p>
+                              <p className="text-[13px] font-mono text-zinc-400 font-bold tracking-tighter">{(song.playsCount ?? 0).toLocaleString()}</p>
                           </div>
                       </div>
                   ))

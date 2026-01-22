@@ -13,15 +13,9 @@
 在 Supabase SQL Editor 运行：
 
 - `supabase/sql/001_init.sql`
+- `supabase/sql/003_plays.sql`（播放次数统计）
 
 ## 3) Storage
 
-在 Storage 创建两个 bucket（都设为 Private）：
-
-- `audio`
-- `covers`
-
-然后在 SQL Editor 运行：
-
-- `supabase/sql/002_storage_policies.sql`
+本项目媒体存储统一使用腾讯云 COS，不再使用 Supabase Storage（Supabase 仅用于 Auth + Database）。
 

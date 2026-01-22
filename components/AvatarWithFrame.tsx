@@ -40,7 +40,7 @@ export const AvatarWithFrame: React.FC<AvatarWithFrameProps> = ({
         <img 
           src={src || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop"} 
           alt={alt}
-          className={`w-full h-full object-cover transition-transform duration-300 ${hasFrame ? 'scale-[0.95]' : 'scale-100'}`}
+          className="w-full h-full object-cover transition-transform duration-300 scale-100"
         />
       </div>
 

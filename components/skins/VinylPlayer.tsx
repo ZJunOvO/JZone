@@ -25,7 +25,7 @@ export const VinylPlayer: React.FC<SkinProps> = ({ song, isPlaying }) => {
           
           {/* Label */}
           <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-stone-900 relative">
-             <img src={song.coverUrl} alt="Label" className="w-full h-full object-cover opacity-80" />
+             <img src={song.coverUrl} alt="Label" loading="lazy" decoding="async" className="w-full h-full object-cover opacity-80" />
              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                <div className="w-2 h-2 bg-stone-300 rounded-full"></div>
              </div>

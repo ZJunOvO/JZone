@@ -42,6 +42,8 @@ export const Home: React.FC = () => {
                         <img 
                             src={song.coverUrl} 
                             alt={song.title} 
+                            loading="lazy"
+                            decoding="async"
                             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
                         />
                          {/* Play Overlay */}
@@ -70,7 +72,7 @@ export const Home: React.FC = () => {
                     className="flex-none w-36 snap-start cursor-pointer group"
                 >
                     <div className="aspect-square rounded-[12px] overflow-hidden bg-zinc-800 mb-2 shadow-lg border border-white/5">
-                         <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover group-hover:opacity-80 transition-opacity" />
+                         <img src={song.coverUrl} alt={song.title} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:opacity-80 transition-opacity" />
                     </div>
                     <h4 className="text-xs font-medium text-white truncate pr-1">{song.title}</h4>
                     <p className="text-[10px] text-zinc-500 truncate">{song.artist}</p>

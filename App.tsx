@@ -4,8 +4,16 @@ import { Icons } from './components/Icons';
 import { Home } from './pages/Home';
 import { Library } from './pages/Library';
 import { Upload } from './pages/Upload';
+import { Profile } from './pages/Profile';
+import { CollectionDetailPage } from './pages/CollectionDetailPage';
 import { PlayerBar } from './components/PlayerBar';
 import { PlayerView } from './pages/PlayerView';
+import { AuthProvider, useAuth } from './auth';
+import { Auth } from './pages/Auth';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { BUILD_ID } from './buildInfo';
+import { listenModalPresence } from './modalPresence';
+import { motion } from 'framer-motion';
 
 const Navigation = ({ currentTab, setTab }: { currentTab: string, setTab: (t: string) => void }) => {
   const tabs = [
@@ -16,17 +24,22 @@ const Navigation = ({ currentTab, setTab }: { currentTab: string, setTab: (t: st
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-zinc-900/70 backdrop-blur-xl backdrop-saturate-150 border-t border-white/10 pb-safe pt-2 px-8 flex justify-between items-start z-30 h-[52px]">
+    <div className="fixed bottom-0 left-0 right-0 bg-zinc-800/60 backdrop-blur-lg backdrop-saturate-150 border-t border-white/10 pb-safe px-6 flex justify-around items-center z-30 h-[72px]">
       {tabs.map(tab => {
         const isActive = currentTab === tab.id;
         return (
           <button 
             key={tab.id} 
             onClick={() => setTab(tab.id)}
-            className={`flex flex-col items-center justify-center w-12 transition-all duration-200`}
+            className={`flex items-center justify-center w-16 h-full transition-all duration-300 group`}
           >
-            <div className={`${isActive ? 'text-red-500 scale-110' : 'text-zinc-500 hover:text-zinc-300 scale-100'}`}>
-                <tab.icon size={22} strokeWidth={isActive ? 2.5 : 2} fill={isActive ? "currentColor" : "none"} />
+            <div className={`relative transition-transform duration-300 ${isActive ? 'scale-110' : 'scale-100 group-active:scale-90'}`}>
+                <tab.icon 
+                    size={28} 
+                    strokeWidth={isActive ? 2.5 : 1.8} 
+                    className={`transition-colors duration-300 ${isActive ? 'text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.4)]' : 'text-zinc-500 group-hover:text-zinc-300'}`}
+                    fill={isActive ? "currentColor" : "none"} 
+                />
             </div>
           </button>
         );
@@ -35,87 +48,119 @@ const Navigation = ({ currentTab, setTab }: { currentTab: string, setTab: (t: st
   );
 };
 
-const Profile = () => {
-  const { songs } = useStore();
-  // Mocking stats for the demo
-  const totalUploads = songs.length;
-  const totalPlays = 1248; // Mock value
+const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { status } = useAuth();
 
-  return (
-    <div className="bg-black min-h-screen pb-32">
-      {/* Sticky Header with Glass Effect */}
-      <div className="sticky top-0 z-20 bg-black/60 backdrop-blur-md px-6 pt-14 pb-4 border-b border-white/5">
-        <h1 className="text-3xl font-bold text-white tracking-tight">我的</h1>
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-zinc-500 text-sm font-bold tracking-widest uppercase">Loading</div>
       </div>
+    );
+  }
 
-      <div className="px-6 pt-6 space-y-8">
-        {/* User Info Card - Material You style */}
-        <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-indigo-600/20 via-purple-600/20 to-pink-600/20 border border-white/10 p-6 shadow-2xl">
-          <div className="relative z-10 flex items-center gap-4 mb-6">
-            <div className="w-16 h-16 bg-gradient-to-br from-red-500 to-pink-600 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-xl border-2 border-white/20">
-              J
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white leading-tight">JZone 会员</h2>
-              <p className="text-zinc-400 text-sm">尊享私密空间</p>
-            </div>
-          </div>
+  if (status === 'signed_out' || status === 'misconfigured') {
+    return <Auth />;
+  }
 
-          <div className="relative z-10 grid grid-cols-2 gap-4">
-            <div className="bg-white/5 backdrop-blur-md rounded-2xl p-4 border border-white/5">
-              <p className="text-zinc-400 text-[10px] uppercase font-bold tracking-widest mb-1">上传总量</p>
-              <p className="text-2xl font-black text-white">{totalUploads}</p>
-            </div>
-            <div className="bg-white/5 backdrop-blur-md rounded-2xl p-4 border border-white/5">
-              <p className="text-zinc-400 text-[10px] uppercase font-bold tracking-widest mb-1">累计播放</p>
-              <p className="text-2xl font-black text-white">{totalPlays.toLocaleString()}</p>
-            </div>
-          </div>
-          
-          {/* Abstract decoration */}
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-purple-500/20 blur-3xl rounded-full"></div>
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-red-500/20 blur-3xl rounded-full"></div>
-        </div>
-
-        {/* Action List */}
-        <div className="space-y-2">
-          <button className="w-full bg-zinc-900/50 p-4 rounded-2xl text-left text-zinc-200 flex justify-between items-center border border-white/5 transition active:scale-[0.98]">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-400">
-                <Icons.Smartphone size={18} />
-              </div>
-              <span className="font-medium">账户设置</span>
-            </div>
-            <Icons.ChevronRight size={18} className="text-zinc-600" />
-          </button>
-          <button className="w-full bg-zinc-900/50 p-4 rounded-2xl text-left text-zinc-200 flex justify-between items-center border border-white/5 transition active:scale-[0.98]">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-400">
-                <Icons.Music2 size={18} />
-              </div>
-              <span className="font-medium">已用空间</span>
-            </div>
-            <span className="text-zinc-500 text-sm font-mono">24%</span>
-          </button>
-          <button className="w-full bg-zinc-900/50 p-4 rounded-2xl text-left text-red-500 flex justify-between items-center border border-white/5 mt-4 transition active:scale-[0.98]">
-            <span className="font-bold pl-1">退出登录</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return <>{children}</>;
 };
 
 const MainLayout = () => {
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem('jzone.activeTab') || 'home';
+    } catch {
+      return 'home';
+    }
+  });
+  const [profileUserId, setProfileUserId] = useState<string | undefined>(undefined);
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+  const [collectionId, setCollectionId] = useState<string | null>(null);
+  const [modalCount, setModalCount] = useState(0);
+
+  const parseCollectionIdFromPath = () => {
+    try {
+      const path = window.location.pathname || '/';
+      const match = path.match(/^\/collection\/([^/]+)$/i);
+      if (!match) return null;
+      const id = match[1];
+      return id ? decodeURIComponent(id) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const openCollection = (id: string, push: boolean) => {
+    setCollectionId(id);
+    setIsPlayerOpen(false);
+    if (push) {
+      try {
+        window.history.pushState({ type: 'collection', id }, '', `/collection/${encodeURIComponent(id)}`);
+      } catch {}
+    }
+  };
+
+  const closeCollection = () => {
+    const current = parseCollectionIdFromPath();
+    setCollectionId(null);
+    if (current) {
+      try {
+        window.history.back();
+      } catch {}
+    }
+  };
+
+  React.useEffect(() => {
+    return listenModalPresence((delta) => {
+      setModalCount((c) => Math.max(0, c + delta));
+    });
+  }, []);
+
+  React.useEffect(() => {
+    const initial = parseCollectionIdFromPath();
+    if (initial) setCollectionId(initial);
+    const onPop = () => {
+      const id = parseCollectionIdFromPath();
+      setCollectionId(id);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail as { userId?: string } | undefined;
+      setProfileUserId(detail?.userId);
+      setActiveTab('profile');
+      setIsPlayerOpen(false); // Close player view when navigating to profile
+      setCollectionId(null); // Close collection detail modal
+      try {
+        localStorage.setItem('jzone.activeTab', 'profile');
+      } catch {}
+    };
+    window.addEventListener('jzone:navigate-profile', handler as any);
+    return () => window.removeEventListener('jzone:navigate-profile', handler as any);
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail as { id?: string } | undefined;
+      if (!detail?.id) return;
+      openCollection(detail.id, true);
+    };
+    window.addEventListener('jzone:navigate-collection', handler as any);
+    return () => window.removeEventListener('jzone:navigate-collection', handler as any);
+  }, []);
+
+  const isModalActive = modalCount > 0;
 
   const renderContent = () => {
     switch (activeTab) {
       case 'home': return <Home />;
       case 'library': return <Library />;
       case 'upload': return <Upload />;
-      case 'profile': return <Profile />;
+      case 'profile': return <Profile userId={profileUserId} onBack={profileUserId ? () => setProfileUserId(undefined) : undefined} />;
       default: return <Home />;
     }
   };
@@ -127,15 +172,49 @@ const MainLayout = () => {
         {renderContent()}
       </div>
 
+      {collectionId && <CollectionDetailPage collectionId={collectionId} onClose={closeCollection} />}
+
       {/* Mini Player */}
       {!isPlayerOpen && (
-        <div className="max-w-md mx-auto w-full z-40">
-            <PlayerBar onExpand={() => setIsPlayerOpen(true)} />
-        </div>
+        <motion.div
+          initial={false}
+          animate={
+            isModalActive
+              ? {
+                  top: 'calc(env(safe-area-inset-top) + 12px)',
+                  bottom: 'auto',
+                  left: '50%',
+                  right: 'auto',
+                  x: '-50%',
+                  width: 'min(320px, calc(100% - 24px))',
+                }
+              : {
+                  top: 'auto',
+                  bottom: '84px',
+                  left: '12px',
+                  right: '12px',
+                  x: 0,
+                  width: 'auto',
+                }
+          }
+          transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+          className="fixed z-[160]"
+        >
+          <PlayerBar onExpand={() => setIsPlayerOpen(true)} variant={isModalActive ? 'island' : 'dock'} />
+        </motion.div>
       )}
 
       {/* Bottom Navigation */}
-      <Navigation currentTab={activeTab} setTab={setActiveTab} />
+      <Navigation
+        currentTab={activeTab}
+        setTab={(t) => {
+          setActiveTab(t);
+          if (t === 'profile') setProfileUserId(undefined);
+          try {
+            localStorage.setItem('jzone.activeTab', t);
+          } catch {}
+        }}
+      />
 
       {/* Full Screen Player Overlay */}
       {isPlayerOpen && (
@@ -146,10 +225,19 @@ const MainLayout = () => {
 };
 
 const App: React.FC = () => {
+  try {
+    document.documentElement.dataset.buildId = BUILD_ID;
+  } catch {}
   return (
-    <AppProvider>
-      <MainLayout />
-    </AppProvider>
+    <AuthProvider>
+      <AppProvider>
+        <ErrorBoundary>
+          <AuthGate>
+            <MainLayout />
+          </AuthGate>
+        </ErrorBoundary>
+      </AppProvider>
+    </AuthProvider>
   );
 };
 

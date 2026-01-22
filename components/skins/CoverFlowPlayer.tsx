@@ -10,7 +10,7 @@ export const CoverFlowPlayer: React.FC<SkinProps> = ({ song, isPlaying }) => {
   return (
     <div className="flex flex-col items-center justify-center py-6 px-4">
       <div className={`relative w-full aspect-square max-w-[320px] rounded-2xl shadow-2xl overflow-hidden transition-transform duration-500 ${isPlaying ? 'scale-100' : 'scale-90 opacity-90'}`}>
-        <img src={song.coverUrl} alt="Cover" className="w-full h-full object-cover" />
+        <img src={song.coverUrl} alt="Cover" loading="lazy" decoding="async" className="w-full h-full object-cover" />
         {/* Glass reflection effect */}
         <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none"></div>
       </div>

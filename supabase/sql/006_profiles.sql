@@ -47,23 +47,3 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
-
--- Storage buckets for profiles
-insert into storage.buckets (id, name, public) values ('avatars', 'avatars', true) ON CONFLICT DO NOTHING;
-insert into storage.buckets (id, name, public) values ('covers', 'covers', true) ON CONFLICT DO NOTHING;
-
-create policy "Avatar images are publicly accessible."
-  on storage.objects for select
-  using ( bucket_id = 'avatars' );
-
-create policy "Anyone can upload an avatar."
-  on storage.objects for insert
-  with check ( bucket_id = 'avatars' );
-
-create policy "Cover images are publicly accessible."
-  on storage.objects for select
-  using ( bucket_id = 'covers' );
-
-create policy "Anyone can upload a cover."
-  on storage.objects for insert
-  with check ( bucket_id = 'covers' );

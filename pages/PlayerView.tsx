@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { CommentsSheet } from '../components/CommentsSheet';
+import { MemoryCardModal } from '../components/MemoryCardModal';
+import { UniversalContextMenu } from '../components/UniversalContextMenu';
+import { useModalPresence } from '../modalPresence';
 
 interface PlayerViewProps {
   onClose: () => void;
@@ -14,15 +17,24 @@ const formatTime = (time: number) => {
 };
 
 export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
-  const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, seek, setVolume, playSong, removeFromQueue } = useStore();
+  const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, seek, setVolume, playSong, removeFromQueue, toggleFavorite, isFavorite } = useStore();
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isMemoryOpen, setIsMemoryOpen] = useState(false);
+  const [memoryOpenNonce, setMemoryOpenNonce] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
   const [isChangingVolume, setIsChangingVolume] = useState(false);
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | undefined>(undefined);
+
+  useModalPresence(isMemoryOpen);
+  useModalPresence(isQueueOpen);
+  useModalPresence(isCommentsOpen);
   
   const song = getCurrentSong();
 
   if (!song) return null;
+  const isFav = isFavorite(song.id);
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     seek(Number(e.target.value));
@@ -40,7 +52,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
     .sort((a, b) => playerState.queue.indexOf(a.id) - playerState.queue.indexOf(b.id));
 
   return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col h-screen justify-between py-8 animate-[slideUp_0.4s_cubic-bezier(0.33,1,0.68,1)] overflow-hidden">
+    <div className="fixed inset-0 bg-black z-[200] flex flex-col h-screen justify-between py-8 animate-[slideUp_0.4s_cubic-bezier(0.33,1,0.68,1)] overflow-hidden">
       {/* 1. Immersive Dynamic Background Layer */}
       <div className="absolute inset-0 -z-10 scale-150 overflow-hidden pointer-events-none transition-opacity duration-500 ease-in-out">
         <img 
@@ -82,10 +94,20 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/90 active:scale-90 transition">
-              <Icons.Star size={18} strokeWidth={1.5} />
+            <button
+              onClick={() => toggleFavorite(song.id)}
+              className={`w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition ${isFav ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-white/90'}`}
+            >
+              <Icons.Heart size={18} strokeWidth={1.5} fill={isFav ? 'currentColor' : 'none'} />
             </button>
-            <button className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/90 active:scale-90 transition">
+            <button 
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setMenuAnchor({ x: rect.left, y: rect.top });
+                  setContextMenuOpen(true);
+                }}
+                className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/90 active:scale-90 transition"
+            >
               <Icons.MoreHorizontal size={18} strokeWidth={1.5} />
             </button>
           </div>
@@ -187,8 +209,14 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
             >
               <Icons.MessageSquareQuote size={20} strokeWidth={1.5} />
             </button>
-            <button className="p-2 text-white/40 hover:text-white transition active:opacity-60">
-              <Icons.Radio size={20} strokeWidth={1.5} />
+            <button 
+              onClick={() => {
+                setIsMemoryOpen(true);
+                setMemoryOpenNonce((n) => n + 1);
+              }}
+              className={`p-2 transition active:opacity-60 ${isMemoryOpen ? 'text-white' : 'text-white/40 hover:text-white'}`}
+            >
+              <Icons.Sparkles size={20} strokeWidth={1.5} />
             </button>
             <button 
               onClick={() => setIsQueueOpen(true)}
@@ -199,6 +227,9 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
           </div>
         </div>
       </div>
+
+      {/* Memory Card Overlay */}
+       <MemoryCardModal song={isMemoryOpen ? song : null} openNonce={memoryOpenNonce} onClose={() => setIsMemoryOpen(false)} />
 
       {/* Queue/List Overlay */}
       {isQueueOpen && (
@@ -230,7 +261,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
                     onClick={() => playSong(s.id)}
                     className={`flex items-center p-3 rounded-2xl transition active:scale-[0.98] group ${s.id === song.id ? 'bg-white/10' : 'hover:bg-white/5'}`}
                   >
-                    <img src={s.coverUrl} className="w-12 h-12 rounded-lg object-cover mr-4 shadow-md" alt="art" />
+                    <img src={s.coverUrl} loading="lazy" decoding="async" className="w-12 h-12 rounded-lg object-cover mr-4 shadow-md" alt="art" />
                     <div className="flex-1 min-w-0">
                       <h4 className={`text-sm font-bold truncate ${s.id === song.id ? 'text-white' : 'text-zinc-300'}`}>
                         {s.title}
@@ -275,6 +306,14 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
       {/* Comments Sheet Overlay */}
       <CommentsSheet isOpen={isCommentsOpen} onClose={() => setIsCommentsOpen(false)} />
 
+      {/* More Menu */}
+      <UniversalContextMenu 
+          isOpen={contextMenuOpen} 
+          onClose={() => setContextMenuOpen(false)} 
+          item={song} 
+          type="song"
+          anchorPosition={menuAnchor}
+      />
     </div>
   );
 };

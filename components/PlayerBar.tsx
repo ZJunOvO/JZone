@@ -4,30 +4,37 @@ import { Icons } from './Icons';
 
 interface PlayerBarProps {
   onExpand: () => void;
+  variant?: 'dock' | 'island';
 }
 
-export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand }) => {
+export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock' }) => {
   const { playerState, getCurrentSong, togglePlay, nextSong } = useStore();
   const song = getCurrentSong();
 
   if (!song) return null;
 
+  const denom = Math.max(0.1, (song.trimEnd ?? song.duration) - (song.trimStart ?? 0));
+  const progress = Math.max(0, Math.min(1, ((playerState.currentTime - (song.trimStart ?? 0)) / denom)));
+
   return (
     <div 
-      className="fixed bottom-[64px] left-3 right-3 h-[56px] bg-zinc-800/80 backdrop-blur-xl rounded-xl flex items-center shadow-2xl border border-white/5 z-40 cursor-pointer overflow-hidden"
+      className={`relative h-[56px] bg-zinc-900/40 backdrop-blur-xl rounded-xl flex items-center shadow-2xl border border-white/10 cursor-pointer overflow-hidden ${
+        variant === 'island' ? 'rounded-full h-[48px] border-white/15' : ''
+      }`}
       onClick={onExpand}
     >
       {/* Album Art */}
-      <div className="h-full aspect-square p-1.5">
+      <div className={`h-full aspect-square p-1.5 ${variant === 'island' ? 'hidden' : ''}`}>
         <img 
           src={song.coverUrl} 
           alt="Cover" 
-          className="w-full h-full rounded-md object-cover shadow-sm bg-zinc-900" 
+          decoding="async"
+          className="w-full h-full rounded-md object-cover shadow-sm bg-zinc-800" 
         />
       </div>
 
       {/* Info */}
-      <div className="flex-1 min-w-0 flex flex-col justify-center px-2">
+      <div className={`flex-1 min-w-0 flex flex-col justify-center ${variant === 'island' ? 'px-4' : 'px-2'}`}>
         <h4 className="text-[14px] font-medium text-white truncate leading-tight">
             {song.title}
         </h4>
@@ -56,7 +63,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand }) => {
       <div className="absolute bottom-0 left-0 h-[1px] bg-white/10 w-full">
          <div 
             className="h-full bg-white/50" 
-            style={{ width: `${(playerState.currentTime / song.duration) * 100}%` }}
+            style={{ width: `${progress * 100}%` }}
          ></div>
       </div>
     </div>
