@@ -44,6 +44,17 @@ npm run check
 - `vite build` 成功。
 - 构建输出不再出现 500 kB chunk 警告。
 
+## 登录后导航烟测
+
+如果本机没有安装 Playwright 浏览器，可以指定已有 Chrome/Chromium 路径：
+
+```powershell
+$env:JZONE_CHROME_PATH="C:\Users\w\AppData\Local\ms-playwright\chromium-1223\chrome-win64\chrome.exe"
+npm run smoke:auth
+```
+
+脚本会验证底部导航的首页、资料库、上传、我的四个入口。
+
 ## 当前已知提示
 
 - Browserslist 可能提示 `caniuse-lite` 数据过旧，这不是运行错误，可后续单独更新。
