@@ -242,11 +242,16 @@ export const supabaseApi = {
   },
 
   async fetchMyCollections(type?: CollectionType, limit = 50): Promise<CollectionRow[]> {
-    return cached(`myCollections:${type ?? 'all'}:${limit}`, TTL_COLLECTION_LIST_MS, async () => {
-      const client = ensure();
+    const client = ensure();
+    const { data: authData } = await client.auth.getUser();
+    const uid = authData.user?.id;
+    if (!uid) return [];
+
+    return cached(`myCollections:${uid}:${type ?? 'all'}:${limit}`, TTL_COLLECTION_LIST_MS, async () => {
       let q = client
         .from('albums')
         .select('*, album_songs(song:songs(cover_path), added_at)')
+        .eq('creator_id', uid)
         .order('created_at', { ascending: false })
         .limit(limit);
       if (type) q = q.eq('type', type);

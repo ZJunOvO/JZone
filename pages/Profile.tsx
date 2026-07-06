@@ -1105,7 +1105,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
             onSuccess={() => {
                 // Refresh list
                 if (targetUserId) {
-                    supabaseApi.fetchCollectionsByCreator(targetUserId).then(setCollections);
+                    supabaseApi.fetchCollectionsByCreator(targetUserId, undefined, 50, user?.id).then(setCollections);
                 }
             }}
         />
