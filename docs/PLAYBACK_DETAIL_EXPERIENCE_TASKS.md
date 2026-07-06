@@ -17,10 +17,10 @@
 
 ## P1：评论基础能力
 
-- [ ] 核查评论表和 `supabaseApi.fetchComments/insertComment` 的真实后端连接。
-- [ ] 评论提交后再次打开评论区不丢失。
-- [ ] 评论头像和昵称改用 profile 或 QQ 邮箱默认头像策略。
-- [ ] 评论点赞支持单用户一次点赞，回复和头像框延后。
+- [x] 核查评论表和 `supabaseApi.fetchComments/insertComment` 的真实后端连接。
+- [x] 评论提交后再次打开评论区不丢失。
+- [x] 评论头像和昵称改用 profile 或 QQ 邮箱默认头像策略。
+- [x] 评论点赞支持单用户一次点赞，回复和头像框延后。
 
 ## P2：统计与排行
 

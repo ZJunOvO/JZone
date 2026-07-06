@@ -5,6 +5,7 @@ import { localLibraryStorage } from './localLibraryStorage';
 import { hasSupabaseConfig } from './supabaseClient';
 import { useAuth } from './auth';
 import { supabaseApi } from './supabaseApi';
+import { getFallbackAvatarUrl, getQQAvatarUrl } from './utils/avatar';
 
 interface AppContextType {
   songs: Song[];
@@ -30,6 +31,7 @@ interface AppContextType {
   updateSong: (songId: string, updates: Partial<Song>) => Promise<void>;
   toggleFavorite: (songId: string) => Promise<void>;
   isFavorite: (songId: string) => boolean;
+  toggleCommentLike: (commentId: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -557,6 +559,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isFavorite = useCallback((songId: string) => favoriteSongIds.includes(songId), [favoriteSongIds]);
 
+  const toggleCommentLike = useCallback(async (commentId: string) => {
+    if (!user) return;
+    const previous = comments;
+    const target = previous.find((comment) => comment.id === commentId);
+    if (!target) return;
+
+    const nextLiked = !target.isLiked;
+    setComments((prev) =>
+      prev.map((comment) =>
+        comment.id === commentId
+          ? {
+              ...comment,
+              isLiked: nextLiked,
+              likes: Math.max(0, (comment.likes ?? 0) + (nextLiked ? 1 : -1)),
+            }
+          : comment
+      )
+    );
+
+    if (!hasSupabaseConfig) return;
+
+    try {
+      if (nextLiked) await supabaseApi.addCommentLike(commentId, user.id);
+      else await supabaseApi.removeCommentLike(commentId, user.id);
+    } catch (e) {
+      console.error('Comment like update failed:', e);
+      setComments(previous);
+      alert('点赞状态同步失败，已恢复原状态，请稍后重试');
+    }
+  }, [comments, user]);
+
   const addSong = useCallback((song: Song) => {
     setSongs(prev => {
       const next = [song, ...prev];
@@ -578,7 +611,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let cancelled = false;
     setCommentsLoading(true);
     supabaseApi
-      .fetchComments(playerState.currentSongId)
+      .fetchComments(playerState.currentSongId, user.id)
       .then((rows) => {
         if (cancelled) return;
         setComments(
@@ -591,7 +624,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             text: r.text,
             timestamp: new Date(r.created_at).getTime(),
             playbackTime: r.playback_time,
-            likes: 0,
+            likes: r.likes_count ?? 0,
+            isLiked: r.user_liked ?? false,
           }))
         );
       })
@@ -606,22 +640,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [playerState.currentSongId, status, user]);
 
   const addComment = useCallback(async (comment: Comment) => {
-    setComments(prev => [comment, ...prev]);
+    let normalizedComment = comment;
+    if (hasSupabaseConfig && user) {
+      try {
+        const profile = await supabaseApi.fetchProfile(user.id);
+        let avatarUrl = comment.avatarUrl;
+        if (profile?.avatar_url) {
+          try {
+            avatarUrl = await supabaseApi.createSignedAvatarUrl(profile.avatar_url, 3600);
+          } catch {
+            avatarUrl = profile.avatar_url;
+          }
+        } else {
+          avatarUrl = getQQAvatarUrl(user.email) || getFallbackAvatarUrl(user.id);
+        }
+        normalizedComment = {
+          ...comment,
+          username: profile?.nickname?.trim() || user.email || comment.username,
+          avatarUrl,
+        };
+      } catch {
+        normalizedComment = {
+          ...comment,
+          username: user.email || comment.username,
+          avatarUrl: getQQAvatarUrl(user.email) || getFallbackAvatarUrl(user.id),
+        };
+      }
+    }
+
+    setComments(prev => [normalizedComment, ...prev]);
 
     if (!hasSupabaseConfig) return;
     if (!user) return;
 
     try {
       const row = await supabaseApi.insertComment({
-        songId: comment.songId,
+        songId: normalizedComment.songId,
         userId: user.id,
-        username: user.email || 'Member',
-        avatarUrl: comment.avatarUrl,
-        text: comment.text,
-        playbackTime: comment.playbackTime,
+        username: normalizedComment.username,
+        avatarUrl: normalizedComment.avatarUrl,
+        text: normalizedComment.text,
+        playbackTime: normalizedComment.playbackTime,
       });
       setComments((prev) => {
-        const next: Comment[] = prev.filter((c) => c.id !== comment.id);
+        const next: Comment[] = prev.filter((c) => c.id !== normalizedComment.id);
         next.unshift({
           id: row.id,
           songId: row.song_id,
@@ -631,7 +693,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           text: row.text,
           timestamp: new Date(row.created_at).getTime(),
           playbackTime: row.playback_time,
-          likes: 0,
+          likes: row.likes_count ?? 0,
+          isLiked: row.user_liked ?? false,
         });
         return next;
       });
@@ -748,7 +811,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deleteSong,
       updateSong,
       toggleFavorite,
-      isFavorite
+      isFavorite,
+      toggleCommentLike
     }}>
       {children}
     </AppContext.Provider>

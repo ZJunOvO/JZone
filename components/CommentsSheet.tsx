@@ -4,6 +4,7 @@ import { Icons } from './Icons';
 import { Comment } from '../types';
 import { useAuth } from '../auth';
 import { CommentRowSkeleton } from './Skeletons';
+import { getFallbackAvatarUrl, getQQAvatarUrl } from '../utils/avatar';
 
 interface CommentsSheetProps {
   isOpen: boolean;
@@ -25,7 +26,7 @@ const formatRelativeTime = (timestamp: number) => {
 };
 
 export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose }) => {
-  const { comments, commentsLoading, getCurrentSong, playerState, addComment, seek } = useStore();
+  const { comments, commentsLoading, getCurrentSong, playerState, addComment, seek, toggleCommentLike } = useStore();
   const { user } = useAuth();
   const [inputText, setInputText] = useState('');
   const [anchorTime, setAnchorTime] = useState<number | null>(null);
@@ -35,6 +36,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
   
   const currentSong = getCurrentSong();
   const filteredComments = comments.filter(c => c.songId === currentSong?.id).sort((a, b) => b.timestamp - a.timestamp);
+  const myAvatarUrl = user ? getQQAvatarUrl(user.email) || getFallbackAvatarUrl(user.id) : getFallbackAvatarUrl('me');
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputWrapRef = useRef<HTMLDivElement>(null);
@@ -96,7 +98,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
       songId: currentSong.id,
       userId: user.id,
       username: user.email || 'Member',
-      avatarUrl: `https://picsum.photos/seed/${user.id}/100/100`,
+      avatarUrl: myAvatarUrl,
       text: inputText,
       timestamp: Date.now(),
       playbackTime: anchorTime !== null ? anchorTime : playerState.currentTime,
@@ -183,8 +185,12 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
                             </span>
                          </button>
                          
-                         <button className="flex items-center gap-1 text-zinc-500 hover:text-zinc-300 transition-colors">
-                            <Icons.Star size={12} strokeWidth={2} />
+                         <button
+                           onClick={() => toggleCommentLike(comment.id)}
+                           className={`flex items-center gap-1 transition-colors ${comment.isLiked ? 'text-red-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                           aria-label={comment.isLiked ? '取消点赞此评论' : '点赞此评论'}
+                         >
+                            <Icons.Star size={12} strokeWidth={2} fill={comment.isLiked ? 'currentColor' : 'none'} />
                             <span className="text-[11px] font-medium">{comment.likes}</span>
                          </button>
                       </div>
@@ -246,7 +252,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
            {/* Input Bar */}
            <form onSubmit={handleSubmit} className="flex items-end gap-2">
               <img 
-                src={user ? `https://picsum.photos/seed/${user.id}/100/100` : 'https://picsum.photos/seed/me/100/100'} 
+                src={myAvatarUrl}
                 className="w-8 h-8 rounded-full mb-1 border border-white/10"
                 alt="Me"
               />

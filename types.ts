@@ -47,6 +47,7 @@ export interface Comment {
   timestamp: number; // The actual time the comment was posted
   playbackTime: number; // The time in the song the comment refers to
   likes: number;
+  isLiked?: boolean;
   isVerified?: boolean; // For admins or artists
   role?: 'admin' | 'artist' | 'user';
 }

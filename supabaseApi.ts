@@ -36,6 +36,8 @@ export interface CommentRow {
   text: string;
   playback_time: number;
   created_at: string;
+  likes_count?: number;
+  user_liked?: boolean;
 }
 
 export interface FavoriteRow {
@@ -464,7 +466,7 @@ export const supabaseApi = {
     if (error) throw error;
   },
 
-  async fetchComments(songId: string): Promise<CommentRow[]> {
+  async fetchComments(songId: string, currentUserId?: string): Promise<CommentRow[]> {
     const client = ensure();
     const { data, error } = await client
       .from('comments')
@@ -472,7 +474,67 @@ export const supabaseApi = {
       .eq('song_id', songId)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return (data ?? []) as CommentRow[];
+    const rows = (data ?? []) as CommentRow[];
+    if (!rows.length) return rows;
+
+    const commentIds = rows.map((r) => r.id);
+    const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
+    const [{ data: likeRows, error: likeError }, { data: profiles, error: profileError }] = await Promise.all([
+      client.from('comment_likes').select('comment_id, user_id').in('comment_id', commentIds),
+      client.from('profiles').select('id, nickname, avatar_url').in('id', userIds),
+    ]);
+    if (likeError) throw likeError;
+    if (profileError) throw profileError;
+
+    const likesByComment = new Map<string, number>();
+    const likedByCurrentUser = new Set<string>();
+    for (const like of likeRows ?? []) {
+      const commentId = (like as any).comment_id as string;
+      likesByComment.set(commentId, (likesByComment.get(commentId) ?? 0) + 1);
+      if (currentUserId && (like as any).user_id === currentUserId) likedByCurrentUser.add(commentId);
+    }
+
+    const profilesById = new Map<string, Pick<ProfileRow, 'id' | 'nickname' | 'avatar_url'>>();
+    for (const profile of profiles ?? []) {
+      profilesById.set((profile as any).id, profile as Pick<ProfileRow, 'id' | 'nickname' | 'avatar_url'>);
+    }
+
+    return Promise.all(
+      rows.map(async (row) => {
+        const profile = profilesById.get(row.user_id);
+        let avatarUrl = row.avatar_url;
+        if (profile?.avatar_url) {
+          try {
+            avatarUrl = await this.createSignedAvatarUrl(profile.avatar_url, 3600);
+          } catch {
+            avatarUrl = profile.avatar_url;
+          }
+        }
+        return {
+          ...row,
+          username: profile?.nickname?.trim() || row.username,
+          avatar_url: avatarUrl,
+          likes_count: likesByComment.get(row.id) ?? 0,
+          user_liked: likedByCurrentUser.has(row.id),
+        };
+      })
+    );
+  },
+
+  async addCommentLike(commentId: string, userId: string) {
+    const client = ensure();
+    const { error } = await client.from('comment_likes').insert({ comment_id: commentId, user_id: userId });
+    if (error && error.code !== '23505') throw error;
+  },
+
+  async removeCommentLike(commentId: string, userId: string) {
+    const client = ensure();
+    const { error } = await client
+      .from('comment_likes')
+      .delete()
+      .eq('comment_id', commentId)
+      .eq('user_id', userId);
+    if (error) throw error;
   },
 
   async fetchFavorites(userId: string): Promise<FavoriteRow[]> {
