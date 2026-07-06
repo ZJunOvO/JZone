@@ -415,6 +415,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await playPromiseRef.current;
       if (seq !== playSeqRef.current) return;
       setPlayerState(prev => ({ ...prev, currentSongId: songId, isPlaying: true }));
+      try {
+        const key = 'jzone_recent_song_ids_v1';
+        const raw = localStorage.getItem(key);
+        const previous = raw ? (JSON.parse(raw) as string[]) : [];
+        const next = [songId, ...previous.filter((id) => id !== songId)].slice(0, 24);
+        localStorage.setItem(key, JSON.stringify(next));
+        window.dispatchEvent(new CustomEvent('jzone:recent-played', { detail: { songId } }));
+      } catch {}
       if (hasSupabaseConfig) {
         supabaseApi.incrementSongPlay(songId).catch(() => {});
         supabaseApi.incrementUserSongPlay(songId).catch(() => {});

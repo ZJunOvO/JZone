@@ -281,6 +281,39 @@ export const supabaseApi = {
     });
   },
 
+  async fetchVisibleCollections(type?: CollectionType, limit = 80): Promise<CollectionRow[]> {
+    return cached(`visibleCollections:${type ?? 'all'}:${limit}`, TTL_COLLECTION_LIST_MS, async () => {
+      const client = ensure();
+      let q = client
+        .from('albums')
+        .select('*, album_songs(song:songs(cover_path), added_at)')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (type) q = q.eq('type', type);
+      const { data, error } = await q;
+      if (error) throw error;
+
+      return await Promise.all((data ?? []).map(async (row: any) => {
+        let coverPath = row.cover_url;
+        if (!coverPath && row.album_songs && row.album_songs.length > 0) {
+          const sorted = [...row.album_songs].sort((a, b) => new Date(b.added_at).getTime() - new Date(a.added_at).getTime());
+          const match = sorted.find((s: any) => s.song?.cover_path);
+          if (match) coverPath = match.song.cover_path;
+        }
+
+        let finalCoverUrl = null;
+        if (coverPath) {
+          try {
+            finalCoverUrl = await supabaseApi.createSignedCoverUrl(coverPath);
+          } catch {}
+        }
+
+        const { album_songs, ...rest } = row;
+        return { ...rest, cover_url: finalCoverUrl };
+      }));
+    });
+  },
+
   async fetchCollectionsByCreator(creatorId: string, type?: CollectionType, limit = 50, viewerId?: string): Promise<CollectionRow[]> {
     const scope = viewerId && viewerId === creatorId ? 'self' : 'public';
     return cached(`collectionsByCreator:${creatorId}:${scope}:${type ?? 'all'}:${limit}`, TTL_COLLECTION_LIST_MS, async () => {
@@ -340,7 +373,7 @@ export const supabaseApi = {
       p_visibility: visibility,
     });
     if (error) throw error;
-    invalidateApiCache((k) => k.startsWith('myCollections:') || k.startsWith('collectionsByCreator:'));
+    invalidateApiCache((k) => k.startsWith('myCollections:') || k.startsWith('collectionsByCreator:') || k.startsWith('visibleCollections:'));
     emitCollectionsChanged();
     return data as string;
   },
@@ -352,7 +385,7 @@ export const supabaseApi = {
       p_song_ids: songIds,
     });
     if (error) throw error;
-    invalidateApiCache((k) => k === `collection:${collectionId}` || k.startsWith('myCollections:') || k.startsWith('collectionsByCreator:'));
+    invalidateApiCache((k) => k === `collection:${collectionId}` || k.startsWith('myCollections:') || k.startsWith('collectionsByCreator:') || k.startsWith('visibleCollections:'));
     emitCollectionsChanged();
   },
 
@@ -363,7 +396,7 @@ export const supabaseApi = {
       p_visibility: visibility,
     });
     if (error) throw error;
-    invalidateApiCache((k) => k === `collection:${collectionId}` || k.startsWith('myCollections:') || k.startsWith('collectionsByCreator:'));
+    invalidateApiCache((k) => k === `collection:${collectionId}` || k.startsWith('myCollections:') || k.startsWith('collectionsByCreator:') || k.startsWith('visibleCollections:'));
     emitCollectionsChanged();
   },
 
@@ -741,7 +774,7 @@ export const supabaseApi = {
 
     const { error } = await client.from('albums').update(payload).eq('id', collectionId);
     if (error) throw error;
-    invalidateApiCache((k) => k === `collection:${collectionId}` || k.startsWith('myCollections:') || k.startsWith('collectionsByCreator:'));
+    invalidateApiCache((k) => k === `collection:${collectionId}` || k.startsWith('myCollections:') || k.startsWith('collectionsByCreator:') || k.startsWith('visibleCollections:'));
     emitCollectionsChanged();
   },
 
@@ -757,7 +790,7 @@ export const supabaseApi = {
     const { error } = await client.from('albums').delete().eq('id', collectionId);
     if (error) throw error;
     
-    invalidateApiCache((k) => k === `collection:${collectionId}` || k.startsWith('myCollections:') || k.startsWith('collectionsByCreator:'));
+    invalidateApiCache((k) => k === `collection:${collectionId}` || k.startsWith('myCollections:') || k.startsWith('collectionsByCreator:') || k.startsWith('visibleCollections:'));
     emitCollectionsChanged();
   },
 

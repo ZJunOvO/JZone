@@ -3,8 +3,11 @@ import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { useAuth } from '../auth';
 import { UploadEditor } from '../components/upload/UploadEditor';
+import type { UploadDraftStatus } from '../components/upload/useUploadDraft';
 import { UniversalContextMenu } from '../components/UniversalContextMenu';
 import { Song } from '../types';
+import { CollectionCreatableSelect, type CollectionSelectValue } from '../components/CollectionCreatableSelect';
+import { attachUploadedSongToCollection } from '../utils/uploadFlow';
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
@@ -17,6 +20,11 @@ export const Upload: React.FC = () => {
   const { songs, playSong, playerState } = useStore();
   const { user } = useAuth();
   const [contextMenu, setContextMenu] = useState<{ isOpen: boolean; anchor?: { x: number; y: number }; item: Song } | null>(null);
+  const [draftStatus, setDraftStatus] = useState<UploadDraftStatus>({ hasDraft: false, label: '暂无草稿' });
+  const [collectionTarget, setCollectionTarget] = useState<Song | null>(null);
+  const [collectionSelection, setCollectionSelection] = useState<CollectionSelectValue>({ kind: 'none' });
+  const [isAttaching, setIsAttaching] = useState(false);
+  const [isUploadSaving, setIsUploadSaving] = useState(false);
 
   const myUploads = useMemo(
     () => songs.filter((s) => (s.ownerId ? s.ownerId === user?.id : s.uploadedBy === 'Me')),
@@ -30,6 +38,26 @@ export const Upload: React.FC = () => {
 
   const openMenu = (song: Song, anchor: { x: number; y: number }) => {
     setContextMenu({ isOpen: true, anchor, item: song });
+  };
+
+  const closeCollectionAttach = () => {
+    setCollectionTarget(null);
+    setCollectionSelection({ kind: 'none' });
+    setIsAttaching(false);
+  };
+
+  const attachToCollection = async () => {
+    if (!collectionTarget || collectionSelection.kind === 'none' || isAttaching) return;
+    setIsAttaching(true);
+    try {
+      await attachUploadedSongToCollection(collectionSelection, collectionTarget.id);
+      alert('已加入专辑 / 歌单');
+      closeCollectionAttach();
+    } catch (e: any) {
+      const msg = typeof e?.message === 'string' ? e.message : '加入失败，请稍后重试';
+      alert(msg);
+      setIsAttaching(false);
+    }
   };
 
   return (
@@ -59,9 +87,16 @@ export const Upload: React.FC = () => {
       <section className="space-y-4">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-xl font-bold text-white tracking-tight">上传音乐</h2>
-          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">DRAFT AUTO SAVED</span>
+          <span className={`text-[10px] font-bold uppercase tracking-widest truncate max-w-[160px] ${draftStatus.hasDraft ? 'text-red-400' : 'text-zinc-500'}`}>
+            {draftStatus.label}
+          </span>
         </div>
-        <UploadEditor variant="page" defaultArtist={defaultArtist} />
+        <UploadEditor
+          variant="page"
+          defaultArtist={defaultArtist}
+          onDraftStatusChange={setDraftStatus}
+          onSavingChange={setIsUploadSaving}
+        />
       </section>
 
       <section className="space-y-5">
@@ -71,7 +106,17 @@ export const Upload: React.FC = () => {
         </div>
 
         <div className="space-y-2">
-          {myUploads.length === 0 ? (
+          {isUploadSaving && (
+            <div className="flex items-center p-3 rounded-2xl bg-zinc-900/70 ring-1 ring-white/5 animate-pulse">
+              <div className="w-12 h-12 shrink-0 mr-4 rounded-lg bg-white/10" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="h-3 w-2/3 rounded-full bg-white/10" />
+                <div className="h-2.5 w-1/3 rounded-full bg-white/5" />
+              </div>
+              <div className="w-11 h-11 rounded-full bg-white/5" />
+            </div>
+          )}
+          {myUploads.length === 0 && !isUploadSaving ? (
             <div className="py-12 text-center bg-zinc-900/20 rounded-[28px] border border-white/5 border-dashed">
               <p className="text-zinc-600 text-sm italic">快去上传你的第一份创作吧</p>
             </div>
@@ -115,6 +160,19 @@ export const Upload: React.FC = () => {
 
                 <button
                   type="button"
+                  aria-label={`将 ${song.title} 加入专辑或歌单`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCollectionTarget(song);
+                    setCollectionSelection({ kind: 'none' });
+                  }}
+                  className="w-11 h-11 flex items-center justify-center text-zinc-500 hover:text-white active:scale-95 transition"
+                >
+                  <Icons.PlusCircle size={18} />
+                </button>
+
+                <button
+                  type="button"
                   aria-label={`打开 ${song.title} 的更多操作`}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -139,6 +197,48 @@ export const Upload: React.FC = () => {
           item={contextMenu.item}
           type="song"
         />
+      )}
+
+      {collectionTarget && (
+        <div className="fixed inset-0 z-[180]">
+          <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={closeCollectionAttach} />
+          <div className="absolute left-1/2 top-1/2 w-[min(420px,calc(100%-48px))] -translate-x-1/2 -translate-y-1/2 bg-zinc-900/90 border border-white/10 rounded-[24px] shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-white/10 flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-white font-extrabold tracking-tight truncate">加入专辑 / 歌单</div>
+                <div className="text-xs text-zinc-500 truncate mt-1">{collectionTarget.title}</div>
+              </div>
+              <button
+                onClick={closeCollectionAttach}
+                aria-label="关闭"
+                className="w-10 h-10 rounded-full bg-white/5 text-zinc-400 hover:text-white active:scale-95 transition flex items-center justify-center"
+              >
+                <Icons.X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5">
+              <CollectionCreatableSelect
+                label="目标"
+                value={collectionSelection}
+                onChange={setCollectionSelection}
+                placeholder="搜索或创建…"
+              />
+
+              <button
+                onClick={attachToCollection}
+                disabled={collectionSelection.kind === 'none' || isAttaching}
+                className={`w-full py-4 rounded-2xl font-bold active:scale-[0.98] transition ${
+                  collectionSelection.kind === 'none' || isAttaching
+                    ? 'bg-white/5 text-zinc-600'
+                    : 'bg-white text-black'
+                }`}
+              >
+                {isAttaching ? '加入中…' : '确认加入'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
