@@ -172,8 +172,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose }) => {
     const fn = () => {
       uploadDraftStorage.setAudio(audioFile).catch(() => {});
     };
-    if ('requestIdleCallback' in window) {
-      (window as any).requestIdleCallback(fn, { timeout: 1500 });
+    const requestIdleCallback = window.requestIdleCallback;
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(fn, { timeout: 1500 });
       return;
     }
     window.setTimeout(fn, 0);
