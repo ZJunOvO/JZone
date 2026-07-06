@@ -19,7 +19,7 @@ const Navigation = ({ currentTab, setTab }: { currentTab: string, setTab: (t: st
   const tabs = [
     { id: 'home', icon: Icons.Play, label: '现在就听' }, 
     { id: 'library', icon: Icons.ListMusic, label: '资料库' },
-    { id: 'upload', icon: Icons.PlusCircle, label: '上传' },
+    { id: 'upload', icon: Icons.PlusCircle, label: '创作' },
     { id: 'profile', icon: Icons.User, label: '我的' },
   ];
 
