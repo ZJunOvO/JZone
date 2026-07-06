@@ -1,6 +1,7 @@
 import React from 'react';
 import { useStore } from '../store';
 import { Icons } from './Icons';
+import { SkeletonBlock } from './Skeletons';
 
 interface PlayerBarProps {
   onExpand: () => void;
@@ -61,10 +62,14 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
       
       {/* Progress Bar Background */}
       <div className="absolute bottom-0 left-0 h-[1px] bg-white/10 w-full">
-         <div 
-            className="h-full bg-white/50" 
-            style={{ width: `${progress * 100}%` }}
-         ></div>
+         {playerState.isAudioLoading ? (
+            <SkeletonBlock className="h-full w-full" />
+         ) : (
+            <div
+              className="h-full bg-white/50"
+              style={{ width: `${progress * 100}%` }}
+            ></div>
+         )}
       </div>
     </div>
   );

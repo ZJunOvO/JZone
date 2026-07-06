@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { Icons } from './Icons';
 import { Comment } from '../types';
 import { useAuth } from '../auth';
+import { CommentRowSkeleton } from './Skeletons';
 
 interface CommentsSheetProps {
   isOpen: boolean;
@@ -24,12 +25,13 @@ const formatRelativeTime = (timestamp: number) => {
 };
 
 export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose }) => {
-  const { comments, getCurrentSong, playerState, addComment, seek } = useStore();
+  const { comments, commentsLoading, getCurrentSong, playerState, addComment, seek } = useStore();
   const { user } = useAuth();
   const [inputText, setInputText] = useState('');
   const [anchorTime, setAnchorTime] = useState<number | null>(null);
   const [isFocused, setIsFocused] = useState(false);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const currentSong = getCurrentSong();
   const filteredComments = comments.filter(c => c.songId === currentSong?.id).sort((a, b) => b.timestamp - a.timestamp);
@@ -83,10 +85,11 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !currentSong) return;
+    if (!inputText.trim() || !currentSong || isSubmitting) return;
     if (!user) return;
+    setIsSubmitting(true);
 
     const newComment: Comment = {
       id: Math.random().toString(36).substr(2, 9),
@@ -100,13 +103,15 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
       likes: 0,
     };
 
-    addComment(newComment);
-    setInputText('');
-    setAnchorTime(null);
-    
-    // Scroll to top
-    if (scrollRef.current) {
-        scrollRef.current.scrollTop = 0;
+    try {
+      await addComment(newComment);
+      setInputText('');
+      setAnchorTime(null);
+      if (scrollRef.current) {
+          scrollRef.current.scrollTop = 0;
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -140,7 +145,9 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
         {/* Comments List */}
         <div className="flex-1 overflow-y-auto px-6 py-2 no-scrollbar scroll-smooth" ref={scrollRef}>
            <div className="space-y-6 mt-4 pb-32">
-              {filteredComments.map(comment => (
+              {commentsLoading ? (
+                Array.from({ length: 4 }).map((_, idx) => <CommentRowSkeleton key={`comment-skeleton-${idx}`} />)
+              ) : filteredComments.map(comment => (
                 <div key={comment.id} className={`flex gap-3 group ${comment.isVerified ? 'bg-white/5 p-3 rounded-2xl -mx-3 border border-white/5' : ''}`}>
                    <img 
                       src={comment.avatarUrl} 
@@ -185,7 +192,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
                 </div>
               ))}
               
-              {filteredComments.length === 0 && (
+              {!commentsLoading && filteredComments.length === 0 && (
                 <div className="text-center py-10 text-zinc-500 text-sm">
                    暂无评论，抢占沙发...
                 </div>
@@ -256,10 +263,14 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
               </div>
               <button 
                  type="submit"
-                 disabled={!inputText.trim()}
-                 className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${inputText.trim() ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 scale-100' : 'bg-zinc-800 text-zinc-600 scale-90'}`}
+                 disabled={!inputText.trim() || isSubmitting}
+                 className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${inputText.trim() && !isSubmitting ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 scale-100' : 'bg-zinc-800 text-zinc-600 scale-90'}`}
               >
-                 <Icons.Send size={18} fill={inputText.trim() ? "currentColor" : "none"} className={inputText.trim() ? "-ml-0.5" : ""} />
+                 {isSubmitting ? (
+                   <div className="w-4 h-4 rounded-full border-2 border-zinc-500 border-t-transparent animate-spin" />
+                 ) : (
+                   <Icons.Send size={18} fill={inputText.trim() ? "currentColor" : "none"} className={inputText.trim() ? "-ml-0.5" : ""} />
+                 )}
               </button>
            </form>
         </div>

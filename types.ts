@@ -54,6 +54,7 @@ export interface Comment {
 export interface PlayerState {
   currentSongId: string | null;
   isPlaying: boolean;
+  isAudioLoading?: boolean;
   currentTime: number;
   volume: number;
   queue: string[];

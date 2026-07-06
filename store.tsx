@@ -9,6 +9,7 @@ import { supabaseApi } from './supabaseApi';
 interface AppContextType {
   songs: Song[];
   comments: Comment[];
+  commentsLoading: boolean;
   playerState: PlayerState;
   favoriteSongIds: string[];
   // Actions
@@ -21,7 +22,7 @@ interface AppContextType {
   seek: (time: number) => void;
   setVolume: (volume: number) => void;
   addSong: (song: Song) => void;
-  addComment: (comment: Comment) => void;
+  addComment: (comment: Comment) => Promise<void>;
   setSkin: (skin: PlayerSkin) => void;
   getCurrentSong: () => Song | undefined;
   removeFromQueue: (songId: string) => void;
@@ -38,10 +39,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const { status, user } = useAuth();
   const [songs, setSongs] = useState<Song[]>(hasSupabaseConfig ? [] : MOCK_SONGS);
   const [comments, setComments] = useState<Comment[]>(hasSupabaseConfig ? [] : MOCK_COMMENTS);
+  const [commentsLoading, setCommentsLoading] = useState(false);
   const [favoriteSongIds, setFavoriteSongIds] = useState<string[]>([]);
   const [playerState, setPlayerState] = useState<PlayerState>({
     currentSongId: null,
     isPlaying: false,
+    isAudioLoading: false,
     currentTime: 0,
     volume: 0.75,
     queue: hasSupabaseConfig ? [] : MOCK_SONGS.map(s => s.id),
@@ -116,10 +119,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSongs([]);
     setFavoriteSongIds([]);
     setComments([]);
+    setCommentsLoading(false);
     setPlayerState((prev) => ({
       ...prev,
       currentSongId: null,
       isPlaying: false,
+      isAudioLoading: false,
       currentTime: 0,
       queue: [],
     }));
@@ -367,7 +372,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Resetting src cancels any pending play()
     audio.pause();
-    setPlayerState(prev => ({ ...prev, currentSongId: songId, isPlaying: false, currentTime: song.trimStart || 0 }));
+    setPlayerState(prev => ({ ...prev, currentSongId: songId, isPlaying: false, isAudioLoading: true, currentTime: song.trimStart || 0 }));
 
     let src = song.audioUrl;
     if (hasSupabaseConfig && song.audioPath) {
@@ -389,11 +394,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const onLoaded = () => {
           audio.removeEventListener('loadedmetadata', onLoaded);
           audio.removeEventListener('error', onError);
+          setPlayerState(prev => ({ ...prev, isAudioLoading: false }));
           resolve();
         };
         const onError = () => {
           audio.removeEventListener('loadedmetadata', onLoaded);
           audio.removeEventListener('error', onError);
+          setPlayerState(prev => ({ ...prev, isAudioLoading: false }));
           reject(audio.error ?? new Error('音频加载失败'));
         };
         audio.addEventListener('loadedmetadata', onLoaded);
@@ -569,6 +576,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!playerState.currentSongId) return;
 
     let cancelled = false;
+    setCommentsLoading(true);
     supabaseApi
       .fetchComments(playerState.currentSongId)
       .then((rows) => {
@@ -587,46 +595,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }))
         );
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setCommentsLoading(false);
+      });
 
     return () => {
       cancelled = true;
     };
   }, [playerState.currentSongId, status, user]);
 
-  const addComment = useCallback((comment: Comment) => {
+  const addComment = useCallback(async (comment: Comment) => {
     setComments(prev => [comment, ...prev]);
 
     if (!hasSupabaseConfig) return;
     if (!user) return;
 
-    supabaseApi
-      .insertComment({
+    try {
+      const row = await supabaseApi.insertComment({
         songId: comment.songId,
         userId: user.id,
         username: user.email || 'Member',
         avatarUrl: comment.avatarUrl,
         text: comment.text,
         playbackTime: comment.playbackTime,
-      })
-      .then((row) => {
-        setComments((prev) => {
-          const next: Comment[] = prev.filter((c) => c.id !== comment.id);
-          next.unshift({
-            id: row.id,
-            songId: row.song_id,
-            userId: row.user_id,
-            username: row.username,
-            avatarUrl: row.avatar_url,
-            text: row.text,
-            timestamp: new Date(row.created_at).getTime(),
-            playbackTime: row.playback_time,
-            likes: 0,
-          });
-          return next;
+      });
+      setComments((prev) => {
+        const next: Comment[] = prev.filter((c) => c.id !== comment.id);
+        next.unshift({
+          id: row.id,
+          songId: row.song_id,
+          userId: row.user_id,
+          username: row.username,
+          avatarUrl: row.avatar_url,
+          text: row.text,
+          timestamp: new Date(row.created_at).getTime(),
+          playbackTime: row.playback_time,
+          likes: 0,
         });
-      })
-      .catch(() => {});
+        return next;
+      });
+    } catch (e) {
+      console.error('Comment insert failed:', e);
+    }
   }, [user]);
 
   const setSkin = useCallback((skin: PlayerSkin) => {
@@ -696,7 +707,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         queue: prev.queue.filter(id => id !== songId),
         // Stop if deleting current song
-        ...(prev.currentSongId === songId ? { currentSongId: null, isPlaying: false } : {})
+        ...(prev.currentSongId === songId ? { currentSongId: null, isPlaying: false, isAudioLoading: false } : {})
       }));
 
       // Call API
@@ -718,6 +729,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider value={{ 
       songs, 
       comments,
+      commentsLoading,
       favoriteSongIds,
       playerState, 
       playSong, 

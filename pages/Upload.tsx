@@ -7,6 +7,7 @@ import type { UploadDraftStatus } from '../components/upload/useUploadDraft';
 import { UniversalContextMenu } from '../components/UniversalContextMenu';
 import { Song } from '../types';
 import { AddSongToCollectionDialog } from '../components/AddSongToCollectionDialog';
+import { SongRowSkeleton } from '../components/Skeletons';
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
@@ -83,14 +84,7 @@ export const Upload: React.FC = () => {
 
         <div className="space-y-2">
           {isUploadSaving && (
-            <div className="flex items-center p-3 rounded-2xl bg-zinc-900/70 ring-1 ring-white/5 animate-pulse">
-              <div className="w-12 h-12 shrink-0 mr-4 rounded-lg bg-white/10" />
-              <div className="flex-1 min-w-0 space-y-2">
-                <div className="h-3 w-2/3 rounded-full bg-white/10" />
-                <div className="h-2.5 w-1/3 rounded-full bg-white/5" />
-              </div>
-              <div className="w-11 h-11 rounded-full bg-white/5" />
-            </div>
+            <SongRowSkeleton showIndex={false} />
           )}
           {myUploads.length === 0 && !isUploadSaving ? (
             <div className="py-12 text-center bg-zinc-900/20 rounded-[28px] border border-white/5 border-dashed">

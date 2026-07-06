@@ -11,6 +11,7 @@ import { SongPickerModal } from '../components/SongPickerModal';
 import { CollectionContextMenu } from '../components/CollectionContextMenu';
 import { EditCollectionModal } from '../components/EditCollectionModal';
 import { extractAverageColor } from '../utils/extractAverageColor';
+import { CollectionHeaderSkeleton, SongRowSkeleton } from '../components/Skeletons';
 
 export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () => void }> = ({ collectionId, onClose }) => {
   useModalPresence(true);
@@ -36,6 +37,7 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [signedCoverUrl, setSignedCoverUrl] = useState<string | null>(null);
   const [showStickyTitle, setShowStickyTitle] = useState(false);
+  const [pendingAddCount, setPendingAddCount] = useState(0);
 
   const titleRef = useRef<HTMLDivElement>(null);
 
@@ -166,12 +168,12 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
   const canPickSongs = useMemo(() => {
     if (!collection) return [];
     const existingIds = new Set(orderedSongs.map((s) => s.id));
-    const pool = collection.type === 'album' ? store.songs.filter((s) => s.ownerId && s.ownerId === user?.id) : store.songs;
-    return pool.filter((s) => !existingIds.has(s.id));
-  }, [collection, store.songs, user, orderedSongs]);
+    return store.songs.filter((s) => !existingIds.has(s.id));
+  }, [collection, store.songs, orderedSongs]);
 
   const handleAddSongs = async (ids: string[]) => {
     if (!collection) return;
+    setPendingAddCount(ids.length);
     try {
       await supabaseApi.addSongsToCollection(collection.id, ids);
       
@@ -184,10 +186,12 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
          }
       }
 
-      reload().catch(() => {});
+      await reload(true);
     } catch (e: any) {
       const msg = typeof e?.message === 'string' ? e.message : '添加失败';
       alert(msg);
+    } finally {
+      setPendingAddCount(0);
     }
   };
 
@@ -322,7 +326,9 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
           className="flex-1 overflow-y-auto no-scrollbar pb-[calc(env(safe-area-inset-bottom)+108px)]"
           onScroll={handleScroll}
         >
-          {collection?.type === 'playlist' ? (
+          {loading && !collection ? (
+            <CollectionHeaderSkeleton />
+          ) : collection?.type === 'playlist' ? (
             <div className="relative px-6">
               <div className="relative h-[46vh] rounded-[28px] overflow-hidden border border-white/10 shadow-2xl">
                 <CollectionBentoWall songs={orderedSongs} />
@@ -371,9 +377,19 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
 
             <div className="space-y-2">
               {loading ? (
-                <div className="text-center text-zinc-500 text-sm py-10">加载中…</div>
+                <div className="space-y-2">
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <SongRowSkeleton key={`loading-song-${idx}`} />
+                  ))}
+                </div>
               ) : (
-                filteredSongs.map((s, idx) => {
+                <>
+                  {pendingAddCount > 0
+                    ? Array.from({ length: pendingAddCount }).map((_, idx) => (
+                        <SongRowSkeleton key={`pending-add-${idx}`} />
+                      ))
+                    : null}
+                  {filteredSongs.map((s, idx) => {
                   const isCurrent = store.playerState.currentSongId === s.id;
                   const isPlaying = isCurrent && store.playerState.isPlaying;
 
@@ -415,7 +431,8 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
                       {s.isPublic === false ? <Icons.Lock size={14} className="text-zinc-500 shrink-0" /> : null}
                     </button>
                   );
-                })
+                })}
+                </>
               )}
 
               {!loading && !orderedSongs.length ? <div className="text-center text-zinc-500 text-sm py-10">还没有歌曲</div> : null}

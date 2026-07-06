@@ -5,6 +5,7 @@ import { CommentsSheet } from '../components/CommentsSheet';
 import { MemoryCardModal } from '../components/MemoryCardModal';
 import { UniversalContextMenu } from '../components/UniversalContextMenu';
 import { useModalPresence } from '../modalPresence';
+import { SkeletonBlock } from '../components/Skeletons';
 
 interface PlayerViewProps {
   onClose: () => void;
@@ -121,27 +122,31 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
 
         {/* 5. Progress Bar - Apple style with Thickening Animation */}
         <div className="mt-8">
-          <div 
-            className={`relative w-full bg-white/20 rounded-full overflow-hidden transition-all duration-300 ease-out ${isSeeking ? 'h-[7px]' : 'h-1.5'}`}
-          >
-            <div 
-              className="absolute top-0 left-0 h-full bg-white transition-all duration-100 pointer-events-none"
-              style={{ width: `${progressPct}%` }}
-            ></div>
-            <input 
-              type="range" 
-              min={song.trimStart} 
-              max={song.trimEnd} 
-              step="0.1"
-              value={playerState.currentTime} 
-              onChange={handleSeek}
-              onMouseDown={() => setIsSeeking(true)}
-              onMouseUp={() => setIsSeeking(false)}
-              onTouchStart={() => setIsSeeking(true)}
-              onTouchEnd={() => setIsSeeking(false)}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none z-10"
-            />
-          </div>
+          {playerState.isAudioLoading ? (
+            <SkeletonBlock className="w-full h-1.5 rounded-full" />
+          ) : (
+            <div
+              className={`relative w-full bg-white/20 rounded-full overflow-hidden transition-all duration-300 ease-out ${isSeeking ? 'h-[7px]' : 'h-1.5'}`}
+            >
+              <div
+                className="absolute top-0 left-0 h-full bg-white transition-all duration-100 pointer-events-none"
+                style={{ width: `${progressPct}%` }}
+              ></div>
+              <input
+                type="range"
+                min={song.trimStart}
+                max={song.trimEnd}
+                step="0.1"
+                value={playerState.currentTime}
+                onChange={handleSeek}
+                onMouseDown={() => setIsSeeking(true)}
+                onMouseUp={() => setIsSeeking(false)}
+                onTouchStart={() => setIsSeeking(true)}
+                onTouchEnd={() => setIsSeeking(false)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none z-10"
+              />
+            </div>
+          )}
           <div className="flex justify-between text-[11px] font-bold text-white/40 tracking-wider font-mono mt-2 tabular-nums">
             <span>{formatTime(playerState.currentTime)}</span>
             <span>-{formatTime(song.trimEnd - playerState.currentTime)}</span>
