@@ -30,6 +30,12 @@ const Navigation = ({ currentTab, setTab }: { currentTab: string, setTab: (t: st
         return (
           <button 
             key={tab.id} 
+            type="button"
+            aria-label={tab.label}
+            aria-current={isActive ? 'page' : undefined}
+            title={tab.label}
+            data-tab={tab.id}
+            data-testid={`bottom-nav-${tab.id}`}
             onClick={() => setTab(tab.id)}
             className={`flex items-center justify-center w-16 h-full transition-all duration-300 group`}
           >
@@ -41,6 +47,7 @@ const Navigation = ({ currentTab, setTab }: { currentTab: string, setTab: (t: st
                     fill={isActive ? "currentColor" : "none"} 
                 />
             </div>
+            <span className="sr-only">{tab.label}</span>
           </button>
         );
       })}
