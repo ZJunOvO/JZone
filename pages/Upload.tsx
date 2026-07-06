@@ -65,7 +65,6 @@ export const Upload: React.FC = () => {
       <header className="space-y-5">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">创作</h1>
-          <p className="mt-1 text-sm text-zinc-500 font-medium">上传音乐，整理收录，管理自己的声音资料。</p>
         </div>
 
         <div className="grid grid-cols-3 gap-3">
