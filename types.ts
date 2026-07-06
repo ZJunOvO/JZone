@@ -1,5 +1,6 @@
 
 export type PlayerSkin = 'vinyl' | 'coverflow' | 'minimal';
+export type PlaybackMode = 'sequence' | 'repeat-one' | 'shuffle';
 
 export interface Song {
   id: string;
@@ -57,6 +58,7 @@ export interface PlayerState {
   volume: number;
   queue: string[];
   skin: PlayerSkin;
+  playbackMode: PlaybackMode;
 }
 
 export interface UserProfile {

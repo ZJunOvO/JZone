@@ -59,11 +59,49 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
   }
 
   const handleAction = async (action: () => Promise<void> | void) => {
-    await action();
-    onClose();
+    try {
+      await action();
+    } catch (e) {
+      if ((e as DOMException)?.name !== 'AbortError') {
+        console.error('Menu action failed:', e);
+        alert('操作失败，请稍后重试');
+      }
+    } finally {
+      onClose();
+    }
+  };
+
+  const shareSong = async () => {
+    const shareText = `${item.title} - ${item.artist}`;
+    const shareUrl = window.location.href;
+    const shareData = {
+      title: item.title,
+      text: `我正在听 ${shareText}`,
+      url: shareUrl,
+    };
+
+    if (navigator.share) {
+      await navigator.share(shareData);
+      return;
+    }
+
+    const fallbackText = `${shareData.text}\n${shareUrl}`;
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(fallbackText);
+      alert('已复制分享内容');
+      return;
+    }
+
+    alert(fallbackText);
   };
 
   const menuItems = [
+    {
+      label: '分享',
+      icon: Icons.Share2,
+      onClick: () => handleAction(shareSong),
+      danger: false,
+    },
     {
       label: isOwner ? '编辑信息' : null,
       icon: Icons.Edit2,

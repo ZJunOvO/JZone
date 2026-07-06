@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
-import { Song, PlayerState, PlayerSkin, Comment } from './types';
+import { Song, PlayerState, PlayerSkin, PlaybackMode, Comment } from './types';
 import { MOCK_SONGS, MOCK_COMMENTS } from './constants';
 import { localLibraryStorage } from './localLibraryStorage';
 import { hasSupabaseConfig } from './supabaseClient';
@@ -17,6 +17,7 @@ interface AppContextType {
   togglePlay: () => void;
   nextSong: () => void;
   prevSong: () => void;
+  cyclePlaybackMode: () => void;
   seek: (time: number) => void;
   setVolume: (volume: number) => void;
   addSong: (song: Song) => void;
@@ -26,11 +27,12 @@ interface AppContextType {
   removeFromQueue: (songId: string) => void;
   deleteSong: (songId: string) => Promise<void>;
   updateSong: (songId: string, updates: Partial<Song>) => Promise<void>;
-  toggleFavorite: (songId: string) => void;
+  toggleFavorite: (songId: string) => Promise<void>;
   isFavorite: (songId: string) => boolean;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
+const PLAYBACK_MODE_SEQUENCE: PlaybackMode[] = ['sequence', 'repeat-one', 'shuffle'];
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { status, user } = useAuth();
@@ -44,6 +46,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     volume: 0.75,
     queue: hasSupabaseConfig ? [] : MOCK_SONGS.map(s => s.id),
     skin: 'coverflow',
+    playbackMode: 'sequence',
   });
   const loadedSongsForUserRef = useRef<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
@@ -270,10 +273,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   
   // Refs for event handlers to avoid dependency cycles while keeping latest state access
   const stateRef = useRef({ songs, playerState });
+  const favoriteSongIdsRef = useRef(favoriteSongIds);
   
   useEffect(() => {
     stateRef.current = { songs, playerState };
   }, [songs, playerState]);
+
+  useEffect(() => {
+    favoriteSongIdsRef.current = favoriteSongIds;
+  }, [favoriteSongIds]);
 
   // Initialize Audio Logic
   useEffect(() => {
@@ -297,7 +305,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (Number.isFinite(currentSong.trimEnd) && audio.currentTime >= currentSong.trimEnd) {
         audio.currentTime = currentSong.trimStart;
-        audio.play().catch(() => {});
+        if (playerState.playbackMode === 'repeat-one') {
+          audio.play().catch(() => {});
+        } else if (playerState.isPlaying && nextSongRef.current) {
+          nextSongRef.current();
+        }
       }
     };
 
@@ -432,8 +444,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const nextSong = useCallback(() => {
-    const { queue, currentSongId } = stateRef.current.playerState;
+    const { queue, currentSongId, playbackMode } = stateRef.current.playerState;
     if (queue.length === 0) return;
+
+    if (playbackMode === 'repeat-one' && currentSongId) {
+      playSong(currentSongId);
+      return;
+    }
+
+    if (playbackMode === 'shuffle' && queue.length > 1) {
+      const candidates = queue.filter((id) => id !== currentSongId);
+      const nextId = candidates[Math.floor(Math.random() * candidates.length)];
+      playSong(nextId);
+      return;
+    }
+
     const currentIndex = queue.indexOf(currentSongId || '');
     const nextIndex = (currentIndex + 1) % queue.length;
     playSong(queue[nextIndex]);
@@ -443,12 +468,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { nextSongRef.current = nextSong; }, [nextSong]);
 
   const prevSong = useCallback(() => {
-    const { queue, currentSongId } = stateRef.current.playerState;
+    const { queue, currentSongId, playbackMode } = stateRef.current.playerState;
     if (queue.length === 0) return;
+
+    if (playbackMode === 'repeat-one' && currentSongId) {
+      playSong(currentSongId);
+      return;
+    }
+
+    if (playbackMode === 'shuffle' && queue.length > 1) {
+      const candidates = queue.filter((id) => id !== currentSongId);
+      const prevId = candidates[Math.floor(Math.random() * candidates.length)];
+      playSong(prevId);
+      return;
+    }
+
     const currentIndex = queue.indexOf(currentSongId || '');
     const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
     playSong(queue[prevIndex]);
   }, [playSong]);
+
+  const cyclePlaybackMode = useCallback(() => {
+    setPlayerState((prev) => {
+      const currentIndex = PLAYBACK_MODE_SEQUENCE.indexOf(prev.playbackMode);
+      const nextMode = PLAYBACK_MODE_SEQUENCE[(currentIndex + 1) % PLAYBACK_MODE_SEQUENCE.length];
+      return { ...prev, playbackMode: nextMode };
+    });
+  }, []);
 
   const seek = useCallback((time: number) => {
     if (audioRef.current) {
@@ -470,19 +516,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  const toggleFavorite = useCallback((songId: string) => {
-    setFavoriteSongIds((prev) => {
-      const exists = prev.includes(songId);
-      const next = exists ? prev.filter((id) => id !== songId) : [songId, ...prev];
-      if (hasSupabaseConfig && user) {
-        if (exists) {
-          supabaseApi.removeFavorite(user.id, songId).catch(() => {});
-        } else {
-          supabaseApi.addFavorite(user.id, songId).catch(() => {});
-        }
+  const toggleFavorite = useCallback(async (songId: string) => {
+    const previous = favoriteSongIdsRef.current;
+    const exists = previous.includes(songId);
+    const next = exists ? previous.filter((id) => id !== songId) : [songId, ...previous];
+
+    favoriteSongIdsRef.current = next;
+    setFavoriteSongIds(next);
+
+    if (!hasSupabaseConfig || !user) return;
+
+    try {
+      if (exists) {
+        await supabaseApi.removeFavorite(user.id, songId);
+      } else {
+        await supabaseApi.addFavorite(user.id, songId);
       }
-      return next;
-    });
+    } catch (e) {
+      console.error('Favorite update failed:', e);
+      favoriteSongIdsRef.current = previous;
+      setFavoriteSongIds(previous);
+      alert('收藏状态同步失败，已恢复原状态，请稍后重试');
+    }
   }, [user]);
 
   const isFavorite = useCallback((songId: string) => favoriteSongIds.includes(songId), [favoriteSongIds]);
@@ -662,6 +717,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       togglePlay, 
       nextSong, 
       prevSong, 
+      cyclePlaybackMode,
       seek, 
       setVolume,
       addSong,

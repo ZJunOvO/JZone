@@ -17,7 +17,7 @@ const formatTime = (time: number) => {
 };
 
 export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
-  const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, seek, setVolume, playSong, removeFromQueue, toggleFavorite, isFavorite } = useStore();
+  const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, cyclePlaybackMode, seek, setVolume, playSong, removeFromQueue, toggleFavorite, isFavorite } = useStore();
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
@@ -35,6 +35,12 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
 
   if (!song) return null;
   const isFav = isFavorite(song.id);
+  const playbackModeMeta = {
+    sequence: { label: '顺序播放', Icon: Icons.List },
+    'repeat-one': { label: '单曲循环', Icon: Icons.Repeat1 },
+    shuffle: { label: '随机播放', Icon: Icons.Shuffle },
+  }[playerState.playbackMode];
+  const PlaybackModeIcon = playbackModeMeta.Icon;
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     seek(Number(e.target.value));
@@ -246,10 +252,13 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
             <div className="px-6 py-2 flex justify-between items-center">
               <h3 className="text-lg font-bold text-white tracking-tight">待播清单</h3>
               <button 
-                onClick={() => setIsQueueOpen(false)}
-                className="text-white/40 text-xs font-bold uppercase tracking-widest"
+                onClick={cyclePlaybackMode}
+                className="min-h-11 px-3 rounded-full flex items-center gap-2 text-white/70 hover:text-white hover:bg-white/10 active:scale-95 transition"
+                aria-label={`切换播放策略，当前为${playbackModeMeta.label}`}
+                title={playbackModeMeta.label}
               >
-                关闭
+                <PlaybackModeIcon size={16} strokeWidth={1.8} />
+                <span className="text-xs font-semibold tracking-tight">{playbackModeMeta.label}</span>
               </button>
             </div>
 
