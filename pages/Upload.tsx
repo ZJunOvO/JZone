@@ -10,6 +10,7 @@ import { supabaseApi } from '../supabaseApi';
 import { CollectionCreatableSelect, CollectionSelectValue } from '../components/CollectionCreatableSelect';
 import { attachUploadedSongToCollection, createUploadedSongFromRow, resolveUploadAlbum } from '../utils/uploadFlow';
 import { WaveformCropper } from '../components/WaveformCropper';
+import { createUploadDraftMeta, normalizeUploadDraftMeta } from '../utils/uploadDraftMeta';
 
 export const Upload: React.FC = () => {
   const { addSong, songs, playSong, playerState } = useStore();
@@ -142,26 +143,15 @@ export const Upload: React.FC = () => {
       if (cancelled) return;
 
       if (draftMeta) {
-        setTitle(draftMeta.title ?? '');
-        setArtist(draftMeta.artist ?? '');
-        setAlbum(draftMeta.album ?? '');
-        setGenre(draftMeta.genre ?? '');
-        setStory(draftMeta.story ?? '');
-        if (draftMeta.visibility === 'public' || draftMeta.visibility === 'private') {
-          setIsPublic(draftMeta.visibility === 'public');
-        }
-        if (typeof draftMeta.duration === 'number' && Number.isFinite(draftMeta.duration) && draftMeta.duration > 0) {
-          setDuration(draftMeta.duration);
-        }
-        if (
-          draftMeta.range &&
-          Array.isArray(draftMeta.range) &&
-          draftMeta.range.length === 2 &&
-          Number.isFinite(draftMeta.range[0]) &&
-          Number.isFinite(draftMeta.range[1])
-        ) {
-          setRange(draftMeta.range as [number, number]);
-        }
+        const normalizedMeta = normalizeUploadDraftMeta(draftMeta);
+        setTitle(normalizedMeta.title);
+        setArtist(normalizedMeta.artist);
+        setAlbum(normalizedMeta.album);
+        setGenre(normalizedMeta.genre);
+        setStory(normalizedMeta.story);
+        setIsPublic(normalizedMeta.visibility === 'public');
+        if (normalizedMeta.duration !== null) setDuration(normalizedMeta.duration);
+        if (normalizedMeta.range) setRange(normalizedMeta.range);
       }
 
       if (draftAudio) {
@@ -185,7 +175,7 @@ export const Upload: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    uploadDraftStorage.setMeta({ title, artist, album, genre, story, visibility: isPublic ? 'public' : 'private', duration, range }).catch(() => {});
+    uploadDraftStorage.setMeta(createUploadDraftMeta({ title, artist, album, genre, story, visibility: isPublic ? 'public' : 'private', duration, range })).catch(() => {});
   }, [album, artist, duration, genre, isPublic, range, story, title]);
 
   const resetDraft = () => {

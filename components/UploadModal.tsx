@@ -11,6 +11,7 @@ import { useModalPresence } from '../modalPresence';
 import { CollectionCreatableSelect, CollectionSelectValue } from './CollectionCreatableSelect';
 import { attachUploadedSongToCollection, createUploadedSongFromRow, resolveUploadAlbum } from '../utils/uploadFlow';
 import { WaveformCropper } from './WaveformCropper';
+import { createUploadDraftMeta, normalizeUploadDraftMeta } from '../utils/uploadDraftMeta';
 
 interface UploadModalProps {
     onClose: () => void;
@@ -148,26 +149,15 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose }) => {
       if (cancelled) return;
 
       if (draftMeta) {
-        setTitle(draftMeta.title ?? '');
-        setArtist(draftMeta.artist ?? '');
-        setAlbum(draftMeta.album ?? '');
-        setGenre(draftMeta.genre ?? '');
-        setStory(draftMeta.story ?? '');
-        if (draftMeta.visibility === 'public' || draftMeta.visibility === 'private') {
-          setSongVisibility(draftMeta.visibility);
-        }
-        if (typeof draftMeta.duration === 'number' && Number.isFinite(draftMeta.duration) && draftMeta.duration > 0) {
-          setDuration(draftMeta.duration);
-        }
-        if (
-          draftMeta.range &&
-          Array.isArray(draftMeta.range) &&
-          draftMeta.range.length === 2 &&
-          Number.isFinite(draftMeta.range[0]) &&
-          Number.isFinite(draftMeta.range[1])
-        ) {
-          setRange(draftMeta.range as [number, number]);
-        }
+        const normalizedMeta = normalizeUploadDraftMeta(draftMeta);
+        setTitle(normalizedMeta.title);
+        setArtist(normalizedMeta.artist);
+        setAlbum(normalizedMeta.album);
+        setGenre(normalizedMeta.genre);
+        setStory(normalizedMeta.story);
+        setSongVisibility(normalizedMeta.visibility);
+        if (normalizedMeta.duration !== null) setDuration(normalizedMeta.duration);
+        if (normalizedMeta.range) setRange(normalizedMeta.range);
       }
 
       if (draftAudio) {
@@ -191,7 +181,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose }) => {
   }, []);
 
   useEffect(() => {
-    uploadDraftStorage.setMeta({ title, artist, album, genre, story, visibility: songVisibility, duration, range }).catch(() => {});
+    uploadDraftStorage.setMeta(createUploadDraftMeta({ title, artist, album, genre, story, visibility: songVisibility, duration, range })).catch(() => {});
   }, [album, artist, duration, genre, range, songVisibility, story, title]);
 
   const resetDraft = () => {
