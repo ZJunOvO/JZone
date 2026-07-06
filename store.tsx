@@ -46,6 +46,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     skin: 'coverflow',
   });
   const loadedSongsForUserRef = useRef<string | null>(null);
+  const activeUserIdRef = useRef<string | null>(null);
   const lastSongsFetchAtRef = useRef(0);
   const SONGS_CACHE_PREFIX = 'jzone_songs_cache_v1:';
   const FAVORITES_CACHE_PREFIX = 'jzone_favorites_cache_v1:';
@@ -99,6 +100,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!hasSupabaseConfig) return;
+
+    const nextUserId = status === 'signed_in' && user ? user.id : null;
+    if (activeUserIdRef.current === nextUserId) return;
+
+    activeUserIdRef.current = nextUserId;
+    loadedSongsForUserRef.current = null;
+    lastSongsFetchAtRef.current = 0;
+    setSongs([]);
+    setFavoriteSongIds([]);
+    setComments([]);
+    setPlayerState((prev) => ({
+      ...prev,
+      currentSongId: null,
+      isPlaying: false,
+      currentTime: 0,
+      queue: [],
+    }));
+  }, [status, user?.id]);
 
   useEffect(() => {
     if (!hasSupabaseConfig) return;
@@ -176,7 +198,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!hasSupabaseConfig) return;
     if (status !== 'signed_in' || !user) return;
     if (loadedSongsForUserRef.current === user.id && stateRef.current.songs.length) return;
-    if (stateRef.current.songs.length && Date.now() - lastSongsFetchAtRef.current < 60_000) return;
+    if (
+      loadedSongsForUserRef.current === user.id &&
+      stateRef.current.songs.length &&
+      Date.now() - lastSongsFetchAtRef.current < 60_000
+    ) {
+      return;
+    }
 
     let cancelled = false;
 
@@ -593,6 +621,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteSong = useCallback(async (songId: string) => {
     if (!user) return;
+    const previousSongs = stateRef.current.songs;
+    const previousPlayerState = stateRef.current.playerState;
+    const previousFavorites = favoriteSongIds;
+
     try {
       // Optimistic update
       setSongs(prev => prev.filter(s => s.id !== songId));
@@ -612,10 +644,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (e) {
       console.error("Delete failed:", e);
-      // Ideally revert state here, but simple alert for now
-      alert('删除失败，请刷新重试');
+      setSongs(previousSongs);
+      setFavoriteSongIds(previousFavorites);
+      setPlayerState(previousPlayerState);
+      alert('删除失败，已恢复本地列表，请稍后重试');
     }
-  }, [user]);
+  }, [favoriteSongIds, user]);
 
   return (
     <AppContext.Provider value={{ 
