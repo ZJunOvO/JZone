@@ -9,6 +9,7 @@ import { hasSupabaseConfig } from '../supabaseClient';
 import { supabaseApi } from '../supabaseApi';
 import { useModalPresence } from '../modalPresence';
 import { CollectionCreatableSelect, CollectionSelectValue } from './CollectionCreatableSelect';
+import { attachUploadedSongToCollection, createUploadedSongFromRow, resolveUploadAlbum } from '../utils/uploadFlow';
 
 const WaveformCropper = ({ 
     duration, 
@@ -399,12 +400,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose }) => {
 
     try {
       if (hasSupabaseConfig && user) {
-        const albumForSong =
-          collectionSelection.kind === 'existing' && collectionSelection.type === 'album'
-            ? collectionSelection.title
-            : collectionSelection.kind === 'create' && collectionSelection.type === 'album'
-              ? collectionSelection.title
-              : album;
+        const albumForSong = resolveUploadAlbum(collectionSelection, album);
 
         const row = await supabaseApi.uploadAndCreateSong({
           userId: user.id,
@@ -429,45 +425,16 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose }) => {
           } catch {}
         }
 
-        const newSong: Song = {
-          id: row.id,
-          title: row.title,
-          artist: row.artist,
-          album: row.album ?? undefined,
-          genre: row.genre ?? undefined,
-          story: row.story ?? undefined,
-          fileSize: typeof row.file_size === 'number' ? row.file_size : undefined,
+        const newSong = createUploadedSongFromRow({
+          row,
           coverUrl: signedCoverUrl,
-          audioUrl: '',
-          audioPath: row.audio_path,
-          coverPath: row.cover_path ?? undefined,
-          ownerId: row.owner_id,
           visibility: songVisibility,
-          duration: row.duration,
-          trimStart: row.trim_start,
-          trimEnd: row.trim_end,
-          uploadedBy: 'Me',
-          addedAt: new Date(row.created_at).getTime(),
-          isPublic: songVisibility === 'public',
-        };
+        });
 
         addSong(newSong);
 
         try {
-          if (collectionSelection.kind === 'existing') {
-            await supabaseApi.addSongsToCollection(collectionSelection.id, [row.id]);
-          } else if (collectionSelection.kind === 'create') {
-            const newId = await supabaseApi.createCollection({
-              type: collectionSelection.type,
-              title: collectionSelection.title,
-              visibility: 'public',
-              coverUrl: null,
-              description: null,
-              releaseYear: null,
-              genre: null,
-            });
-            await supabaseApi.addSongsToCollection(newId, [row.id]);
-          }
+          await attachUploadedSongToCollection(collectionSelection, row.id);
         } catch (e) {
           console.warn('歌曲已上传，但加入合集失败:', e);
           alert('歌曲已上传成功，但加入合集失败。你可以稍后在合集里手动添加。');
