@@ -33,14 +33,13 @@ const loginIfNeeded = async (page) => {
 
   await waitForEitherText(page, [/邮箱/, /登录/]);
 
-  const inputs = page.locator('input');
-  await inputs.nth(0).fill(email);
-  await inputs.nth(1).fill(password);
+  await page.getByTestId('auth-email').fill(email);
+  await page.getByTestId('auth-password').fill(password);
 
-  const submit = page.locator('button[type="submit"]').first();
+  const submit = page.getByTestId('auth-submit');
   await submit.waitFor({ state: 'visible', timeout: 10000 });
   await page.waitForFunction(() => {
-    const button = document.querySelector('button[type="submit"]');
+    const button = document.querySelector('[data-testid="auth-submit"]');
     return Boolean(button && !button.disabled);
   });
   await submit.click();

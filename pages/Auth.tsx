@@ -112,8 +112,11 @@ export const Auth: React.FC = () => {
 
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">邮箱</label>
+            <label htmlFor="auth-email" className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">邮箱</label>
             <input
+              id="auth-email"
+              data-testid="auth-email"
+              type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
@@ -124,8 +127,10 @@ export const Auth: React.FC = () => {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">密码</label>
+            <label htmlFor="auth-password" className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">密码</label>
             <input
+              id="auth-password"
+              data-testid="auth-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type="password"
@@ -138,6 +143,7 @@ export const Auth: React.FC = () => {
           {error && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-2xl p-3">{error}</div>}
 
           <button
+            data-testid="auth-submit"
             disabled={!canSubmit || status === 'misconfigured' || (mode === 'signup' && !enableSignup)}
             className={`w-full font-bold py-4 rounded-2xl shadow-xl active:scale-[0.98] transition-all ${
               !canSubmit || status === 'misconfigured' || (mode === 'signup' && !enableSignup)
@@ -152,6 +158,7 @@ export const Auth: React.FC = () => {
 
         <div className="mt-6 flex items-center justify-between">
           <button
+            type="button"
             onClick={() => switchMode('login')}
             className={`text-[11px] font-bold uppercase tracking-widest ${
               mode === 'login' ? 'text-white' : 'text-zinc-500 hover:text-zinc-200'
@@ -160,6 +167,7 @@ export const Auth: React.FC = () => {
             登录
           </button>
           <button
+            type="button"
             onClick={() => switchMode('signup')}
             disabled={!enableSignup}
             className={`text-[11px] font-bold uppercase tracking-widest ${
