@@ -5,7 +5,11 @@ type ErrorBoundaryState =
   | { hasError: false }
   | { hasError: true; message: string; stack?: string };
 
-export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, ErrorBoundaryState> {
+type ErrorBoundaryProps = {
+  children: React.ReactNode;
+};
+
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(error: any): ErrorBoundaryState {
