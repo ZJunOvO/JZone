@@ -204,7 +204,20 @@ const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onLongPress }: { 
         </motion.div>
     );
 }, (prev, next) => {
-    return prev.isCurrent === next.isCurrent && prev.isPlaying === next.isPlaying && prev.item.song.id === next.item.song.id;
+    return (
+        prev.isCurrent === next.isCurrent &&
+        prev.isPlaying === next.isPlaying &&
+        prev.item.type === next.item.type &&
+        prev.item.x === next.item.x &&
+        prev.item.y === next.item.y &&
+        prev.item.w === next.item.w &&
+        prev.item.h === next.item.h &&
+        prev.item.song.id === next.item.song.id &&
+        prev.item.song.title === next.item.song.title &&
+        prev.item.song.artist === next.item.song.artist &&
+        prev.item.song.coverUrl === next.item.song.coverUrl &&
+        prev.item.song.pinnedAt === next.item.song.pinnedAt
+    );
 });
 
 
@@ -327,7 +340,7 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, onL
         className="relative w-full h-[calc(100vh-140px)] overflow-hidden bg-black cursor-grab active:cursor-grabbing"
         style={{ touchAction: 'none' }}
     >
-      <div className="absolute inset-0 opacity-10 pointer-events-none z-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"></div>
+      <div className="absolute inset-0 opacity-10 pointer-events-none z-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.18),transparent_28%),radial-gradient(circle_at_70%_80%,rgba(255,255,255,0.12),transparent_24%)]" />
 
       <motion.div
         drag
