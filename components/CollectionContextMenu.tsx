@@ -28,6 +28,7 @@ export const CollectionContextMenu: React.FC<{
   if (!isOwner) return null;
 
   const nextVis: CollectionVisibility = collection.visibility === 'public' ? 'private' : 'public';
+  const objectLabel = collection.type === 'album' ? '专辑' : '歌单';
 
   const style: React.CSSProperties = anchorPosition
     ? {
@@ -62,7 +63,7 @@ export const CollectionContextMenu: React.FC<{
               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10"
             >
               <Icons.Search size={16} />
-              搜索
+              搜索此{objectLabel}
             </button>
           )}
 
@@ -75,7 +76,7 @@ export const CollectionContextMenu: React.FC<{
             className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10"
           >
             <Icons.Pin size={16} />
-            {collection.pinned_at ? '取消置顶' : '置顶'}
+            {collection.pinned_at ? `取消置顶此${objectLabel}` : `置顶此${objectLabel}`}
           </button>
 
           <button
@@ -87,7 +88,7 @@ export const CollectionContextMenu: React.FC<{
             className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10"
           >
             <Icons.Edit size={16} />
-            编辑信息
+            编辑{objectLabel}信息
           </button>
 
           <button
@@ -99,7 +100,7 @@ export const CollectionContextMenu: React.FC<{
             className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10"
           >
             {nextVis === 'public' ? <Icons.Globe size={16} /> : <Icons.Lock size={16} />}
-            {nextVis === 'public' ? '设为公开' : '设为私有'}
+            {nextVis === 'public' ? `设为公开${objectLabel}` : `设为私有${objectLabel}`}
           </button>
 
           <div className="h-px bg-white/5 my-1" />
@@ -113,11 +114,10 @@ export const CollectionContextMenu: React.FC<{
             className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-red-500 hover:bg-red-500/10"
           >
             <Icons.Trash size={16} />
-            删除
+            删除此{objectLabel}
           </button>
         </div>
       </div>
     </div>
   );
 };
-

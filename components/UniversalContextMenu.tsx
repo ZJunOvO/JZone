@@ -4,6 +4,7 @@ import { Song } from '../types';
 import { useAuth } from '../auth';
 import { useStore } from '../store';
 import { EditSongModal } from './EditSongModal';
+import { AddSongToCollectionDialog } from './AddSongToCollectionDialog';
 
 interface UniversalContextMenuProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
   const { updateSong, deleteSong, isFavorite, toggleFavorite } = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showCollectionDialog, setShowCollectionDialog] = useState(false);
 
   // Check permissions
   const isOwner = user && item.ownerId === user.id;
@@ -43,6 +45,19 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
   }, [isOpen, onClose, showEditModal]);
 
   if (!isOpen) return null;
+
+  if (showCollectionDialog) {
+      return (
+        <AddSongToCollectionDialog
+            isOpen={true}
+            song={item}
+            onClose={() => {
+                setShowCollectionDialog(false);
+                onClose();
+            }}
+        />
+      );
+  }
 
   // If editing, show modal instead of menu (or on top)
   if (showEditModal) {
@@ -97,31 +112,43 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
 
   const menuItems = [
     {
-      label: '分享',
+      label: '分享此歌曲',
       icon: Icons.Share2,
       onClick: () => handleAction(shareSong),
       danger: false,
     },
     {
-      label: isOwner ? '编辑信息' : null,
+      label: '加入歌单或专辑',
+      icon: Icons.PlusCircle,
+      onClick: () => setShowCollectionDialog(true),
+      danger: false,
+    },
+    {
+        label: isFavorite(item.id) ? '取消收藏此歌曲' : '收藏此歌曲',
+        icon: Icons.Heart,
+        onClick: () => handleAction(() => toggleFavorite(item.id)),
+        danger: false,
+    },
+    {
+      label: isOwner ? '编辑歌曲信息' : null,
       icon: Icons.Edit2,
       onClick: () => setShowEditModal(true),
       danger: false,
     },
     {
-        label: isOwner ? (isPublic ? '设为私有' : '设为公开') : null,
+        label: isOwner ? (isPublic ? '设为私有歌曲' : '设为公开歌曲') : null,
         icon: isPublic ? Icons.Lock : Icons.Globe,
         onClick: () => handleAction(() => updateSong(item.id, { isPublic: !isPublic })),
         danger: false,
     },
     {
-        label: isOwner ? (isPinned ? '取消置顶' : '置顶') : null,
+        label: isOwner ? (isPinned ? '取消置顶此歌曲' : '置顶此歌曲') : null,
         icon: Icons.Pin,
         onClick: () => handleAction(() => updateSong(item.id, { pinnedAt: isPinned ? null : new Date().toISOString() })),
         danger: false,
     },
     {
-        label: isOwner ? '删除' : null,
+        label: isOwner ? '删除此歌曲' : null,
         icon: Icons.Trash,
         onClick: () => {
             if (window.confirm('确定要删除这首歌吗？此操作无法撤销。')) {
@@ -130,12 +157,6 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
         },
         danger: true,
     },
-    {
-        label: !isOwner ? (isFavorite(item.id) ? '取消收藏' : '收藏') : null,
-        icon: Icons.Heart,
-        onClick: () => handleAction(() => toggleFavorite(item.id)),
-        danger: false,
-    }
   ].filter(i => i.label);
 
   if (menuItems.length === 0) return null;
