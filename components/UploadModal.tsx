@@ -256,6 +256,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose }) => {
         setAlbum(draftMeta.album ?? '');
         setGenre(draftMeta.genre ?? '');
         setStory(draftMeta.story ?? '');
+        if (draftMeta.visibility === 'public' || draftMeta.visibility === 'private') {
+          setSongVisibility(draftMeta.visibility);
+        }
         if (typeof draftMeta.duration === 'number' && Number.isFinite(draftMeta.duration) && draftMeta.duration > 0) {
           setDuration(draftMeta.duration);
         }
@@ -291,8 +294,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose }) => {
   }, []);
 
   useEffect(() => {
-    uploadDraftStorage.setMeta({ title, artist, album, genre, story, duration, range }).catch(() => {});
-  }, [album, artist, duration, genre, range, story, title]);
+    uploadDraftStorage.setMeta({ title, artist, album, genre, story, visibility: songVisibility, duration, range }).catch(() => {});
+  }, [album, artist, duration, genre, range, songVisibility, story, title]);
 
   const resetDraft = () => {
     uploadDraftStorage.clearAll().catch(() => {});
@@ -465,7 +468,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose }) => {
             });
             await supabaseApi.addSongsToCollection(newId, [row.id]);
           }
-        } catch {}
+        } catch (e) {
+          console.warn('歌曲已上传，但加入合集失败:', e);
+          alert('歌曲已上传成功，但加入合集失败。你可以稍后在合集里手动添加。');
+        }
 
         alert('歌曲已成功保存！');
         resetDraft();

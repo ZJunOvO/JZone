@@ -71,6 +71,7 @@ export interface UploadDraftMeta {
   album: string;
   genre?: string;
   story?: string;
+  visibility?: 'public' | 'private';
   range?: [number, number];
   duration?: number;
 }

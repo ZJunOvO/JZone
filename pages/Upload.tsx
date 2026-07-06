@@ -248,6 +248,11 @@ export const Upload: React.FC = () => {
         setTitle(draftMeta.title ?? '');
         setArtist(draftMeta.artist ?? '');
         setAlbum(draftMeta.album ?? '');
+        setGenre(draftMeta.genre ?? '');
+        setStory(draftMeta.story ?? '');
+        if (draftMeta.visibility === 'public' || draftMeta.visibility === 'private') {
+          setIsPublic(draftMeta.visibility === 'public');
+        }
         if (typeof draftMeta.duration === 'number' && Number.isFinite(draftMeta.duration) && draftMeta.duration > 0) {
           setDuration(draftMeta.duration);
         }
@@ -283,8 +288,8 @@ export const Upload: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    uploadDraftStorage.setMeta({ title, artist, album, duration, range }).catch(() => {});
-  }, [album, artist, duration, range, title]);
+    uploadDraftStorage.setMeta({ title, artist, album, genre, story, visibility: isPublic ? 'public' : 'private', duration, range }).catch(() => {});
+  }, [album, artist, duration, genre, isPublic, range, story, title]);
 
   const resetDraft = () => {
     uploadDraftStorage.clearAll().catch(() => {});
@@ -424,6 +429,8 @@ export const Upload: React.FC = () => {
           title: row.title,
           artist: row.artist,
           album: row.album ?? undefined,
+          genre: row.genre ?? undefined,
+          story: row.story ?? undefined,
           fileSize: typeof row.file_size === 'number' ? row.file_size : undefined,
           coverUrl: signedCoverUrl,
           audioUrl: '',
@@ -436,6 +443,7 @@ export const Upload: React.FC = () => {
           trimEnd: row.trim_end,
           uploadedBy: 'Me',
           addedAt: new Date(row.created_at).getTime(),
+          isPublic: isPublic,
         };
 
         addSong(newSong);
@@ -455,7 +463,10 @@ export const Upload: React.FC = () => {
             });
             await supabaseApi.addSongsToCollection(newId, [row.id]);
           }
-        } catch {}
+        } catch (e) {
+          console.warn('歌曲已上传，但加入合集失败:', e);
+          alert('歌曲已上传成功，但加入合集失败。你可以稍后在合集里手动添加。');
+        }
 
         alert('歌曲已成功保存！');
         resetDraft();
