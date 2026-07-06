@@ -474,6 +474,21 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
             }}
             onEdit={() => setIsEditOpen(true)}
             onSearch={() => setIsSearchActive(true)}
+            onDelete={() => {
+              if (window.confirm(`确定要删除 "${collection.title}" 吗？此操作不可恢复。`)) {
+                supabaseApi
+                  .deleteCollection(collection.id)
+                  .then(() => onClose())
+                  .catch((e: any) => alert(typeof e?.message === 'string' ? e.message : '删除失败'));
+              }
+            }}
+            onTogglePin={() => {
+              const nextPinnedAt = collection.pinned_at ? null : new Date().toISOString();
+              supabaseApi
+                .updateCollection(collection.id, { pinnedAt: nextPinnedAt })
+                .then(() => setCollection((prev) => (prev ? { ...prev, pinned_at: nextPinnedAt } : prev)))
+                .catch((e: any) => alert(typeof e?.message === 'string' ? e.message : '操作失败'));
+            }}
           />
         ) : null}
 

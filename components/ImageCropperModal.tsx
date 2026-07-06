@@ -10,7 +10,7 @@ interface ImageCropperModalProps {
   onClose: () => void;
   imageSrc: string;
   onCropComplete: (croppedBlob: Blob) => void;
-  mode: 'avatar' | 'banner' | 'player_skin';
+  mode: 'avatar' | 'banner' | 'cover' | 'player_skin';
   aspectOverride?: number;
 }
 
