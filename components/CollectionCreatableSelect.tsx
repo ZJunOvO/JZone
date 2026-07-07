@@ -19,6 +19,7 @@ export const CollectionCreatableSelect: React.FC<{
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<CollectionRow[]>([]);
+  const [reloadTick, setReloadTick] = useState(0);
   const reqSeq = useRef(0);
   const cacheRef = useRef(new Map<string, CollectionRow[]>());
 
@@ -30,18 +31,36 @@ export const CollectionCreatableSelect: React.FC<{
 
   useEffect(() => {
     if (!open) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    const handleCollectionsChanged = () => {
+      cacheRef.current.clear();
+      if (open) setReloadTick((v) => v + 1);
+    };
+    window.addEventListener('jzone:collections-changed', handleCollectionsChanged);
+    return () => window.removeEventListener('jzone:collections-changed', handleCollectionsChanged);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     if (!supabaseApi.isEnabled()) {
       setResults([]);
       setLoading(false);
       return;
     }
     const q = query.trim();
-    const key = q.toLowerCase();
-    if (!q) {
-      setResults([]);
-      setLoading(false);
-      return;
-    }
+    const key = q ? `search:${q.toLowerCase()}` : 'all';
 
     const cached = cacheRef.current.get(key);
     if (cached) {
@@ -53,8 +72,8 @@ export const CollectionCreatableSelect: React.FC<{
     const seq = ++reqSeq.current;
     setLoading(true);
     const t = window.setTimeout(() => {
-      supabaseApi
-        .searchMyCollections(q, 12, user?.id)
+      const request = q ? supabaseApi.searchMyCollections(q, 20, user?.id) : supabaseApi.fetchMyCollections(undefined, 40);
+      request
         .then((rows) => {
           if (seq !== reqSeq.current) return;
           cacheRef.current.set(key, rows);
@@ -68,10 +87,10 @@ export const CollectionCreatableSelect: React.FC<{
           if (seq !== reqSeq.current) return;
           setLoading(false);
         });
-    }, 260);
+    }, q ? 260 : 0);
 
     return () => window.clearTimeout(t);
-  }, [open, query, user?.id]);
+  }, [open, query, user?.id, reloadTick]);
 
   const grouped = useMemo(() => {
     const albums = results.filter((r) => r.type === 'album');
@@ -126,9 +145,9 @@ export const CollectionCreatableSelect: React.FC<{
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[180]">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)} />
-          <div className="absolute left-1/2 top-1/2 w-[min(420px,calc(100%-48px))] -translate-x-1/2 -translate-y-1/2 bg-zinc-900/80 border border-white/10 rounded-[24px] shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-[300] overscroll-contain" onWheel={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)} onTouchMove={(e) => e.preventDefault()} />
+          <div className="absolute left-1/2 top-1/2 flex max-h-[min(78vh,620px)] w-[min(420px,calc(100%-48px))] -translate-x-1/2 -translate-y-1/2 flex-col bg-zinc-900/80 border border-white/10 rounded-[24px] shadow-2xl overflow-hidden">
             <div className="p-4 border-b border-white/10 flex items-center gap-3">
               <Icons.Search size={20} className="text-zinc-500" />
               <input
@@ -146,7 +165,7 @@ export const CollectionCreatableSelect: React.FC<{
             {!supabaseApi.isEnabled() ? (
               <div className="p-5 text-sm text-zinc-400">未配置 Supabase，暂不支持创建/关联专辑与歌单。</div>
             ) : (
-              <div className="max-h-[52vh] overflow-y-auto no-scrollbar p-3 space-y-3">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y no-scrollbar p-3 space-y-3">
                 {query.trim() ? (
                   <div className="space-y-2">
                     <button
@@ -198,6 +217,10 @@ export const CollectionCreatableSelect: React.FC<{
 
                 {!loading && query.trim() && !results.length ? (
                   <div className="py-6 text-center text-zinc-500 text-sm">没有匹配结果</div>
+                ) : null}
+
+                {!loading && !query.trim() && !results.length ? (
+                  <div className="py-6 text-center text-zinc-500 text-sm">还没有可加入的专辑或歌单</div>
                 ) : null}
               </div>
             )}

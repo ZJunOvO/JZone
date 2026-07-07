@@ -165,17 +165,17 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
       position: 'absolute',
       left: Math.min(anchorPosition.x, window.innerWidth - 220), // Prevent overflow right
       top: Math.min(anchorPosition.y, window.innerHeight - (menuItems.length * 50) - 20), // Prevent overflow bottom
-      zIndex: 100,
+      zIndex: 260,
   } : {
       position: 'fixed',
       bottom: 24,
       left: '50%',
       transform: 'translateX(-50%)',
-      zIndex: 100,
+      zIndex: 260,
   };
 
   return (
-    <div className="fixed inset-0 z-[100]" style={{ pointerEvents: 'none' }}>
+    <div className="fixed inset-0 z-[260]" style={{ pointerEvents: 'none' }}>
         {/* Backdrop for click outside - handled by useEffect, but visual dimming can be added here if needed */}
         {/* <div className="absolute inset-0 bg-black/20 pointer-events-auto" onMouseDown={onClose} /> */}
         

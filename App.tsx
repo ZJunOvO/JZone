@@ -73,6 +73,60 @@ const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
 };
 
+const isStandaloneDisplay = () => {
+  try {
+    return window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true;
+  } catch {
+    return false;
+  }
+};
+
+const requestDocumentFullscreen = async () => {
+  if (isStandaloneDisplay()) return;
+  if (document.fullscreenElement) return;
+  const root = document.documentElement as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+    msRequestFullscreen?: () => Promise<void> | void;
+  };
+  const request = root.requestFullscreen ?? root.webkitRequestFullscreen ?? root.msRequestFullscreen;
+  if (!request) return;
+  await request.call(root);
+};
+
+const useAutoFullscreen = () => {
+  React.useEffect(() => {
+    let disposed = false;
+    let armed = true;
+
+    const tryEnterFullscreen = () => {
+      if (disposed || !armed) return;
+      requestDocumentFullscreen()
+        .then(() => {
+          armed = false;
+        })
+        .catch(() => {
+          // 多数浏览器要求用户手势，下面的一次性监听负责兜底。
+        });
+    };
+
+    const onFirstGesture = () => {
+      tryEnterFullscreen();
+    };
+
+    window.setTimeout(tryEnterFullscreen, 120);
+    window.addEventListener('pointerdown', onFirstGesture, { once: true, capture: true });
+    window.addEventListener('touchend', onFirstGesture, { once: true, capture: true });
+    window.addEventListener('keydown', onFirstGesture, { once: true, capture: true });
+
+    return () => {
+      disposed = true;
+      window.removeEventListener('pointerdown', onFirstGesture, { capture: true } as any);
+      window.removeEventListener('touchend', onFirstGesture, { capture: true } as any);
+      window.removeEventListener('keydown', onFirstGesture, { capture: true } as any);
+    };
+  }, []);
+};
+
 const MainLayout = () => {
   const [activeTab, setActiveTab] = useState(() => {
     try {
@@ -85,6 +139,8 @@ const MainLayout = () => {
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
   const [collectionId, setCollectionId] = useState<string | null>(null);
   const [modalCount, setModalCount] = useState(0);
+
+  useAutoFullscreen();
 
   const parseCollectionIdFromPath = () => {
     try {

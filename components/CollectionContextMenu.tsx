@@ -46,7 +46,7 @@ export const CollectionContextMenu: React.FC<{
       };
 
   return (
-    <div className="fixed inset-0 z-[170]" style={{ pointerEvents: 'none' }}>
+    <div className="fixed inset-0 z-[260]" style={{ pointerEvents: 'none' }}>
       <div
         ref={menuRef}
         className="bg-zinc-800/60 backdrop-blur-xl backdrop-saturate-150 border border-white/10 rounded-2xl shadow-2xl overflow-hidden min-w-[200px] pointer-events-auto animate-[scaleIn_0.1s_ease-out]"

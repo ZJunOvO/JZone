@@ -402,7 +402,7 @@ export const Library: React.FC = () => {
        )}
 
        {createMenuOpen && createMenuAnchor && (
-         <div className="fixed inset-0 z-[150]" style={{ pointerEvents: 'none' }}>
+         <div className="fixed inset-0 z-[260]" style={{ pointerEvents: 'none' }}>
            <div className="absolute inset-0 pointer-events-auto" onClick={() => setCreateMenuOpen(false)} />
            <div
              className="absolute bg-zinc-800/60 backdrop-blur-xl backdrop-saturate-150 border border-white/10 rounded-2xl shadow-2xl overflow-hidden min-w-[220px] pointer-events-auto"
