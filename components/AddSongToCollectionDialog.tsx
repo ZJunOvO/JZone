@@ -3,12 +3,16 @@ import { Song } from '../types';
 import { CollectionCreatableSelect, type CollectionSelectValue } from './CollectionCreatableSelect';
 import { Icons } from './Icons';
 import { attachUploadedSongToCollection } from '../utils/uploadFlow';
+import { useStore } from '../store';
+import { useAuth } from '../auth';
 
 export const AddSongToCollectionDialog: React.FC<{
   song: Song | null;
   isOpen: boolean;
   onClose: () => void;
 }> = ({ song, isOpen, onClose }) => {
+  const { updateSong } = useStore();
+  const { user } = useAuth();
   const [selection, setSelection] = useState<CollectionSelectValue>({ kind: 'none' });
   const [isAttaching, setIsAttaching] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -28,6 +32,16 @@ export const AddSongToCollectionDialog: React.FC<{
     setFeedback(null);
     try {
       await attachUploadedSongToCollection(selection, song.id);
+      const canEditSongMetadata = !song.ownerId || song.ownerId === user?.id;
+      if (selection.type === 'album' && canEditSongMetadata) {
+        try {
+          await updateSong(song.id, { album: selection.title });
+        } catch {
+          setFeedback({ type: 'success', message: '已加入专辑，但歌曲专辑名同步失败，可稍后在歌曲信息中重试' });
+          window.setTimeout(close, 900);
+          return;
+        }
+      }
       const target = selection.type === 'album' ? '专辑' : '歌单';
       setFeedback({ type: 'success', message: `已加入${target}` });
       window.setTimeout(close, 520);
@@ -37,12 +51,13 @@ export const AddSongToCollectionDialog: React.FC<{
       setIsAttaching(false);
     }
   };
-
   return (
     <div className="fixed inset-0 z-[190]">
       <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={close} />
-      <div className="absolute left-1/2 top-1/2 w-[min(420px,calc(100%-48px))] -translate-x-1/2 -translate-y-1/2 bg-zinc-900/90 border border-white/10 rounded-[24px] shadow-2xl overflow-hidden">
-        <div className="p-5 border-b border-white/10 flex items-center justify-between gap-4">
+      <div
+        className="frosted-glass-panel absolute left-1/2 top-1/2 w-[min(420px,calc(100%-48px))] -translate-x-1/2 -translate-y-1/2 rounded-[24px] shadow-2xl overflow-hidden"
+      >
+        <div className="relative z-10 p-5 border-b border-white/10 flex items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="text-white font-extrabold tracking-tight truncate">加入歌单或专辑</div>
             <div className="text-xs text-zinc-500 truncate mt-1">{song.title}</div>
@@ -56,7 +71,7 @@ export const AddSongToCollectionDialog: React.FC<{
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="relative z-10 p-5 space-y-5">
           <CollectionCreatableSelect
             label="目标"
             value={selection}
@@ -93,4 +108,3 @@ export const AddSongToCollectionDialog: React.FC<{
     </div>
   );
 };
-

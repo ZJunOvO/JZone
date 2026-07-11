@@ -147,7 +147,7 @@ export const CollectionCreatableSelect: React.FC<{
       {open && (
         <div className="fixed inset-0 z-[300] overscroll-contain" onWheel={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()}>
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)} onTouchMove={(e) => e.preventDefault()} />
-          <div className="absolute left-1/2 top-1/2 flex max-h-[min(78vh,620px)] w-[min(420px,calc(100%-48px))] -translate-x-1/2 -translate-y-1/2 flex-col bg-zinc-900/80 border border-white/10 rounded-[24px] shadow-2xl overflow-hidden">
+          <div className="frosted-glass-panel absolute left-1/2 top-1/2 flex max-h-[min(78vh,620px)] w-[min(420px,calc(100%-48px))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-[24px] shadow-2xl overflow-hidden">
             <div className="p-4 border-b border-white/10 flex items-center gap-3">
               <Icons.Search size={20} className="text-zinc-500" />
               <input

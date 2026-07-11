@@ -3,8 +3,14 @@ import { Icons } from './Icons';
 import { Song } from '../types';
 import { useStore } from '../store';
 import { useModalPresence } from '../modalPresence';
-import { supabaseApi } from '../supabaseApi';
+import { supabaseApi, type SongArtistInput } from '../supabaseApi';
 import { hasSupabaseConfig } from '../supabaseClient';
+import { ArtistPicker } from './upload/ArtistPicker';
+import { useCurrentArtistProfile } from '../hooks/useCurrentArtistProfile';
+import { feedback } from './feedback';
+import { CollectionCreatableSelect, type CollectionSelectValue } from './CollectionCreatableSelect';
+import { attachUploadedSongToCollection } from '../utils/uploadFlow';
+import { prepareImageForEditing } from '../imageProcessing';
 
 interface EditSongModalProps {
   isOpen: boolean;
@@ -15,9 +21,13 @@ interface EditSongModalProps {
 export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, song }) => {
   useModalPresence(isOpen);
   const { updateSong } = useStore();
+  const { profile: currentArtistProfile, displayName: currentArtistName } = useCurrentArtistProfile();
   const [title, setTitle] = useState(song.title);
   const [artist, setArtist] = useState(song.artist);
-  const [album, setAlbum] = useState(song.album || '');
+  const [artistCredits, setArtistCredits] = useState<SongArtistInput[]>([]);
+  const [collectionSelection, setCollectionSelection] = useState<CollectionSelectValue>(
+    song.album ? { kind: 'create', type: 'album', title: song.album } : { kind: 'none' }
+  );
   const [genre, setGenre] = useState(song.genre || '');
   const [story, setStory] = useState(song.story || '');
   const [coverUrl, setCoverUrl] = useState(song.coverUrl);
@@ -29,7 +39,8 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
     if (isOpen) {
       setTitle(song.title);
       setArtist(song.artist);
-      setAlbum(song.album || '');
+      setArtistCredits([]);
+      setCollectionSelection(song.album ? { kind: 'create', type: 'album', title: song.album } : { kind: 'none' });
       setGenre(song.genre || '');
       setStory(song.story || '');
       setCoverUrl(song.coverUrl);
@@ -37,15 +48,60 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
     }
   }, [isOpen, song]);
 
+  useEffect(() => {
+    if (!isOpen || !song.album || !hasSupabaseConfig) return;
+    let cancelled = false;
+    supabaseApi.findMyCollectionByTitle(song.album, 'album')
+      .then((collection) => {
+        if (!cancelled && collection) {
+          setCollectionSelection({ kind: 'existing', id: collection.id, title: collection.title, type: 'album' });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, song.album]);
+
+  useEffect(() => {
+    if (!isOpen || !hasSupabaseConfig) return;
+    let cancelled = false;
+    supabaseApi.fetchSongArtists(song.id)
+      .then((rows) => {
+        if (cancelled) return;
+        setArtistCredits(rows.map((row) => ({
+          profileId: row.profile_id,
+          displayName: row.display_name,
+          role: row.role,
+          sortOrder: row.sort_order,
+        })));
+      })
+      .catch(() => {
+        if (!cancelled) setArtistCredits([{ displayName: song.artist, role: 'primary', sortOrder: 0 }]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, song.artist, song.id]);
+
   const handleCoverClick = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const sourceFile = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
+    if (!sourceFile) return;
+    try {
+      const prepared = await prepareImageForEditing(sourceFile);
+      const file = new File([prepared], 'cover.jpg', { type: 'image/jpeg', lastModified: Date.now() });
       setCoverFile(file);
-      setCoverUrl(URL.createObjectURL(file));
+      setCoverUrl((previous) => {
+        if (previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+        return URL.createObjectURL(file);
+      });
+    } catch (error) {
+      feedback.error(error instanceof Error ? `封面读取失败：${error.message}` : '封面读取失败');
     }
   };
 
@@ -59,19 +115,32 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
         coverUpdates = { coverPath: result.path, coverUrl: result.signedUrl };
       }
 
+      const albumTitle = collectionSelection.kind !== 'none' && collectionSelection.type === 'album'
+        ? collectionSelection.title
+        : undefined;
       await updateSong(song.id, {
         title,
         artist,
-        album: album || undefined,
+        album: albumTitle || '',
         genre: genre || undefined,
         story: story || undefined,
         ...coverUpdates,
-      });
+      }, { syncAlbumByTitle: false });
+      if (hasSupabaseConfig) {
+        await supabaseApi.syncSongAlbumByTitle(song.id, null);
+        if (collectionSelection.kind !== 'none') {
+          await attachUploadedSongToCollection(collectionSelection, song.id);
+        }
+      }
+      if (hasSupabaseConfig && artistCredits.length) {
+        await supabaseApi.upsertSongArtists(song.id, artistCredits, artist);
+      }
+      feedback.success('歌曲信息已更新');
       onClose();
     } catch (e) {
       const msg = typeof (e as any)?.message === 'string' ? (e as any).message : '';
       console.error(e);
-      alert(msg || '保存失败：请检查腾讯云 COS 是否欠费、密钥权限与 Bucket 区域配置');
+      feedback.error(msg || '保存失败，请检查存储配置后重试');
     } finally {
       setIsSaving(false);
     }
@@ -122,25 +191,21 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
                     />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                        <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">艺人</label>
-                        <input 
-                            type="text" 
-                            value={artist}
-                            onChange={e => setArtist(e.target.value)}
-                            className="w-full bg-black/40 text-white p-3 rounded-xl border border-white/5 focus:border-red-500/50 focus:outline-none text-sm font-medium transition"
-                        />
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">专辑</label>
-                        <input 
-                            type="text" 
-                            value={album}
-                            onChange={e => setAlbum(e.target.value)}
-                            className="w-full bg-black/40 text-white p-3 rounded-xl border border-white/5 focus:border-red-500/50 focus:outline-none text-sm font-medium transition"
-                        />
-                    </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <ArtistPicker
+                      value={artist}
+                      currentArtist={currentArtistName}
+                      currentProfile={currentArtistProfile}
+                      onChange={setArtist}
+                      credits={artistCredits}
+                      onCreditsChange={setArtistCredits}
+                    />
+                    <CollectionCreatableSelect
+                      label="专辑 / 歌单"
+                      value={collectionSelection}
+                      onChange={setCollectionSelection}
+                      placeholder="搜索或创建…"
+                    />
                 </div>
 
                 <div className="space-y-1.5">

@@ -1,0 +1,158 @@
+.liquid-glass-content {
+  width: 100%;
+  height: 100%;
+}
+
+.liquid-glass-adaptive-icon,
+[data-liquid-adaptive="true"] {
+  color: rgba(255, 255, 255, 0.94) !important;
+  transition:
+    color 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-liquid-adaptive="true"][data-liquid-foreground="dark"] {
+  color: rgba(18, 18, 20, 0.92) !important;
+}
+
+[data-liquid-adaptive="true"] svg,
+svg[data-liquid-adaptive="true"] {
+  color: inherit !important;
+}
+
+.liquid-glass-interactive:active svg {
+  opacity: 0.76;
+}
+
+.liquid-glass-interactive.liquid-glass-semantic svg,
+svg.liquid-glass-semantic {
+  color: inherit !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass-adaptive-icon,
+  [data-liquid-adaptive="true"] {
+    transition: none;
+  }
+}
+
+.liquid-glass-shell {
+  isolation: isolate;
+}
+
+.liquid-glass-content {
+  position: relative;
+  overflow: hidden;
+}
+
+.liquid-tab-filter-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.liquid-tab-surface {
+  isolation: isolate;
+  overflow: hidden;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, var(--lg-f-shadow-alpha, 0.32)),
+    inset 0 1px 0 rgba(255, 255, 255, calc(var(--lg-f-edge-alpha, 0.14) * 0.62));
+  transform: translateZ(0);
+}
+
+.liquid-glass-mobile-backstop {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .liquid-glass-mobile-backstop {
+    display: block;
+    background: rgba(255, 255, 255, 0.025);
+    backdrop-filter: blur(2.5px) saturate(1.12) brightness(1.03);
+    -webkit-backdrop-filter: blur(2.5px) saturate(1.12) brightness(1.03);
+  }
+}
+
+.liquid-tab-f-glass {
+  z-index: 1;
+  background:
+    linear-gradient(130deg, rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.55)), rgba(255,255,255, 0.015) 52%, rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.38))),
+    rgba(255, 255, 255, var(--lg-f-tint-alpha, 0.035));
+  backdrop-filter:
+    var(--liquid-tab-filter)
+    blur(var(--lg-f-blur, 3px))
+    contrast(var(--lg-f-contrast, 1))
+    brightness(var(--lg-f-brightness, 1.05))
+    saturate(var(--lg-f-saturation, 1.6));
+  -webkit-backdrop-filter:
+    var(--liquid-tab-filter)
+    blur(var(--lg-f-blur, 3px))
+    contrast(var(--lg-f-contrast, 1))
+    brightness(var(--lg-f-brightness, 1.05))
+    saturate(var(--lg-f-saturation, 1.6));
+  box-shadow:
+    inset 0 1px rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.88)),
+    inset 0 -10px 25px rgba(0,0,0,0.15);
+  transform: translateZ(0);
+  will-change: backdrop-filter, -webkit-backdrop-filter;
+}
+
+/* Mini 播放器紧邻底部 Tab，避免同时预提升两个 SVG backdrop GPU 层。 */
+.liquid-mini-player .liquid-tab-f-glass {
+  will-change: auto;
+}
+
+.liquid-tab-lens {
+  background:
+    radial-gradient(circle at 34% 14%, rgba(255,255,255, calc(var(--lg-f-specular-alpha, 0.5) * 0.9)), transparent 34%),
+    linear-gradient(
+      130deg,
+      rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.64)),
+      rgba(255,255,255, 0.018) 50%,
+      rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.42))
+    ),
+    rgba(255,255,255,var(--lg-f-lens-tint-alpha, 0.035));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, calc(var(--lg-f-edge-alpha, 0.5) * 1.08)),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.26),
+    0 10px 26px rgba(0, 0, 0, 0.36);
+  backdrop-filter:
+    var(--liquid-tab-lens-filter)
+    blur(var(--lg-f-lens-blur, 3px))
+    contrast(var(--lg-f-contrast, 1))
+    brightness(var(--lg-f-brightness, 1.05))
+    saturate(var(--lg-f-saturation, 1.6));
+  -webkit-backdrop-filter:
+    var(--liquid-tab-lens-filter)
+    blur(var(--lg-f-lens-blur, 3px))
+    contrast(var(--lg-f-contrast, 1))
+    brightness(var(--lg-f-brightness, 1.05))
+    saturate(var(--lg-f-saturation, 1.6));
+}
+
+.liquid-tab-lens::before,
+.liquid-tab-lens::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.liquid-tab-lens::before {
+  background:
+    linear-gradient(104deg, transparent 6%, rgba(255,255,255, calc(var(--lg-f-specular-alpha, 0.5) * 0.7)) 20%, transparent 35%),
+    radial-gradient(circle at 50% 0%, rgba(255,255,255, calc(var(--lg-f-specular-alpha, 0.5) * 0.72)), transparent 56%);
+  mix-blend-mode: screen;
+  opacity: calc(0.24 + var(--lg-f-specular-alpha, 0.5) * 0.56);
+}
+
+.liquid-tab-lens::after {
+  inset: 1px;
+  border: 1px solid rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.6));
+  box-shadow:
+    inset 2px 0 3px rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.52)),
+    inset -2px 0 3px rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.28));
+}

@@ -8,6 +8,7 @@ import { UniversalContextMenu } from '../components/UniversalContextMenu';
 import { Song } from '../types';
 import { AddSongToCollectionDialog } from '../components/AddSongToCollectionDialog';
 import { SongRowSkeleton } from '../components/Skeletons';
+import { useCurrentArtistProfile } from '../hooks/useCurrentArtistProfile';
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
@@ -17,8 +18,9 @@ const formatBytes = (bytes: number) => {
 };
 
 export const Upload: React.FC = () => {
-  const { songs, playSong, playerState } = useStore();
+  const { songs, playContext, playerState } = useStore();
   const { user } = useAuth();
+  const { profile: currentArtistProfile, displayName: currentArtistName } = useCurrentArtistProfile();
   const [contextMenu, setContextMenu] = useState<{ isOpen: boolean; anchor?: { x: number; y: number }; item: Song } | null>(null);
   const [draftStatus, setDraftStatus] = useState<UploadDraftStatus>({ hasDraft: false, label: '暂无草稿' });
   const [collectionTarget, setCollectionTarget] = useState<Song | null>(null);
@@ -28,11 +30,10 @@ export const Upload: React.FC = () => {
     () => songs.filter((s) => (s.ownerId ? s.ownerId === user?.id : s.uploadedBy === 'Me')),
     [songs, user?.id]
   );
-  const privateCount = myUploads.filter((s) => s.isPublic === false || s.visibility === 'private').length;
+  const totalPlays = myUploads.reduce((sum, song) => sum + (song.playsCount ?? 0), 0);
+  const privateCount = myUploads.filter((song) => song.isPublic === false || song.visibility === 'private').length;
   const totalSize = myUploads.reduce((sum, song) => sum + (song.fileSize ?? 0), 0);
-  const defaultArtist =
-    (typeof user?.user_metadata?.nickname === 'string' && user.user_metadata.nickname.trim()) ||
-    (typeof user?.email === 'string' ? user.email.split('@')[0] : undefined);
+  const defaultArtist = currentArtistName;
 
   const openMenu = (song: Song, anchor: { x: number; y: number }) => {
     setContextMenu({ isOpen: true, anchor, item: song });
@@ -47,8 +48,8 @@ export const Upload: React.FC = () => {
 
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-2xl bg-white/[0.06] border border-white/5 px-3 py-3">
-            <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">收录</div>
-            <div className="mt-1 text-lg text-white font-extrabold tabular-nums">{myUploads.length}</div>
+            <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">总播放</div>
+            <div className="mt-1 text-lg text-white font-extrabold tabular-nums">{totalPlays.toLocaleString()}</div>
           </div>
           <div className="rounded-2xl bg-white/[0.06] border border-white/5 px-3 py-3">
             <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">私有</div>
@@ -71,6 +72,7 @@ export const Upload: React.FC = () => {
         <UploadEditor
           variant="page"
           defaultArtist={defaultArtist}
+          currentArtistProfile={currentArtistProfile}
           onDraftStatusChange={setDraftStatus}
           onSavingChange={setIsUploadSaving}
         />
@@ -79,7 +81,7 @@ export const Upload: React.FC = () => {
       <section className="space-y-5">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-xl font-bold text-white tracking-tight">我的上传</h2>
-          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{myUploads.length} TRACKS</span>
+          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{myUploads.length} 首</span>
         </div>
 
         <div className="space-y-2">
@@ -94,13 +96,17 @@ export const Upload: React.FC = () => {
             myUploads.map((song) => (
               <div
                 key={song.id}
-                onClick={() => playSong(song.id)}
+                onClick={() => playContext(myUploads.map((item) => item.id), song.id)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   openMenu(song, { x: e.clientX, y: e.clientY });
                 }}
-                className={`flex items-center p-3 rounded-2xl cursor-pointer hover:bg-zinc-900 transition-all active:scale-[0.98] group ${
-                  playerState.currentSongId === song.id ? 'bg-zinc-900/80 ring-1 ring-white/5 shadow-xl shadow-black/40' : ''
+                className={`flex items-center p-3 rounded-2xl cursor-pointer transition-all active:scale-[0.98] group ${
+                  contextMenu?.item.id === song.id
+                    ? 'bg-zinc-800/95 ring-1 ring-white/18 shadow-xl shadow-black/40'
+                    : playerState.currentSongId === song.id
+                      ? 'bg-zinc-900/80 ring-1 ring-white/5 shadow-xl shadow-black/40'
+                      : 'hover:bg-zinc-900'
                 }`}
               >
                 <div className="relative w-12 h-12 shrink-0 mr-4">

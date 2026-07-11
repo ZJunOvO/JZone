@@ -1,35 +1,56 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Icons } from '../Icons';
 import { CollectionCreatableSelect } from '../CollectionCreatableSelect';
 import { WaveformCropper } from '../WaveformCropper';
 import { useUploadDraft, type UploadDraftStatus } from './useUploadDraft';
 import { useUploadSave } from './useUploadSave';
+import { ArtistPicker } from './ArtistPicker';
+import type { CurrentArtistProfile } from '../../hooks/useCurrentArtistProfile';
+import { snapshotAudioFile } from '../../utils/uploadAudio';
+
+const AUDIO_FILE_ACCEPT = 'audio/*,video/mp4,application/octet-stream,.mp3,.m4a,.mp4,.wav,.flac,.amr,.3gp';
 
 type UploadEditorVariant = 'page' | 'modal';
 
 interface UploadEditorProps {
   variant?: UploadEditorVariant;
   defaultArtist?: string;
+  currentArtistProfile?: CurrentArtistProfile | null;
   onSaved?: () => void;
   onDraftStatusChange?: (status: UploadDraftStatus) => void;
   onSavingChange?: (isSaving: boolean) => void;
+  onQueueCountChange?: (count: number) => void;
 }
 
 export const UploadEditor: React.FC<UploadEditorProps> = ({
   variant = 'page',
   defaultArtist,
+  currentArtistProfile,
   onSaved,
   onDraftStatusChange,
   onSavingChange,
+  onQueueCountChange,
 }) => {
-  const { draft, actions, status } = useUploadDraft(defaultArtist);
-  const { save, isSaving, saveError } = useUploadSave({
+  const { draft, actions, status } = useUploadDraft(defaultArtist, currentArtistProfile);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [isPreparingFiles, setIsPreparingFiles] = useState(false);
+  const [nextFileToLoad, setNextFileToLoad] = useState<File | null>(null);
+  const selectionSeqRef = useRef(0);
+  const handleSaved = () => {
+    const nextFile = pendingFiles[0];
+    if (nextFile) {
+      setPendingFiles((previous) => previous.slice(1));
+      setNextFileToLoad(nextFile);
+    }
+    onSaved?.();
+  };
+  const { save, isSaving, saveError, saveProgress } = useUploadSave({
     draft,
     defaultArtist,
     resetDraft: actions.resetDraft,
-    onSaved,
+    onSaved: handleSaved,
   });
-  const [moreOpen, setMoreOpen] = useState(variant === 'page');
+  const [moreOpen, setMoreOpen] = useState(false);
   const inputSuffix = variant === 'modal' ? 'modal' : 'page';
   const frameClass =
     variant === 'page'
@@ -44,13 +65,60 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
     onSavingChange?.(isSaving);
   }, [isSaving, onSavingChange]);
 
+  useEffect(() => {
+    onQueueCountChange?.(pendingFiles.length);
+  }, [onQueueCountChange, pendingFiles.length]);
+
+  useEffect(() => {
+    if (!nextFileToLoad || draft.step !== 1 || draft.file || draft.isReadingFile) return;
+    const file = nextFileToLoad;
+    setNextFileToLoad(null);
+    void actions.loadFile(file);
+  }, [actions, draft.file, draft.isReadingFile, draft.step, nextFileToLoad]);
+
+  const handleAudioSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    const selectionSeq = selectionSeqRef.current + 1;
+    selectionSeqRef.current = selectionSeq;
+    setIsPreparingFiles(true);
+
+    const prepared: File[] = [];
+    const failures: string[] = [];
+    try {
+      // 手机媒体提供器的 File 可能在 input 清空后立即失效，因此必须在这里完成字节快照。
+      for (const file of files) {
+        try {
+          prepared.push(await snapshotAudioFile(file));
+        } catch (error) {
+          failures.push(`${file.name || '未命名音频'}：${error instanceof Error ? error.message : '读取失败'}`);
+        }
+      }
+
+      if (selectionSeqRef.current !== selectionSeq) return;
+      if (draft.step === 1 && !draft.file && prepared.length) {
+        await actions.loadFile(prepared[0]);
+        setPendingFiles((previous) => [...previous, ...prepared.slice(1)]);
+      } else if (prepared.length) {
+        setPendingFiles((previous) => [...previous, ...prepared]);
+      }
+      if (failures.length) actions.setPreviewError(`有 ${failures.length} 个文件读取失败：${failures.join('；')}`);
+    } finally {
+      if (selectionSeqRef.current === selectionSeq) setIsPreparingFiles(false);
+      input.value = '';
+    }
+  };
+
   if (draft.step === 1) {
     return (
       <div className="border-2 border-dashed border-zinc-800 rounded-[28px] p-8 flex flex-col items-center justify-center h-56 bg-zinc-900/30 hover:bg-zinc-900/50 transition group">
         <input
+          key={draft.fileInputVersion}
           type="file"
-          accept="audio/*,.m4a,.mp4,.flac,.amr"
-          onChange={actions.handleFileChange}
+          multiple
+          accept={AUDIO_FILE_ACCEPT}
+          onChange={handleAudioSelection}
           className="hidden"
           id={`audio-upload-${inputSuffix}`}
         />
@@ -58,8 +126,14 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
           <div className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center mb-4 shadow-lg shadow-red-600/20 group-hover:scale-110 transition-transform">
             <Icons.Upload className="text-white" size={24} />
           </div>
-          <span className="text-zinc-300 font-bold">点击选择音频文件</span>
+          <span className="text-zinc-300 font-bold">{draft.isReadingFile || isPreparingFiles ? '正在读取音频文件…' : '点击选择音频文件'}</span>
+          <span className="text-zinc-500 text-[11px] mt-1">{draft.isReadingFile || isPreparingFiles ? '请保持页面开启，读取完成后会自动进入编辑' : '支持一次选择多首并依次编辑'}</span>
           <span className="text-zinc-500 text-[11px] mt-2 font-medium tracking-wide">MP3 / M4A / MP4 / WAV / FLAC / AMR</span>
+          {draft.previewError ? (
+            <span className="mt-4 max-w-[280px] text-center text-[11px] font-semibold leading-relaxed text-red-300">
+              {draft.previewError}
+            </span>
+          ) : null}
         </label>
       </div>
     );
@@ -67,6 +141,46 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
 
   return (
     <div className={frameClass}>
+      <input
+        type="file"
+        multiple
+        accept={AUDIO_FILE_ACCEPT}
+        onChange={handleAudioSelection}
+        className="hidden"
+        id={`audio-queue-${inputSuffix}`}
+      />
+      {pendingFiles.length ? (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs font-bold text-zinc-200">等待编辑 · {pendingFiles.length}</div>
+            <label htmlFor={`audio-queue-${inputSuffix}`} className="min-h-11 px-3 flex items-center cursor-pointer text-xs font-bold text-red-400">
+              继续添加
+            </label>
+          </div>
+          <div className="space-y-1 max-h-32 overflow-y-auto no-scrollbar">
+            {pendingFiles.map((file, index) => (
+              <div key={`${file.name}-${file.lastModified}-${index}`} className="min-h-11 flex items-center gap-3 rounded-xl px-3 bg-black/25">
+                <Icons.Music2 size={15} className="text-zinc-500 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-xs text-zinc-300">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setPendingFiles((previous) => previous.filter((_, itemIndex) => itemIndex !== index))}
+                  className="w-11 h-11 flex items-center justify-center text-zinc-600 hover:text-white"
+                  aria-label={`从等待队列移除 ${file.name}`}
+                >
+                  <Icons.X size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-end">
+          <label htmlFor={`audio-queue-${inputSuffix}`} className="min-h-11 px-3 flex items-center gap-2 cursor-pointer text-xs font-bold text-zinc-400 hover:text-white">
+            <Icons.PlusCircle size={15} />继续添加文件
+          </label>
+        </div>
+      )}
       <div className="flex items-center gap-6">
         <div className="relative group shrink-0">
           <img src={draft.coverUrl} className="w-24 h-24 rounded-2xl object-cover bg-zinc-800 shadow-xl ring-1 ring-white/10" alt="Cover" />
@@ -91,7 +205,8 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
             onClick={actions.playPreviewSection}
             className={`text-[11px] font-bold flex items-center gap-1.5 px-3 py-1 rounded-full active:scale-95 transition ${draft.isPreviewSupported ? 'text-red-500 bg-red-500/10' : 'text-zinc-600 bg-white/5'}`}
           >
-            <Icons.Play size={12} fill="currentColor" /> 播放选段
+            {draft.isPreviewPlaying ? <Icons.Pause size={12} fill="currentColor" /> : <Icons.Play size={12} fill="currentColor" />}
+            {draft.isPreviewPlaying ? '暂停预览' : '播放选段'}
           </button>
         </div>
         <WaveformCropper
@@ -100,6 +215,7 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
           setRange={actions.setRange}
           currentTime={draft.currentPreviewTime}
           onSeek={actions.handleSeek}
+          onPlayFromStart={actions.playPreviewFromStart}
         />
         <div className="grid grid-cols-3 text-[10px] text-zinc-500 font-mono font-bold tracking-tight">
           <div className="text-left">IN: {draft.range[0].toFixed(1)}s</div>
@@ -111,12 +227,55 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
           src={draft.previewUrl || undefined}
           preload="metadata"
           playsInline
+          onTimeUpdate={actions.handleAudioTimeUpdate}
+          onPlay={actions.handleAudioPlay}
+          onPause={actions.handleAudioPause}
+          onEnded={actions.handleAudioEnded}
           onError={actions.handleAudioError}
           onLoadedMetadata={actions.handleAudioLoadedMetadata}
         />
         {draft.previewError ? (
-          <div className="text-[11px] font-semibold text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
-            {draft.previewError}
+          <div className="space-y-3 text-[11px] font-semibold text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-3">
+            <div>{draft.previewError}</div>
+            {!draft.isPreviewSupported && draft.file && !draft.isTranscoding ? (
+              <button
+                type="button"
+                onClick={actions.transcodeToMp3}
+                className="w-full rounded-xl bg-white px-3 py-2 text-xs font-bold text-black transition active:scale-[0.98]"
+              >
+                转为 MP3 并继续预览
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {draft.isTranscoding ? (
+          <div
+            className="space-y-2 rounded-xl border border-white/10 bg-white/[0.055] px-3 py-3"
+            role="progressbar"
+            aria-label="音频转换进度"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={draft.transcodeProgress}
+          >
+            <div className="flex items-center justify-between gap-3 text-[11px] font-semibold text-zinc-200">
+              <span className="min-w-0 flex-1 truncate">{draft.transcodeMessage || '正在准备音频转换…'}</span>
+              <span className="shrink-0 font-mono text-zinc-400">{draft.transcodeProgress}%</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-red-500 transition-[width] duration-200 ease-out"
+                style={{ width: `${Math.max(2, Math.min(100, draft.transcodeProgress))}%` }}
+              />
+            </div>
+          </div>
+        ) : draft.transcodeMessage && !draft.previewError ? (
+          <div className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2">
+            {draft.transcodeMessage}
+          </div>
+        ) : null}
+        {draft.sourceWarning ? (
+          <div className="text-[11px] font-semibold leading-relaxed text-amber-200 bg-amber-500/10 border border-amber-400/20 rounded-xl px-3 py-3">
+            {draft.sourceWarning}
           </div>
         ) : null}
       </div>
@@ -133,16 +292,14 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
               placeholder="例如：My New Song"
             />
           </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">艺人</label>
-            <input
-              type="text"
-              value={draft.artist}
-              onChange={(e) => actions.setArtist(e.target.value)}
-              className="w-full bg-black/40 text-white p-4 rounded-2xl border border-white/5 focus:border-red-500/50 focus:outline-none text-sm font-medium transition placeholder:text-zinc-700"
-              placeholder={defaultArtist || '艺术家名称'}
-            />
-          </div>
+          <ArtistPicker
+            value={draft.artist}
+            currentArtist={defaultArtist}
+            currentProfile={currentArtistProfile}
+            onChange={actions.setArtist}
+            credits={draft.artistCredits}
+            onCreditsChange={actions.setArtistCredits}
+          />
           <div className="rounded-2xl border border-white/5 bg-black/30">
             <button type="button" onClick={() => setMoreOpen((prev) => !prev)} className="w-full flex items-center justify-between px-4 py-3 text-zinc-300 font-bold text-xs uppercase tracking-widest">
               更多
@@ -213,14 +370,28 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
             {saveError}
           </div>
         ) : null}
+        {isSaving && saveProgress ? (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+            <div className="flex items-center justify-between gap-3 text-[11px] font-bold text-zinc-300">
+              <span className="truncate">{saveProgress.message}</span>
+              <span className="font-mono text-zinc-400">{saveProgress.percent}%</span>
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-red-500 transition-[width] duration-300 ease-out"
+                style={{ width: `${Math.max(3, Math.min(100, saveProgress.percent))}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
         <button
           onClick={save}
           disabled={isSaving}
           className={`w-full text-white font-bold py-4 rounded-2xl shadow-xl active:scale-[0.98] transition-all ${isSaving ? 'bg-zinc-800 text-zinc-500 shadow-none' : 'bg-red-600 shadow-red-600/20'}`}
         >
-          {isSaving ? '上传中...' : '确认保存至资料库'}
+          {isSaving ? (saveProgress?.message ?? '上传中...') : '确认保存至资料库'}
         </button>
-        <button onClick={actions.resetDraft} className="w-full text-zinc-500 text-[11px] font-bold py-2 hover:text-white transition uppercase tracking-widest">
+        <button onClick={() => { setPendingFiles([]); actions.resetDraft(); }} className="w-full text-zinc-500 text-[11px] font-bold py-2 hover:text-white transition uppercase tracking-widest">
           弃置并重新选择
         </button>
       </div>

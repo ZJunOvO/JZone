@@ -1,367 +1,491 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { motion, useMotionValue, useSpring, useDragControls } from 'framer-motion';
-import { Song } from '../types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { animate, motion, type PanInfo, useDragControls, useMotionValue, useSpring } from 'framer-motion';
+import { Icons } from './Icons';
 
-interface LibraryCanvasProps {
-  songs: Song[];
-  onPlay: (id: string) => void;
-  onLongPress?: (id: string) => void;
-  currentSongId: string | null;
-  isPlaying: boolean;
+export type LibraryBentoKind = 'song' | 'album' | 'playlist';
+
+export interface LibraryBentoItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  coverUrl?: string;
+  kind: LibraryBentoKind;
+  pinned?: boolean;
 }
 
-// --- Configuration ---
-const BASE_SIZE = 110; // Slightly smaller base to fit more on mobile screens
-const GAP = 12;        // Unified gap
-const COLS = 4;        // Fixed logic columns
+interface LibraryCanvasProps {
+  items: LibraryBentoItem[];
+  onOpen: (id: string) => void;
+  onLongPress?: (id: string) => void;
+  currentItemId?: string | null;
+  selectedItemId?: string | null;
+  isPlaying?: boolean;
+  layoutKey: string;
+  isEditing: boolean;
+  onEditingChange: (editing: boolean) => void;
+}
 
-type TileType = 'large' | 'small';
+const BASE_SIZE = 110;
+const GAP = 12;
+const COLS = 4;
 
 interface GridItem {
-  song: Song;
+  item: LibraryBentoItem;
   x: number;
   y: number;
   w: number;
   h: number;
-  type: TileType;
+  isLarge: boolean;
 }
 
-// --- Packing Algorithm (Strict 1:1 Aspect Ratio) ---
-const generateGrid = (songs: Song[]): { items: GridItem[], totalHeight: number, totalWidth: number } => {
-  const grid: number[] = new Array(COLS * 200).fill(0); 
-  const items: GridItem[] = [];
-  let maxY = 0;
+interface SavedLayout {
+  order: string[];
+  largeIds: string[];
+}
 
-  const checkFit = (idx: number, size: number) => {
-    const row = Math.floor(idx / COLS);
-    const col = idx % COLS;
+const defaultLarge = (index: number) => index === 0 || index % 7 === 5 || index % 11 === 8;
+const storageKey = (key: string) => `jzone.library.bento.v2:${key}`;
+
+const createDefaultLayout = (items: LibraryBentoItem[]): SavedLayout => ({
+  order: items.map((item) => item.id),
+  largeIds: items.filter((_, index) => defaultLarge(index)).map((item) => item.id),
+});
+
+const normalizeLayout = (items: LibraryBentoItem[], saved?: Partial<SavedLayout> | null): SavedLayout => {
+  const ids = items.map((item) => item.id);
+  const validIds = new Set(ids);
+  const savedOrder = (saved?.order ?? []).filter((id) => validIds.has(id));
+  const newIds = ids.filter((id) => !savedOrder.includes(id));
+  const order = [...savedOrder, ...newIds];
+  const defaultLargeIds = new Set(createDefaultLayout(items).largeIds);
+  const savedLargeIds = new Set((saved?.largeIds ?? []).filter((id) => validIds.has(id)));
+  newIds.forEach((id) => {
+    if (defaultLargeIds.has(id)) savedLargeIds.add(id);
+  });
+  return {
+    order,
+    largeIds: saved?.largeIds ? Array.from(savedLargeIds) : Array.from(defaultLargeIds),
+  };
+};
+
+const readSavedLayout = (items: LibraryBentoItem[], key: string): SavedLayout => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey(key)) || 'null') as Partial<SavedLayout> | null;
+    return normalizeLayout(items, saved);
+  } catch {
+    return createDefaultLayout(items);
+  }
+};
+
+const generateGrid = (items: LibraryBentoItem[], largeIds: Set<string>) => {
+  const occupied: number[] = [];
+  const ensureRows = (rows: number) => {
+    while (occupied.length < rows * COLS) occupied.push(0);
+  };
+  const fits = (index: number, size: number) => {
+    const row = Math.floor(index / COLS);
+    const col = index % COLS;
     if (col + size > COLS) return false;
-
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        if (grid[(row + r) * COLS + (col + c)] === 1) return false;
+    ensureRows(row + size + 1);
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        if (occupied[(row + y) * COLS + col + x]) return false;
       }
     }
     return true;
   };
-
-  const placeItem = (idx: number, size: number) => {
-    const row = Math.floor(idx / COLS);
-    const col = idx % COLS;
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        grid[(row + r) * COLS + (col + c)] = 1;
-      }
+  const occupy = (index: number, size: number) => {
+    const row = Math.floor(index / COLS);
+    const col = index % COLS;
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) occupied[(row + y) * COLS + col + x] = 1;
     }
   };
 
-  songs.forEach((song, index) => {
-    // Strategy: First item is always Large (Hero), others are Small
-    // Logic can be expanded later to make every 10th item Large, etc.
-    const isLarge = index === 0; 
-    const size = isLarge ? 2 : 1; 
-    
-    let i = 0;
-    while (!checkFit(i, size)) {
-      i++;
-    }
-
-    placeItem(i, size);
-
-    const row = Math.floor(i / COLS);
-    const col = i % COLS;
-
-    // Strict Square Calculation
+  const gridItems: GridItem[] = [];
+  let maxY = 0;
+  items.forEach((item) => {
+    const isLarge = largeIds.has(item.id);
+    const size = isLarge ? 2 : 1;
+    let index = 0;
+    while (!fits(index, size)) index += 1;
+    occupy(index, size);
+    const row = Math.floor(index / COLS);
+    const col = index % COLS;
     const pixelSize = size * BASE_SIZE + (size - 1) * GAP;
-    const xPos = col * (BASE_SIZE + GAP);
-    const yPos = row * (BASE_SIZE + GAP);
-
-    items.push({
-      song,
-      x: xPos,
-      y: yPos,
-      w: pixelSize,
-      h: pixelSize, // H == W (Strict Square)
-      type: isLarge ? 'large' : 'small'
-    });
-
-    if (yPos + pixelSize > maxY) maxY = yPos + pixelSize;
+    const x = col * (BASE_SIZE + GAP);
+    const y = row * (BASE_SIZE + GAP);
+    gridItems.push({ item, x, y, w: pixelSize, h: pixelSize, isLarge });
+    maxY = Math.max(maxY, y + pixelSize);
   });
 
-  return { 
-    items, 
-    totalHeight: maxY, 
-    totalWidth: COLS * (BASE_SIZE + GAP) - GAP 
+  return {
+    items: gridItems,
+    totalHeight: maxY,
+    totalWidth: COLS * (BASE_SIZE + GAP) - GAP,
   };
 };
 
-// --- Memoized Tile Component for Performance ---
-const Tile = React.memo(({ item, isPlaying, isCurrent, onPlay, onLongPress }: { item: GridItem, isPlaying: boolean, isCurrent: boolean, onPlay: (id: string) => void, onLongPress?: (id: string) => void }) => {
-    // Dynamic border radius based on size for that polished look
-    const borderRadius = item.type === 'large' ? 28 : 16;
-    
-    // Long Press Logic
-    const timerRef = useRef<number | null>(null);
-    const isLongPress = useRef(false);
+const Tile: React.FC<{
+  gridItem: GridItem;
+  allItems: GridItem[];
+  isCurrent: boolean;
+  isSelected: boolean;
+  isDropTarget: boolean;
+  isEditing: boolean;
+  layoutAnimationReady: boolean;
+  suppressLongPress: boolean;
+  gestureSuppressedRef: React.MutableRefObject<boolean>;
+  scale: number;
+  onOpen: (id: string) => void;
+  onLongPress?: (id: string) => void;
+  onMove: (sourceId: string, targetId: string) => void;
+  onDropTargetChange: (id: string | null) => void;
+  onToggleSize: (id: string) => void;
+}> = ({ gridItem, allItems, isCurrent, isSelected, isDropTarget, isEditing, layoutAnimationReady, suppressLongPress, gestureSuppressedRef, scale, onOpen, onLongPress, onMove, onDropTargetChange, onToggleSize }) => {
+  const tileRef = useRef<HTMLDivElement>(null);
+  const dragX = useMotionValue(0);
+  const dragY = useMotionValue(0);
+  const timerRef = useRef<number | null>(null);
+  const longPressedRef = useRef(false);
+  const pointerStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const [imageFailed, setImageFailed] = useState(false);
+  const ItemIcon = gridItem.item.kind === 'album' ? Icons.Disc : gridItem.item.kind === 'playlist' ? Icons.ListMusic : Icons.Music2;
 
-    const handlePointerDown = (e: React.PointerEvent) => {
-        isLongPress.current = false;
+  useEffect(() => setImageFailed(false), [gridItem.item.coverUrl]);
+  useEffect(() => {
+    if (!suppressLongPress) return;
+    clearTimer();
+    pointerStartRef.current = null;
+  }, [suppressLongPress]);
+
+  const clearTimer = () => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+  };
+
+  const resolveDropTarget = (info: PanInfo) => {
+    const canvas = tileRef.current?.parentElement;
+    if (!canvas) return null;
+    const canvasRect = canvas.getBoundingClientRect();
+    const centerX = (info.point.x - canvasRect.left) / Math.max(0.5, scale);
+    const centerY = (info.point.y - canvasRect.top) / Math.max(0.5, scale);
+    const target = allItems.reduce((best, candidate) => {
+      const distance = Math.hypot(centerX - (candidate.x + candidate.w / 2), centerY - (candidate.y + candidate.h / 2));
+      return !best || distance < best.distance ? { id: candidate.item.id, distance } : best;
+    }, null as { id: string; distance: number } | null);
+    return target?.id && target.id !== gridItem.item.id ? target.id : null;
+  };
+
+  const handleDrag = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    onDropTargetChange(resolveDropTarget(info));
+  };
+
+  const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const targetId = resolveDropTarget(info);
+    onDropTargetChange(null);
+    if (targetId) onMove(gridItem.item.id, targetId);
+    animate(dragX, 0, { type: 'spring', stiffness: 560, damping: 42, mass: 0.7 });
+    animate(dragY, 0, { type: 'spring', stiffness: 560, damping: 42, mass: 0.7 });
+  };
+
+  return (
+    <motion.div
+      ref={tileRef}
+      layout={!isEditing && layoutAnimationReady}
+      data-bento-item={gridItem.item.id}
+      data-bento-kind={gridItem.item.kind}
+      data-bento-size={gridItem.isLarge ? 'large' : 'small'}
+      drag={isEditing}
+      dragMomentum={false}
+      onDrag={handleDrag}
+      onDragEnd={handleDragEnd}
+      className={`absolute overflow-hidden bg-zinc-900 ${
+        isDropTarget
+          ? 'z-50 ring-2 ring-sky-300 shadow-[0_0_0_6px_rgba(125,211,252,0.18),0_0_36px_rgba(125,211,252,0.38)]'
+          : isSelected
+          ? 'z-40 ring-2 ring-white/75 shadow-[0_0_34px_rgba(255,255,255,0.24)]'
+          : isCurrent
+            ? 'z-30 ring-1 ring-white/45 shadow-[0_0_34px_rgba(255,255,255,0.2)]'
+            : gridItem.isLarge
+              ? 'z-10 border border-white/8 shadow-2xl'
+              : 'z-0 border border-white/5 shadow-xl'
+      }`}
+      style={{
+        width: gridItem.w,
+        height: gridItem.h,
+        left: gridItem.x,
+        top: gridItem.y,
+        x: dragX,
+        y: dragY,
+        borderRadius: gridItem.isLarge ? 26 : 16,
+      }}
+      whileTap={{ scale: isEditing ? 1.02 : 0.96 }}
+      onPointerDown={(event) => {
+        if (isEditing || gestureSuppressedRef.current) return;
+        longPressedRef.current = false;
+        pointerStartRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
         timerRef.current = window.setTimeout(() => {
-            isLongPress.current = true;
-            if (navigator.vibrate) navigator.vibrate(50);
-            if (onLongPress) onLongPress(item.song.id);
-        }, 600);
-    };
-
-    const handlePointerUp = (e: React.PointerEvent) => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
+          if (gestureSuppressedRef.current) return;
+          longPressedRef.current = true;
+          navigator.vibrate?.(35);
+          onLongPress?.(gridItem.item.id);
+        }, 560);
+      }}
+      onPointerMove={(event) => {
+        const start = pointerStartRef.current;
+        if (!start || start.pointerId !== event.pointerId) return;
+        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 7) clearTimer();
+      }}
+      onPointerUp={() => { clearTimer(); pointerStartRef.current = null; }}
+      onPointerCancel={() => { clearTimer(); pointerStartRef.current = null; }}
+      onPointerLeave={() => { clearTimer(); pointerStartRef.current = null; }}
+      onClick={(event) => {
+        if (isEditing || longPressedRef.current) {
+          event.stopPropagation();
+          return;
         }
-    };
+        onOpen(gridItem.item.id);
+      }}
+    >
+      {gridItem.item.coverUrl && !imageFailed ? (
+        <img
+          src={gridItem.item.coverUrl}
+          alt=""
+          className="h-full w-full select-none object-cover pointer-events-none"
+          loading="lazy"
+          decoding="async"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-zinc-800 text-white/35">
+          <ItemIcon size={gridItem.isLarge ? 54 : 30} />
+        </div>
+      )}
 
-    const handlePointerLeave = () => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
-    };
+      {(gridItem.isLarge || isCurrent) && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/90 via-black/38 to-transparent px-3 pb-4 pt-16">
+          <div className={`${gridItem.isLarge ? 'text-[15px]' : 'text-xs'} truncate font-semibold text-white drop-shadow-md`}>{gridItem.item.title}</div>
+          {gridItem.isLarge && gridItem.item.subtitle ? <div className="mt-0.5 truncate text-[11px] text-white/62">{gridItem.item.subtitle}</div> : null}
+        </div>
+      )}
 
-    const handleClick = (e: React.MouseEvent) => {
-        if (isLongPress.current) {
-            e.stopPropagation();
-            return;
-        }
-        onPlay(item.song.id);
-    };
-
-    return (
-        <motion.div
-            className={`absolute bg-zinc-900 overflow-hidden group
-                ${isCurrent 
-                    ? 'z-30 shadow-[0_0_40px_rgba(255,255,255,0.25)] border border-white/40' // Bright white glow & light border
-                    : item.type === 'large' 
-                        ? 'z-10 shadow-2xl border border-white/5' 
-                        : 'z-0 shadow-xl border border-white/5'
-                }
-            `}
-            style={{
-                width: item.w,
-                height: item.h,
-                x: item.x,
-                y: item.y,
-                borderRadius: borderRadius,
+      {isEditing && (
+        <div className="absolute inset-0 z-20 bg-black/18 ring-2 ring-inset ring-white/30">
+          <button
+            type="button"
+            className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/58 text-white backdrop-blur-lg"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleSize(gridItem.item.id);
             }}
-            whileTap={{ scale: 0.96 }}
-            onPointerDown={handlePointerDown}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerLeave}
-            onClick={handleClick}
-        >
-            <div className="w-full h-full relative">
-                {/* 1. Image Layer - Strict Cover */}
-                <img 
-                    src={item.song.coverUrl} 
-                    alt=""
-                    className="w-full h-full object-cover pointer-events-none select-none"
-                    loading="lazy"
-                />
+            aria-label={gridItem.isLarge ? `缩小 ${gridItem.item.title}` : `放大 ${gridItem.item.title}`}
+            title={gridItem.isLarge ? '缩小封面' : '放大封面'}
+          >
+            {gridItem.isLarge ? <Icons.Minimize2 size={17} /> : <Icons.Maximize2 size={17} />}
+          </button>
+          <Icons.GripVertical className="absolute bottom-2 left-2 text-white/75 drop-shadow" size={18} />
+        </div>
+      )}
+    </motion.div>
+  );
+};
 
-                {/* 2. Playing Indicator - Win10 Magnet Style (White Glow) */}
-                {isCurrent && (
-                    <div className="absolute inset-0 z-20 pointer-events-none">
-                         {/* Soft inner white wash */}
-                         <div className="absolute inset-0 bg-white/10 mix-blend-overlay"></div>
-                         
-                         {/* Elegant inset ring with white pulse */}
-                         <motion.div 
-                            className="absolute inset-0 border-[3px] border-white/50 shadow-[inset_0_0_20px_rgba(255,255,255,0.3)]"
-                            style={{ borderRadius: borderRadius }}
-                            animate={{ opacity: [0.5, 1, 0.5] }}
-                            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
-                         />
-                         
-                         {/* Minimal white active dot in top-right */}
-                         <div className="absolute top-3 right-3 w-2 h-2 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.8)] animate-pulse"></div>
-                    </div>
-                )}
-
-                {/* 3. Adaptive Disclosure - Show text for Large tiles OR Current Playing tile */}
-                {(item.type === 'large' || isCurrent) && (
-                    <div className="absolute inset-x-0 bottom-0 pt-16 pb-4 px-3 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none">
-                        <motion.h3 
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={`text-white font-semibold leading-tight tracking-tight truncate drop-shadow-md
-                                ${item.type === 'large' ? 'text-[15px]' : 'text-[12px]'}
-                            `}
-                        >
-                            {item.song.title}
-                        </motion.h3>
-                    </div>
-                )}
-            </div>
-        </motion.div>
-    );
-}, (prev, next) => {
-    return (
-        prev.isCurrent === next.isCurrent &&
-        prev.isPlaying === next.isPlaying &&
-        prev.item.type === next.item.type &&
-        prev.item.x === next.item.x &&
-        prev.item.y === next.item.y &&
-        prev.item.w === next.item.w &&
-        prev.item.h === next.item.h &&
-        prev.item.song.id === next.item.song.id &&
-        prev.item.song.title === next.item.song.title &&
-        prev.item.song.artist === next.item.song.artist &&
-        prev.item.song.coverUrl === next.item.song.coverUrl &&
-        prev.item.song.pinnedAt === next.item.song.pinnedAt
-    );
-});
-
-
-export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({ songs, onPlay, onLongPress, currentSongId, isPlaying }) => {
+export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({
+  items,
+  onOpen,
+  onLongPress,
+  currentItemId,
+  selectedItemId,
+  isPlaying = false,
+  layoutKey,
+  isEditing,
+  onEditingChange,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
-  const { items, totalHeight, totalWidth } = useMemo(() => generateGrid(songs), [songs]);
-
-  // Physics Motion Values
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const scale = useMotionValue(1);
-  
   const scaleSpring = useSpring(scale, { stiffness: 300, damping: 30 });
-
-  const [constraints, setConstraints] = useState({ top: 0, bottom: 0, left: 0, right: 0 });
-  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   const [scaleValue, setScaleValue] = useState(1);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [constraints, setConstraints] = useState({ top: 0, bottom: 0, left: 0, right: 0 });
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [suppressLongPress, setSuppressLongPress] = useState(false);
+  const [layoutAnimationReady, setLayoutAnimationReady] = useState(false);
+  const [layout, setLayout] = useState<SavedLayout>(() => readSavedLayout(items, layoutKey));
+  const [hydratedLayoutKey, setHydratedLayoutKey] = useState<string | null>(() => layoutKey);
   const initializedRef = useRef(false);
+  const gestureSuppressedRef = useRef(false);
+  const gestureReleaseTimerRef = useRef<number | null>(null);
 
-  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+  const itemSignature = items.map((item) => item.id).join('|');
+  useEffect(() => {
+    setLayoutAnimationReady(false);
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => setLayoutAnimationReady(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [itemSignature, layoutKey]);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    if (!items.length) return;
+    setHydratedLayoutKey(null);
+    setLayout(readSavedLayout(items, layoutKey));
+    onEditingChange(false);
+    setDropTargetId(null);
+    setHydratedLayoutKey(layoutKey);
+  }, [itemSignature, layoutKey, onEditingChange]);
 
-    const ro = new ResizeObserver(() => {
-      setContainerSize({ w: el.clientWidth, h: el.clientHeight });
-    });
-    ro.observe(el);
-    setContainerSize({ w: el.clientWidth, h: el.clientHeight });
-    return () => ro.disconnect();
+  useEffect(() => {
+    if (!items.length || !layout.order.length || hydratedLayoutKey !== layoutKey) return;
+    try {
+      localStorage.setItem(storageKey(layoutKey), JSON.stringify(layout));
+    } catch {}
+  }, [hydratedLayoutKey, items.length, layout, layoutKey]);
+
+  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  const orderedItems = useMemo(
+    () => layout.order.map((id) => itemById.get(id)).filter((item): item is LibraryBentoItem => Boolean(item)),
+    [itemById, layout.order],
+  );
+  const grid = useMemo(() => generateGrid(orderedItems, new Set(layout.largeIds)), [layout.largeIds, orderedItems]);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    const update = () => setContainerSize({ width: element.clientWidth, height: element.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const unsub = scale.on('change', (v) => setScaleValue(v));
-    return () => unsub();
-  }, [scale]);
+  useEffect(() => scale.on('change', setScaleValue), [scale]);
 
   useEffect(() => {
-    const { w: cw, h: ch } = containerSize;
-    if (!cw || !ch) return;
-
+    if (!containerSize.width || !containerSize.height) return;
     if (!initializedRef.current) {
-      const initialX = 24;
-      const initialY = 24 + 50;
-      x.set(initialX);
-      y.set(initialY);
+      x.set(24);
+      y.set(74);
       initializedRef.current = true;
     }
-
-    const paddingX = 24;
-    const paddingY = 24;
-    const headerOffsetY = 50;
-    const overscroll = Math.max(cw, ch) * 3 * Math.max(1, scaleValue);
-
-    const scaledW = totalWidth * scaleValue;
-    const scaledH = totalHeight * scaleValue;
-
-    const right = paddingX + overscroll;
-    const bottom = paddingY + headerOffsetY + overscroll;
-    const left = Math.min(right, cw - scaledW - paddingX - overscroll);
-    const top = Math.min(bottom, ch - scaledH - paddingY - overscroll);
-
+    const overscroll = Math.max(containerSize.width, containerSize.height) * 2.5 * Math.max(1, scaleValue);
+    const right = 24 + overscroll;
+    const bottom = 74 + overscroll;
+    const left = Math.min(right, containerSize.width - grid.totalWidth * scaleValue - 24 - overscroll);
+    const top = Math.min(bottom, containerSize.height - grid.totalHeight * scaleValue - 24 - overscroll);
     setConstraints({ top, bottom, left, right });
+  }, [containerSize, grid.totalHeight, grid.totalWidth, scaleValue, x, y]);
 
-    x.set(clamp(x.get(), left, right));
-    y.set(clamp(y.get(), top, bottom));
-  }, [containerSize, scaleValue, totalHeight, totalWidth, x, y]);
-
-  // --- Pinch to Zoom Logic (Keep existing logic) ---
-  const lastDist = useRef<number | null>(null);
-
+  const lastDistanceRef = useRef<number | null>(null);
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || Math.abs(e.deltaY) < 10) { 
-        e.preventDefault();
-        const currentScale = scale.get();
-        const newScale = currentScale - e.deltaY * 0.005;
-        scale.set(Math.min(Math.max(newScale, 0.5), 3));
-      }
+    const element = containerRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      if (isEditing || (!event.ctrlKey && Math.abs(event.deltaY) >= 10)) return;
+      event.preventDefault();
+      scale.set(Math.min(3, Math.max(0.5, scale.get() - event.deltaY * 0.005)));
     };
-
-    const handleTouchMove = (e: TouchEvent) => {
-        if (e.touches.length === 2) {
-            e.preventDefault(); 
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            const dist = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
-
-            if (lastDist.current !== null) {
-                const currentScale = scale.get();
-                const delta = dist - lastDist.current;
-                scale.set(Math.min(Math.max(currentScale + delta * 0.005, 0.5), 3));
-            }
-            lastDist.current = dist;
-        }
+    const onTouchMove = (event: TouchEvent) => {
+      if (isEditing || event.touches.length !== 2) return;
+      event.preventDefault();
+      gestureSuppressedRef.current = true;
+      setSuppressLongPress(true);
+      const distance = Math.hypot(event.touches[0].clientX - event.touches[1].clientX, event.touches[0].clientY - event.touches[1].clientY);
+      if (lastDistanceRef.current !== null) scale.set(Math.min(3, Math.max(0.5, scale.get() + (distance - lastDistanceRef.current) * 0.005)));
+      lastDistanceRef.current = distance;
     };
-
-    const handleTouchEnd = () => { lastDist.current = null; };
-
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    container.addEventListener('touchmove', handleTouchMove, { passive: false });
-    container.addEventListener('touchend', handleTouchEnd);
-
+    const onTouchEnd = (event: TouchEvent) => {
+      lastDistanceRef.current = null;
+      if (event.touches.length > 0) return;
+      if (gestureReleaseTimerRef.current) window.clearTimeout(gestureReleaseTimerRef.current);
+      gestureReleaseTimerRef.current = window.setTimeout(() => {
+        gestureSuppressedRef.current = false;
+        setSuppressLongPress(false);
+      }, 180);
+    };
+    element.addEventListener('wheel', onWheel, { passive: false });
+    element.addEventListener('touchmove', onTouchMove, { passive: false });
+    element.addEventListener('touchend', onTouchEnd);
     return () => {
-        container.removeEventListener('wheel', handleWheel);
-        container.removeEventListener('touchmove', handleTouchMove);
-        container.removeEventListener('touchend', handleTouchEnd);
+      element.removeEventListener('wheel', onWheel);
+      element.removeEventListener('touchmove', onTouchMove);
+      element.removeEventListener('touchend', onTouchEnd);
+      if (gestureReleaseTimerRef.current) window.clearTimeout(gestureReleaseTimerRef.current);
     };
-  }, []);
+  }, [isEditing, scale]);
+
+  const moveItem = (sourceId: string, targetId: string) => {
+    setLayout((previous) => {
+      const order = [...previous.order];
+      const sourceIndex = order.indexOf(sourceId);
+      const targetIndex = order.indexOf(targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return previous;
+      order.splice(sourceIndex, 1);
+      order.splice(targetIndex, 0, sourceId);
+      return { ...previous, order };
+    });
+  };
 
   return (
-    <div 
-        ref={containerRef}
-        onPointerDown={(e) => dragControls.start(e)}
-        className="relative w-full h-[calc(100vh-140px)] overflow-hidden bg-black cursor-grab active:cursor-grabbing"
-        style={{ touchAction: 'none' }}
+    <div
+      ref={containerRef}
+      data-bento-canvas
+      onPointerDown={(event) => { if (!isEditing) dragControls.start(event); }}
+      onTouchStart={(event) => {
+        if (event.touches.length >= 2) {
+          gestureSuppressedRef.current = true;
+          setSuppressLongPress(true);
+        }
+      }}
+      className={`relative h-[100dvh] min-h-screen w-full overflow-hidden bg-black ${isEditing ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`}
+      style={{ touchAction: 'none' }}
     >
-      <div className="absolute inset-0 opacity-10 pointer-events-none z-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.18),transparent_28%),radial-gradient(circle_at_70%_80%,rgba(255,255,255,0.12),transparent_24%)]" />
+      <div className="pointer-events-none absolute inset-0 z-0 opacity-10 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.18),transparent_28%),radial-gradient(circle_at_70%_80%,rgba(255,255,255,0.12),transparent_24%)]" />
+
+      {!grid.items.length ? <div className="absolute inset-0 flex items-center justify-center text-sm text-zinc-600">当前条件下没有内容</div> : null}
 
       <motion.div
-        drag
+        drag={!isEditing}
         dragControls={dragControls}
-        dragListener={false} 
+        dragListener={false}
         dragConstraints={constraints}
-        // --- 4. Physics & Damping ---
-        dragTransition={{ power: 0.2, timeConstant: 200 }} 
+        dragTransition={{ power: 0.2, timeConstant: 200 }}
         dragElastic={0.2}
         style={{ x, y, scale: scaleSpring }}
-        className="absolute top-0 left-0 origin-top-left z-10"
+        className="absolute left-0 top-0 z-10 origin-top-left"
       >
-        {items.map((item) => (
-            <Tile 
-                key={item.song.id} 
-                item={item} 
-                isPlaying={isPlaying} 
-                isCurrent={currentSongId === item.song.id}
-                onPlay={onPlay}
-                onLongPress={onLongPress}
-            />
+        {grid.items.map((gridItem) => (
+          <Tile
+            key={gridItem.item.id}
+            gridItem={gridItem}
+            allItems={grid.items}
+            isCurrent={currentItemId === gridItem.item.id && isPlaying}
+            isSelected={selectedItemId === gridItem.item.id}
+            isDropTarget={dropTargetId === gridItem.item.id}
+            isEditing={isEditing}
+            layoutAnimationReady={layoutAnimationReady}
+            suppressLongPress={suppressLongPress}
+            gestureSuppressedRef={gestureSuppressedRef}
+            scale={scaleValue}
+            onOpen={onOpen}
+            onLongPress={onLongPress}
+            onMove={moveItem}
+            onDropTargetChange={setDropTargetId}
+            onToggleSize={(id) => setLayout((previous) => ({
+              ...previous,
+              largeIds: previous.largeIds.includes(id)
+                ? previous.largeIds.filter((itemId) => itemId !== id)
+                : [...previous.largeIds, id],
+            }))}
+          />
         ))}
       </motion.div>
     </div>

@@ -1,10 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Icons } from './Icons';
 import { Song } from '../types';
 import { useAuth } from '../auth';
 import { useStore } from '../store';
 import { EditSongModal } from './EditSongModal';
 import { AddSongToCollectionDialog } from './AddSongToCollectionDialog';
+import { getAnchoredMenuPlacement } from '../utils/menuPlacement';
+import { feedback } from './feedback';
+import { LiquidGlassSurface } from './LiquidGlassSurface';
 
 interface UniversalContextMenuProps {
   isOpen: boolean;
@@ -16,7 +20,7 @@ interface UniversalContextMenuProps {
 
 export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOpen, onClose, anchorPosition, item, type }) => {
   const { user } = useAuth();
-  const { updateSong, deleteSong, isFavorite, toggleFavorite } = useStore();
+  const { updateSong, deleteSong, isFavorite, toggleFavorite, playNext, playLater } = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showCollectionDialog, setShowCollectionDialog] = useState(false);
@@ -43,8 +47,6 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isOpen, onClose, showEditModal]);
-
-  if (!isOpen) return null;
 
   if (showCollectionDialog) {
       return (
@@ -79,7 +81,7 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
     } catch (e) {
       if ((e as DOMException)?.name !== 'AbortError') {
         console.error('Menu action failed:', e);
-        alert('操作失败，请稍后重试');
+        feedback.error('操作失败，请稍后重试');
       }
     } finally {
       onClose();
@@ -88,7 +90,9 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
 
   const shareSong = async () => {
     const shareText = `${item.title} - ${item.artist}`;
-    const shareUrl = window.location.href;
+    const shareTarget = new URL(window.location.origin);
+    shareTarget.searchParams.set('song', item.id);
+    const shareUrl = shareTarget.toString();
     const shareData = {
       title: item.title,
       text: `我正在听 ${shareText}`,
@@ -103,14 +107,32 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
     const fallbackText = `${shareData.text}\n${shareUrl}`;
     if (navigator.clipboard) {
       await navigator.clipboard.writeText(fallbackText);
-      alert('已复制分享内容');
+      feedback.success('已复制歌曲分享内容');
       return;
     }
 
-    alert(fallbackText);
+    feedback.info(fallbackText, { duration: 8000 });
   };
 
   const menuItems = [
+    {
+      label: '下一首播放',
+      icon: Icons.SkipForward,
+      onClick: () => handleAction(() => {
+        playNext(item.id);
+        feedback.success(`接下来播放「${item.title}」`);
+      }),
+      danger: false,
+    },
+    {
+      label: '稍后播放',
+      icon: Icons.ListMusic,
+      onClick: () => handleAction(() => {
+        playLater(item.id);
+        feedback.success(`已将「${item.title}」加入待播末尾`);
+      }),
+      danger: false,
+    },
     {
       label: '分享此歌曲',
       icon: Icons.Share2,
@@ -161,46 +183,76 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
 
   if (menuItems.length === 0) return null;
 
+  const placement = getAnchoredMenuPlacement(anchorPosition, menuItems.length);
   const style: React.CSSProperties = anchorPosition ? {
       position: 'absolute',
-      left: Math.min(anchorPosition.x, window.innerWidth - 220), // Prevent overflow right
-      top: Math.min(anchorPosition.y, window.innerHeight - (menuItems.length * 50) - 20), // Prevent overflow bottom
       zIndex: 260,
+      left: placement?.left ?? 12,
+      top: placement?.top ?? 12,
   } : {
       position: 'fixed',
       bottom: 24,
       left: '50%',
-      transform: 'translateX(-50%)',
       zIndex: 260,
   };
+  const visibleMenuItems = placement?.opensUp ? [...menuItems].reverse() : menuItems;
 
   return (
-    <div className="fixed inset-0 z-[260]" style={{ pointerEvents: 'none' }}>
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="fixed inset-0 z-[260]"
+          style={{ pointerEvents: 'none' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+        >
         {/* Backdrop for click outside - handled by useEffect, but visual dimming can be added here if needed */}
         {/* <div className="absolute inset-0 bg-black/20 pointer-events-auto" onMouseDown={onClose} /> */}
         
-        <div 
+        <motion.div
             ref={menuRef}
-            className="bg-zinc-800/60 backdrop-blur-xl backdrop-saturate-150 border border-white/10 rounded-2xl shadow-2xl overflow-hidden min-w-[200px] pointer-events-auto animate-[scaleIn_0.1s_ease-out]"
+            className={`liquid-context-menu-panel liquid-context-menu-panel--enter ${
+              anchorPosition ? (placement?.opensUp ? 'liquid-context-menu-panel--up' : '') : 'liquid-context-menu-panel--centered'
+            } relative rounded-2xl w-[236px] pointer-events-auto`}
             style={style}
+            data-liquid-control-root
+            initial={anchorPosition ? { opacity: 0, left: placement?.left ?? 12, top: placement?.top ?? 12 } : { opacity: 0 }}
+            animate={anchorPosition ? { opacity: 1, left: placement?.left ?? 12, top: placement?.top ?? 12 } : { opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{
+              opacity: { duration: 0.34, ease: [0.22, 0.74, 0.22, 1] },
+              left: { type: 'spring', stiffness: 560, damping: 42, mass: 0.72 },
+              top: { type: 'spring', stiffness: 560, damping: 42, mass: 0.72 },
+            }}
         >
-            <div className="p-1.5">
-                {menuItems.map((menuItem, idx) => (
+            <LiquidGlassSurface material="shuding" />
+            <motion.div
+              className="relative z-10 p-1.5"
+              initial={{ opacity: 0, filter: 'blur(14px)' }}
+              animate={{ opacity: 1, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, filter: 'blur(8px)' }}
+              transition={{ duration: 0.46, delay: 0.04, ease: [0.22, 0.74, 0.22, 1] }}
+            >
+                {visibleMenuItems.map((menuItem, idx) => (
                     <button
-                        key={idx}
+                        key={`${menuItem.label}-${idx}`}
                         onClick={(e) => { e.stopPropagation(); menuItem.onClick(); }}
-                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors ${
+                        className={`liquid-glass-interactive ${menuItem.danger ? 'liquid-glass-semantic' : ''} w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors ${
                             menuItem.danger 
                             ? 'text-red-500 hover:bg-red-500/10' 
                             : 'text-zinc-300 hover:text-white hover:bg-white/10'
                         }`}
                     >
-                        {menuItem.icon && <menuItem.icon size={16} />}
+                        {menuItem.icon && <menuItem.icon size={16} data-liquid-adaptive={menuItem.danger ? undefined : 'true'} />}
                         {menuItem.label}
                     </button>
                 ))}
-            </div>
-        </div>
-    </div>
+            </motion.div>
+        </motion.div>
+      </motion.div>
+      )}
+    </AnimatePresence>
   );
 };

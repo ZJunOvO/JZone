@@ -1,12 +1,15 @@
 import React from 'react';
 import { Icons } from './Icons';
 import { UploadEditor } from './upload/UploadEditor';
+import { useCurrentArtistProfile } from '../hooks/useCurrentArtistProfile';
 
 interface UploadModalProps {
   onClose: () => void;
 }
 
 export const UploadModal: React.FC<UploadModalProps> = ({ onClose }) => {
+  const { profile, displayName } = useCurrentArtistProfile();
+
   return (
     <div className="fixed inset-0 z-[130] bg-black/90 backdrop-blur-xl overflow-y-auto">
       <div className="min-h-screen px-6 py-12 pb-32 max-w-lg mx-auto relative">
@@ -21,7 +24,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose }) => {
           </button>
         </div>
 
-        <UploadEditor variant="modal" onSaved={onClose} />
+        <UploadEditor variant="modal" defaultArtist={displayName} currentArtistProfile={profile} onSaved={onClose} />
       </div>
     </div>
   );

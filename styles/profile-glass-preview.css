@@ -1,0 +1,131 @@
+.profile-glass-preview {
+  height: 220px;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(37, 99, 235, 0.34), transparent 28%),
+    radial-gradient(circle at 86% 22%, rgba(244, 63, 94, 0.28), transparent 30%),
+    radial-gradient(circle at 50% 82%, rgba(34, 197, 94, 0.16), transparent 36%),
+    linear-gradient(145deg, #050505, #0a0d17 46%, #17080b);
+  border: 1px solid rgba(255,255,255,0.09);
+  box-shadow: inset 0 1px rgba(255,255,255,0.08), 0 18px 46px rgba(0,0,0,0.28);
+}
+
+.profile-glass-preview-bg {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.profile-glass-preview-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(1px);
+  opacity: 0.86;
+}
+
+.profile-glass-preview-orb-a {
+  right: 14px;
+  top: 28px;
+  width: 88px;
+  height: 88px;
+  background: conic-gradient(from 120deg, #38bdf8, #22c55e, #facc15, #fb7185, #38bdf8);
+}
+
+.profile-glass-preview-orb-b {
+  left: 18px;
+  bottom: 54px;
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, #2563eb, #e0f2fe);
+}
+
+.profile-glass-preview-card {
+  position: absolute;
+  width: 108px;
+  height: 74px;
+  border-radius: 18px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.08);
+  box-shadow: inset 0 1px rgba(255,255,255,0.12);
+}
+
+.profile-glass-preview-card span,
+.profile-glass-preview-card strong {
+  display: block;
+}
+
+.profile-glass-preview-card span {
+  font-size: 10px;
+  font-weight: 800;
+  color: rgba(255,255,255,0.54);
+}
+
+.profile-glass-preview-card strong {
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 950;
+  color: white;
+}
+
+.profile-glass-preview-card-a {
+  right: 22px;
+  bottom: 78px;
+}
+
+.profile-glass-preview-card-b {
+  left: 116px;
+  top: 86px;
+  background: linear-gradient(135deg, rgba(244,63,94,0.18), rgba(249,115,22,0.1));
+}
+
+.profile-glass-preview-dock {
+  overflow: hidden;
+  box-shadow: 0 18px 42px rgba(0,0,0,0.44);
+}
+
+.profile-glass-preview-effect {
+  z-index: 1;
+  background:
+    linear-gradient(130deg, rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.55)), rgba(255,255,255, 0.015) 52%, rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.38))),
+    rgba(255,255,255,var(--lg-f-tint-alpha, 0.035));
+  backdrop-filter:
+    var(--profile-glass-filter)
+    blur(var(--lg-f-blur, 3px))
+    contrast(var(--lg-f-contrast, 1))
+    brightness(var(--lg-f-brightness, 1.05))
+    saturate(var(--lg-f-saturation, 1.6));
+  -webkit-backdrop-filter:
+    var(--profile-glass-filter)
+    blur(var(--lg-f-blur, 3px))
+    contrast(var(--lg-f-contrast, 1))
+    brightness(var(--lg-f-brightness, 1.05))
+    saturate(var(--lg-f-saturation, 1.6));
+  box-shadow:
+    inset 0 1px rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.88)),
+    inset 0 -10px 25px rgba(0,0,0,0.15);
+}
+
+.profile-glass-preview-lens {
+  z-index: 3;
+  background:
+    radial-gradient(circle at 34% 14%, rgba(255,255,255, calc(var(--lg-f-specular-alpha, 0.5) * 0.9)), transparent 34%),
+    linear-gradient(130deg, rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.64)), rgba(255,255,255, 0.018) 50%, rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 0.42))),
+    rgba(255,255,255,var(--lg-f-lens-tint-alpha, 0.035));
+  backdrop-filter:
+    var(--profile-glass-lens-filter)
+    blur(var(--lg-f-lens-blur, 3px))
+    contrast(var(--lg-f-contrast, 1))
+    brightness(var(--lg-f-brightness, 1.05))
+    saturate(var(--lg-f-saturation, 1.6));
+  -webkit-backdrop-filter:
+    var(--profile-glass-lens-filter)
+    blur(var(--lg-f-lens-blur, 3px))
+    contrast(var(--lg-f-contrast, 1))
+    brightness(var(--lg-f-brightness, 1.05))
+    saturate(var(--lg-f-saturation, 1.6));
+  box-shadow:
+    inset 0 1px rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.5) * 1.08)),
+    inset 0 -1px rgba(0,0,0,0.26),
+    0 10px 26px rgba(0,0,0,0.36);
+}

@@ -7,9 +7,16 @@ export default defineConfig(() => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        allowedHosts: ['.trycloudflare.com'],
+      },
+      preview: {
+        allowedHosts: ['.trycloudflare.com', '.loca.lt'],
       },
       plugins: [react()],
       define: {},
+      optimizeDeps: {
+        exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
+      },
       build: {
         rollupOptions: {
           output: {

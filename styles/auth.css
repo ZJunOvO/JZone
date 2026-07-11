@@ -1,0 +1,180 @@
+.auth-aurora-page {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 16% 12%, rgba(71, 139, 143, 0.32), transparent 35%),
+    radial-gradient(circle at 86% 18%, rgba(176, 84, 112, 0.28), transparent 34%),
+    radial-gradient(circle at 50% 112%, rgba(184, 145, 78, 0.34), transparent 45%),
+    linear-gradient(155deg, #091019 0%, #131121 42%, #07130f 100%);
+}
+
+.auth-aurora-bg {
+  position: absolute;
+  inset: -24%;
+  z-index: -2;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(88, 178, 184, 0.42), transparent 30%),
+    radial-gradient(circle at 83% 16%, rgba(205, 91, 122, 0.36), transparent 31%),
+    radial-gradient(circle at 42% 88%, rgba(208, 165, 80, 0.34), transparent 36%),
+    radial-gradient(circle at 78% 76%, rgba(105, 91, 184, 0.28), transparent 34%),
+    linear-gradient(130deg, #08111a, #151022 44%, #071612);
+  filter: saturate(1.08);
+  animation: authAuroraPan 10s ease-in-out infinite alternate;
+}
+
+.auth-aurora-bg::before,
+.auth-aurora-bg::after {
+  content: "";
+  position: absolute;
+  inset: -8%;
+  pointer-events: none;
+}
+
+.auth-aurora-bg::before {
+  background:
+    conic-gradient(
+      from 180deg at 50% 50%,
+      rgba(91, 184, 190, 0.32),
+      rgba(199, 92, 124, 0.28),
+      rgba(218, 168, 80, 0.24),
+      rgba(107, 101, 190, 0.26),
+      rgba(91, 184, 190, 0.32)
+    );
+  filter: blur(46px);
+  opacity: 0.72;
+  animation: authAuroraSweep 9s ease-in-out infinite alternate;
+}
+
+.auth-aurora-bg::after {
+  background:
+    linear-gradient(108deg, transparent 10%, rgba(219, 236, 229, 0.16) 26%, transparent 43%),
+    linear-gradient(254deg, transparent 18%, rgba(230, 171, 131, 0.13) 42%, transparent 66%),
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.016) 1px, transparent 1px);
+  background-size: auto, auto, 42px 42px, 42px 42px;
+  mask-image: radial-gradient(circle at 50% 52%, #000 0%, transparent 74%);
+  opacity: 0.54;
+  animation: authAuroraVeil 8s ease-in-out infinite alternate;
+}
+
+.auth-aurora-field {
+  position: absolute;
+  width: 68vmax;
+  height: 56vmax;
+  border-radius: 999px;
+  filter: blur(42px);
+  opacity: 0.78;
+  mix-blend-mode: screen;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+}
+
+.auth-aurora-field-a {
+  left: -14%;
+  top: 2%;
+  background:
+    radial-gradient(circle at 32% 40%, rgba(88, 191, 198, 0.66), transparent 43%),
+    radial-gradient(circle at 70% 62%, rgba(88, 149, 105, 0.38), transparent 42%);
+  animation: authAuroraFloatA 9s ease-in-out infinite alternate;
+}
+
+.auth-aurora-field-b {
+  right: -18%;
+  top: 8%;
+  background:
+    radial-gradient(circle at 58% 38%, rgba(214, 89, 125, 0.56), transparent 40%),
+    radial-gradient(circle at 30% 72%, rgba(119, 105, 190, 0.38), transparent 44%);
+  animation: authAuroraFloatB 11s ease-in-out infinite alternate;
+}
+
+.auth-aurora-field-c {
+  left: 10%;
+  bottom: -30%;
+  width: 76vmax;
+  height: 46vmax;
+  background:
+    radial-gradient(circle at 42% 46%, rgba(219, 167, 77, 0.48), transparent 44%),
+    radial-gradient(circle at 72% 52%, rgba(75, 154, 130, 0.34), transparent 42%);
+  animation: authAuroraFloatC 12s ease-in-out infinite alternate;
+}
+
+.auth-aurora-light {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  filter: blur(16px);
+  opacity: 0.62;
+  mix-blend-mode: screen;
+}
+
+.auth-aurora-light-a {
+  left: 18%;
+  top: 22%;
+  width: 160px;
+  height: 160px;
+  background: rgba(181, 233, 220, 0.24);
+  animation: authAuroraPulse 7s ease-in-out infinite;
+}
+
+.auth-aurora-light-b {
+  right: 21%;
+  bottom: 18%;
+  width: 210px;
+  height: 210px;
+  background: rgba(229, 138, 112, 0.2);
+  animation: authAuroraPulse 9s ease-in-out infinite reverse;
+}
+
+.auth-liquid-card {
+  z-index: 1;
+  box-shadow:
+    0 28px 80px rgba(0,0,0,0.34),
+    0 0 80px rgba(141, 173, 179, 0.08);
+}
+
+@keyframes authAuroraFloatA {
+  from { transform: translate3d(-9%, -5%, 0) rotate(-14deg) scale(1); }
+  to { transform: translate3d(13%, 10%, 0) rotate(18deg) scale(1.14); }
+}
+
+@keyframes authAuroraFloatB {
+  from { transform: translate3d(10%, -8%, 0) rotate(16deg) scale(1.04); }
+  to { transform: translate3d(-12%, 13%, 0) rotate(-18deg) scale(1.16); }
+}
+
+@keyframes authAuroraFloatC {
+  from { transform: translate3d(-6%, 9%, 0) rotate(8deg) scale(1.05); }
+  to { transform: translate3d(9%, -12%, 0) rotate(-12deg) scale(1.18); }
+}
+
+@keyframes authAuroraSweep {
+  from { transform: translate3d(-8%, 5%, 0) rotate(-28deg) scale(1.02); opacity: 0.62; }
+  to { transform: translate3d(8%, -6%, 0) rotate(42deg) scale(1.18); opacity: 0.9; }
+}
+
+@keyframes authAuroraPan {
+  from { transform: translate3d(-4%, -3%, 0) scale(1.02); filter: saturate(1.04) hue-rotate(-4deg); }
+  to { transform: translate3d(4%, 3%, 0) scale(1.1); filter: saturate(1.18) hue-rotate(8deg); }
+}
+
+@keyframes authAuroraVeil {
+  from { transform: translate3d(-7%, 4%, 0) rotate(-4deg); opacity: 0.4; }
+  to { transform: translate3d(7%, -4%, 0) rotate(5deg); opacity: 0.72; }
+}
+
+@keyframes authAuroraPulse {
+  0%, 100% { transform: scale(0.92); opacity: 0.26; }
+  45% { transform: scale(1.14); opacity: 0.52; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-aurora-bg,
+  .auth-aurora-bg::before,
+  .auth-aurora-bg::after,
+  .auth-aurora-field,
+  .auth-aurora-light {
+    animation: none;
+  }
+}

@@ -45,6 +45,12 @@ const toCosError = (prefix: string, err: any) => {
   return new Error(`${prefix}${suffix ? `: ${suffix}` : ''}`);
 };
 
+export interface CosUploadProgress {
+  loaded: number;
+  total: number;
+  percent: number;
+}
+
 export const cosClient = {
   isEnabled: isCosEnabled,
 
@@ -53,7 +59,7 @@ export const cosClient = {
    * @param file 文件对象
    * @param path 存储路径 (例如: user123/song.mp3)
    */
-  async uploadFile(file: Blob, path: string, contentType?: string) {
+  async uploadFile(file: Blob, path: string, contentType?: string, onProgress?: (progress: CosUploadProgress) => void) {
     if (!cosInstance || !bucket || !region) throw new Error('COS 未配置');
 
     return new Promise((resolve, reject) => {
@@ -65,8 +71,10 @@ export const cosClient = {
           Body: file,
           ...(contentType ? { ContentType: contentType } : {}),
           onProgress: function (progressData) {
-            // 这里可以预留进度条回调接口
-            // console.log(JSON.stringify(progressData));
+            const total = typeof progressData.total === 'number' ? progressData.total : file.size;
+            const loaded = typeof progressData.loaded === 'number' ? progressData.loaded : Math.round((progressData.percent ?? 0) * total);
+            const percent = Math.max(0, Math.min(100, Math.round((progressData.percent ?? (total ? loaded / total : 0)) * 100)));
+            onProgress?.({ loaded, total, percent });
           },
         },
         function (err, data) {

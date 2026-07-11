@@ -124,6 +124,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ user, isCurrentUse
                 </button>
                 <button 
                     onClick={onSettings}
+                    aria-label="打开个人设置"
+                    data-testid="profile-settings-button"
                     className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white border border-white/10 active:scale-95 transition-transform"
                 >
                     <Icons.Settings size={18} />

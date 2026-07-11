@@ -1,0 +1,162 @@
+import React, { Suspense, lazy, useState } from 'react';
+import { motion } from 'framer-motion';
+import { PlayerBar } from '../PlayerBar';
+import { PwaInstallPrompt } from '../PwaInstallPrompt';
+import { listenModalPresence } from '../../modalPresence';
+import { getLiquidGlassCssVars, useLiquidGlassSettings } from '../../utils/liquidGlassSettings';
+import { useAutoFullscreen } from '../../hooks/useAutoFullscreen';
+import { useAppRoute } from '../../hooks/useAppRoute';
+import { BottomNavigation } from '../navigation/BottomNavigation';
+import { useStore } from '../../store';
+import { feedback } from '../feedback';
+import { useLiquidGlassAdaptiveForeground } from '../../hooks/useLiquidGlassAdaptiveForeground';
+
+const Home = lazy(() => import('../../pages/Home').then((module) => ({ default: module.Home })));
+const Library = lazy(() => import('../../pages/Library').then((module) => ({ default: module.Library })));
+const Upload = lazy(() => import('../../pages/Upload').then((module) => ({ default: module.Upload })));
+const Profile = lazy(() => import('../../pages/Profile').then((module) => ({ default: module.Profile })));
+const CollectionDetailPage = lazy(() => import('../../pages/CollectionDetailPage').then((module) => ({ default: module.CollectionDetailPage })));
+const PlayerView = lazy(() => import('../../pages/PlayerView').then((module) => ({ default: module.PlayerView })));
+
+const PageFallback = () => (
+  <div className="min-h-screen bg-black px-6 pt-16" aria-label="页面加载中">
+    <div className="h-8 w-28 animate-pulse rounded-lg bg-white/8" />
+    <div className="mt-8 h-40 animate-pulse rounded-3xl bg-white/[0.045]" />
+  </div>
+);
+
+export const AppShell: React.FC = () => {
+  const { songs, playContext } = useStore();
+  const liquidGlassSettings = useLiquidGlassSettings();
+  const liquidGlassCssVars = getLiquidGlassCssVars(liquidGlassSettings);
+  const {
+    activeTab,
+    setActiveTab,
+    profileUserId,
+    setProfileUserId,
+    collectionId,
+    closeCollection,
+  } = useAppRoute();
+  const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+  const [modalCount, setModalCount] = useState(0);
+  const [uploadMounted, setUploadMounted] = useState(activeTab === 'upload');
+  const sharedSongHandledRef = React.useRef<string | null>(null);
+
+  useAutoFullscreen();
+  useLiquidGlassAdaptiveForeground();
+
+  React.useEffect(() => {
+    return listenModalPresence((delta) => {
+      setModalCount((count) => Math.max(0, count + delta));
+    });
+  }, []);
+
+  React.useEffect(() => {
+    if (activeTab === 'upload') setUploadMounted(true);
+  }, [activeTab]);
+
+  React.useEffect(() => {
+    if (collectionId) setIsPlayerOpen(false);
+  }, [collectionId]);
+
+  React.useEffect(() => {
+    if (profileUserId) setIsPlayerOpen(false);
+  }, [profileUserId]);
+
+  React.useEffect(() => {
+    if (!songs.length) return;
+    const songId = new URL(window.location.href).searchParams.get('song');
+    if (!songId || sharedSongHandledRef.current === songId) return;
+    sharedSongHandledRef.current = songId;
+    const song = songs.find((item) => item.id === songId);
+    if (!song) {
+      feedback.error('这首歌曲不存在，或当前账号没有访问权限');
+      return;
+    }
+    playContext([song.id], song.id);
+    setIsPlayerOpen(true);
+  }, [playContext, songs]);
+
+  const isModalActive = modalCount > 0;
+
+  return (
+    <div className="jzone-app-shell max-w-md mx-auto bg-black h-screen overflow-hidden relative shadow-2xl flex flex-col" style={liquidGlassCssVars}>
+      <div className="jzone-glass-source flex-1 overflow-y-auto no-scrollbar scroll-smooth bg-black">
+        <Suspense fallback={<PageFallback />}>
+          {activeTab === 'home' && <Home />}
+          {activeTab === 'library' && <Library />}
+          {uploadMounted && (
+            <div className={activeTab === 'upload' ? 'block' : 'hidden'} aria-hidden={activeTab !== 'upload'}>
+              <Upload />
+            </div>
+          )}
+          {activeTab === 'profile' && (
+            <Profile userId={profileUserId} onBack={profileUserId ? () => setProfileUserId(undefined) : undefined} />
+          )}
+        </Suspense>
+      </div>
+
+      {collectionId && (
+        <Suspense fallback={null}>
+          <CollectionDetailPage collectionId={collectionId} onClose={closeCollection} />
+        </Suspense>
+      )}
+
+      {!isPlayerOpen && (
+        <motion.div
+          initial={false}
+          animate={
+            isModalActive
+              ? {
+                  top: 'calc(env(safe-area-inset-top) + 12px)',
+                  bottom: 'auto',
+                  left: '50%',
+                  right: 'auto',
+                  x: '-50%',
+                  width: 'min(320px, calc(100% - 24px))',
+                  scale: 0.985,
+                  opacity: 1,
+                }
+              : {
+                  top: 'auto',
+                  // 与底部导航的 SVG backdrop 采样边界保持间隔，避免 Chromium 合成层互相污染。
+                  bottom: '100px',
+                  left: '50%',
+                  right: 'auto',
+                  x: '-50%',
+                  width: 'min(400px, calc(100% - 24px))',
+                  scale: 1,
+                  opacity: 1,
+                }
+          }
+          transition={{
+            top: { type: 'spring', damping: 26, stiffness: 320 },
+            bottom: { type: 'spring', damping: 26, stiffness: 320 },
+            width: { type: 'spring', damping: 26, stiffness: 320 },
+            scale: { type: 'spring', damping: 24, stiffness: 360 },
+            opacity: { duration: 0.12 },
+          }}
+          className="fixed z-[160] transform-gpu"
+          style={{ willChange: 'transform, width, opacity' }}
+        >
+          <PlayerBar onExpand={() => setIsPlayerOpen(true)} variant={isModalActive ? 'island' : 'dock'} />
+        </motion.div>
+      )}
+
+      <BottomNavigation
+        currentTab={activeTab}
+        setTab={(tab) => {
+          setActiveTab(tab);
+          if (tab === 'profile') setProfileUserId(undefined);
+        }}
+      />
+
+      {isPlayerOpen && (
+        <Suspense fallback={null}>
+          <PlayerView onClose={() => setIsPlayerOpen(false)} />
+        </Suspense>
+      )}
+      <PwaInstallPrompt />
+    </div>
+  );
+};

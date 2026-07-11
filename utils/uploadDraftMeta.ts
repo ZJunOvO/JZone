@@ -1,10 +1,12 @@
 import type { UploadDraftMeta } from '../uploadDraftStorage';
+import type { SongArtistInput } from '../supabaseApi';
 
 export type UploadVisibility = 'public' | 'private';
 
 export interface NormalizedUploadDraftMeta {
   title: string;
   artist: string;
+  artistCredits: SongArtistInput[];
   album: string;
   genre: string;
   story: string;
@@ -29,6 +31,16 @@ const normalizeRange = (value: unknown): [number, number] | null => {
 export const normalizeUploadDraftMeta = (meta: UploadDraftMeta): NormalizedUploadDraftMeta => ({
   title: meta.title ?? '',
   artist: meta.artist ?? '',
+  artistCredits: Array.isArray(meta.artistCredits)
+    ? meta.artistCredits
+        .filter((credit) => typeof credit?.displayName === 'string' && credit.displayName.trim())
+        .map((credit, index) => ({
+          profileId: credit.profileId ?? null,
+          displayName: credit.displayName.trim(),
+          role: credit.role ?? (index === 0 ? 'primary' : 'featured'),
+          sortOrder: index,
+        }))
+    : [],
   album: meta.album ?? '',
   genre: meta.genre ?? '',
   story: meta.story ?? '',
@@ -40,6 +52,7 @@ export const normalizeUploadDraftMeta = (meta: UploadDraftMeta): NormalizedUploa
 export const createUploadDraftMeta = (input: {
   title: string;
   artist: string;
+  artistCredits: SongArtistInput[];
   album: string;
   genre: string;
   story: string;
@@ -49,6 +62,7 @@ export const createUploadDraftMeta = (input: {
 }): UploadDraftMeta => ({
   title: input.title,
   artist: input.artist,
+  artistCredits: input.artistCredits,
   album: input.album,
   genre: input.genre,
   story: input.story,

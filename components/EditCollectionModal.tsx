@@ -4,6 +4,7 @@ import { CollectionRow, supabaseApi } from '../supabaseApi';
 import { Icons } from './Icons';
 import { ImageCropperModal } from './ImageCropperModal';
 import { useAuth } from '../auth';
+import { prepareImageForEditing } from '../imageProcessing';
 
 export const EditCollectionModal: React.FC<{
   isOpen: boolean;
@@ -42,23 +43,31 @@ export const EditCollectionModal: React.FC<{
     }
   }, [isOpen, collection]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.addEventListener('load', () => {
-        setImageSrc(reader.result?.toString() || '');
-        setCropperOpen(true);
-      });
-      reader.readAsDataURL(file);
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
+    if (!file) return;
+    try {
+      const prepared = await prepareImageForEditing(file);
+      if (imageSrc?.startsWith('blob:')) URL.revokeObjectURL(imageSrc);
+      setImageSrc(URL.createObjectURL(prepared));
+      setCropperOpen(true);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : '封面读取失败');
     }
   };
 
   const handleCropComplete = (blob: Blob) => {
     setCoverBlob(blob);
+    if (coverPreview?.startsWith('blob:')) URL.revokeObjectURL(coverPreview);
     setCoverPreview(URL.createObjectURL(blob));
     setCropperOpen(false);
   };
+
+  useEffect(() => () => {
+    if (imageSrc?.startsWith('blob:')) URL.revokeObjectURL(imageSrc);
+    if (coverPreview?.startsWith('blob:')) URL.revokeObjectURL(coverPreview);
+  }, [coverPreview, imageSrc]);
 
   const submit = async () => {
     const t = title.trim();

@@ -1,0 +1,145 @@
+.liquid-glass-filter-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.frosted-glass-panel,
+.frosted-glass-menu,
+.frosted-auth-card {
+  position: relative;
+  isolation: isolate;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.045) 46%, rgba(255,255,255,0.08)),
+    rgba(18, 18, 22, 0.72);
+  border: 1px solid rgba(255,255,255,0.13);
+  box-shadow:
+    0 18px 46px rgba(0,0,0,0.42),
+    inset 0 1px 0 rgba(255,255,255,0.16);
+  backdrop-filter: blur(24px) saturate(1.42) brightness(1.05);
+  -webkit-backdrop-filter: blur(24px) saturate(1.42) brightness(1.05);
+}
+
+.frosted-glass-panel::before,
+.frosted-glass-menu::before,
+.frosted-auth-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255,255,255,0.16), transparent 34%),
+    linear-gradient(180deg, rgba(255,255,255,0.06), transparent 44%);
+  opacity: 0.86;
+}
+
+.frosted-glass-menu {
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05) 48%, rgba(255,255,255,0.09)),
+    rgba(24, 24, 28, 0.78);
+  backdrop-filter: blur(26px) saturate(1.46) brightness(1.06);
+  -webkit-backdrop-filter: blur(26px) saturate(1.46) brightness(1.06);
+}
+
+.frosted-auth-card {
+  background:
+    linear-gradient(140deg, rgba(255,255,255,0.16), rgba(255,255,255,0.055) 48%, rgba(255,255,255,0.1)),
+    rgba(12, 13, 18, 0.7);
+  border-color: rgba(255,255,255,0.16);
+  color: #fff;
+  text-shadow: 0 1px 12px rgba(0,0,0,0.42);
+  backdrop-filter: blur(30px) saturate(1.5) brightness(1.06);
+  -webkit-backdrop-filter: blur(30px) saturate(1.5) brightness(1.06);
+}
+
+.liquid-context-menu-panel {
+  --menu-motion-x: 0px;
+  transform-origin: 50% 92%;
+  box-shadow:
+    0 18px 42px rgba(0,0,0,0.34),
+    inset 0 1px rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.14) * 0.52));
+  will-change: transform, opacity;
+}
+
+.liquid-context-menu-content--enter {
+  animation: liquidMenuContentIn 0.48s cubic-bezier(0.22, 0.74, 0.22, 1) both;
+}
+
+@keyframes liquidMenuContentIn {
+  from {
+    opacity: 0;
+    filter: blur(14px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+.liquid-context-menu-panel--up {
+  transform-origin: 50% 8%;
+}
+
+.liquid-context-menu-panel--centered {
+  --menu-motion-x: -50%;
+}
+
+.liquid-context-menu-panel--enter {
+  animation: liquidMenuMaterialIn 0.64s cubic-bezier(0.22, 0.74, 0.22, 1) both;
+}
+
+@keyframes liquidMenuMaterialIn {
+  0% {
+    opacity: 0;
+    transform: translateX(var(--menu-motion-x)) translateY(10px) scale(0.78);
+  }
+  38% {
+    opacity: 0.68;
+    transform: translateX(var(--menu-motion-x)) translateY(4px) scale(0.92);
+  }
+  74% {
+    opacity: 0.94;
+    transform: translateX(var(--menu-motion-x)) translateY(-1px) scale(1.035);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(var(--menu-motion-x)) translateY(0) scale(1);
+  }
+}
+
+@keyframes liquidMenuMaterialInUp {
+  0% {
+    opacity: 0;
+    transform: translateX(var(--menu-motion-x)) translateY(-10px) scale(0.78);
+  }
+  38% {
+    opacity: 0.68;
+    transform: translateX(var(--menu-motion-x)) translateY(-4px) scale(0.92);
+  }
+  74% {
+    opacity: 0.94;
+    transform: translateX(var(--menu-motion-x)) translateY(1px) scale(1.035);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(var(--menu-motion-x)) translateY(0) scale(1);
+  }
+}
+
+.liquid-context-menu-panel--up.liquid-context-menu-panel--enter {
+  animation-name: liquidMenuMaterialInUp;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-context-menu-panel--enter {
+    animation: none;
+  }
+
+  .liquid-context-menu-content--enter {
+    animation: none;
+  }
+}

@@ -9,9 +9,13 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run build",
-    "smoke:auth": "node scripts/smoke-auth-tabs.mjs"
+    "smoke:auth": "node scripts/smoke-auth-tabs.mjs",
+    "smoke:collection": "node scripts/smoke-collection-detail.mjs"
   },
   "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@supabase/supabase-js": "^2.49.1",
     "cos-js-sdk-v5": "^1.10.1",
     "framer-motion": "10.16.4",

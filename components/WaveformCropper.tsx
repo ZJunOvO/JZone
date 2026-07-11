@@ -6,9 +6,10 @@ interface WaveformCropperProps {
   setRange: (range: [number, number]) => void;
   currentTime: number;
   onSeek: (time: number) => void;
+  onPlayFromStart?: () => void;
 }
 
-export const WaveformCropper: React.FC<WaveformCropperProps> = ({ duration, range, setRange, currentTime, onSeek }) => {
+export const WaveformCropper: React.FC<WaveformCropperProps> = ({ duration, range, setRange, currentTime, onSeek, onPlayFromStart }) => {
   const bars = useMemo(
     () =>
       Array.from({ length: 50 }, (_, index) => {
@@ -72,6 +73,21 @@ export const WaveformCropper: React.FC<WaveformCropperProps> = ({ duration, rang
       ))}
 
       <div className="absolute top-0 bottom-0 bg-red-500/10 border-x border-red-500/30" style={{ left: `${startPct}%`, right: `${100 - endPct}%` }} />
+
+      {onPlayFromStart ? (
+        <button
+          type="button"
+          aria-label="从裁剪起点播放"
+          className="absolute top-2 z-40 h-7 w-7 -translate-x-1/2 rounded-full bg-black/60 border border-white/10 flex items-center justify-center shadow-lg shadow-black/30 active:scale-95 transition"
+          style={{ left: `${startPct}%` }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onPlayFromStart();
+          }}
+        >
+          <span className="block w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-red-400" />
+        </button>
+      ) : null}
 
       <div className="absolute top-0 bottom-0 w-[2px] bg-white z-20 pointer-events-none shadow-[0_0_8px_rgba(255,255,255,0.5)]" style={{ left: `${playheadPct}%` }} />
 

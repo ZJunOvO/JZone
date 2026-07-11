@@ -11,11 +11,13 @@ interface MemoryCardModalProps {
   openNonce?: number;
 }
 
+type MemoryCardModalContentProps = Omit<MemoryCardModalProps, 'song'> & {
+  song: Song;
+};
+
 const lastMetaphorIndexBySongId = new Map<string, number>();
 
-export const MemoryCardModal: React.FC<MemoryCardModalProps> = ({ song, onClose, openNonce }) => {
-  if (!song) return null;
-
+const MemoryCardModalContent: React.FC<MemoryCardModalContentProps> = ({ song, onClose, openNonce }) => {
   const { user } = useAuth();
   const pad = (value: number) => value.toString().padStart(2, '0');
   const addedDate = new Date(song.addedAt);
@@ -286,4 +288,10 @@ export const MemoryCardModal: React.FC<MemoryCardModalProps> = ({ song, onClose,
       </div>
     </AnimatePresence>
   );
+};
+
+export const MemoryCardModal: React.FC<MemoryCardModalProps> = ({ song, onClose, openNonce }) => {
+  if (!song) return null;
+
+  return <MemoryCardModalContent song={song} onClose={onClose} openNonce={openNonce} />;
 };

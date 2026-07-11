@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, Reorder } from 'framer-motion';
 import { useAuth } from '../auth';
 import { useStore } from '../store';
 import { Song } from '../types';
@@ -12,6 +12,7 @@ import { CollectionContextMenu } from '../components/CollectionContextMenu';
 import { EditCollectionModal } from '../components/EditCollectionModal';
 import { extractAverageColor } from '../utils/extractAverageColor';
 import { CollectionHeaderSkeleton, SongRowSkeleton } from '../components/Skeletons';
+import { feedback } from '../components/feedback';
 
 export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () => void }> = ({ collectionId, onClose }) => {
   useModalPresence(true);
@@ -38,6 +39,8 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
   const [signedCoverUrl, setSignedCoverUrl] = useState<string | null>(null);
   const [showStickyTitle, setShowStickyTitle] = useState(false);
   const [pendingAddCount, setPendingAddCount] = useState(0);
+  const [isSortingSongs, setIsSortingSongs] = useState(false);
+  const reorderSaveTimerRef = useRef<number | null>(null);
 
   const titleRef = useRef<HTMLDivElement>(null);
 
@@ -65,7 +68,8 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
     }
   };
 
-  const isOwner = !!user && !!collection && collection.creator_id === user.id;
+  const isCreator = !!user && !!collection && collection.creator_id === user.id;
+  const canManageSongs = !!user && !!collection && (isCreator || orderedSongs.some((song) => song.ownerId === user.id));
 
   const reload = useCallback(async (silent = false) => {
     if (!supabaseApi.isEnabled()) return;
@@ -147,6 +151,14 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
     reload(!!collection).catch(() => {});
   }, [reload]);
 
+  useEffect(() => {
+    const handler = () => {
+      reload(true).catch(() => {});
+    };
+    window.addEventListener('jzone:collections-changed', handler);
+    return () => window.removeEventListener('jzone:collections-changed', handler);
+  }, [reload]);
+
   // Update signed cover url when collection changes
   useEffect(() => {
     if (collection?.cover_url) {
@@ -176,6 +188,21 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
     setPendingAddCount(ids.length);
     try {
       await supabaseApi.addSongsToCollection(collection.id, ids);
+      const albumTitle = collection.type === 'album' ? collection.title.trim() : '';
+      if (albumTitle) {
+        const ownedIds = ids.filter((id) => {
+          const song = store.songs.find((s) => s.id === id);
+          return !song?.ownerId || song.ownerId === user?.id;
+        });
+        if (ownedIds.length) {
+          try {
+            await Promise.all(ownedIds.map((id) => supabaseApi.updateSong(id, { album: albumTitle })));
+            store.patchSongs(ownedIds, { album: albumTitle });
+          } catch {
+            feedback.info('歌曲已加入专辑，但部分歌曲的专辑名同步失败，可稍后重试');
+          }
+        }
+      }
       
       // Auto-set cover if missing
       if (!collection.cover_url && ids.length > 0) {
@@ -189,11 +216,50 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
       await reload(true);
     } catch (e: any) {
       const msg = typeof e?.message === 'string' ? e.message : '添加失败';
-      alert(msg);
+      feedback.error(msg);
     } finally {
       setPendingAddCount(0);
     }
   };
+
+  const handleRemoveSong = async (song: Song) => {
+    if (!collection || !canManageSongs) return;
+    try {
+      await supabaseApi.removeSongsFromCollection(collection.id, [song.id]);
+      const shouldClearAlbum = collection.type === 'album' && song.ownerId === user?.id && song.album === collection.title;
+      if (shouldClearAlbum) {
+        try {
+          await supabaseApi.updateSong(song.id, { album: null });
+          store.patchSongs([song.id], { album: undefined });
+        } catch {
+          feedback.info('歌曲已移出专辑，但歌曲专辑名清理失败，可稍后重试');
+        }
+      }
+      await reload(true);
+    } catch (e: any) {
+      feedback.error(typeof e?.message === 'string' ? e.message : '移除失败');
+    }
+  };
+
+  const handleReorderSongs = (nextIds: string[]) => {
+    if (!collection || !isSortingSongs) return;
+    const byId = new Map(orderedSongs.map((song) => [song.id, song]));
+    const nextSongs = nextIds.map((id) => byId.get(id)).filter((song): song is Song => Boolean(song));
+    if (nextSongs.length !== orderedSongs.length) return;
+    setOrderedSongs(nextSongs);
+    if (reorderSaveTimerRef.current) window.clearTimeout(reorderSaveTimerRef.current);
+    reorderSaveTimerRef.current = window.setTimeout(() => {
+      supabaseApi.reorderCollectionSongs(collection.id, nextIds)
+        .catch((error: any) => {
+          feedback.error(typeof error?.message === 'string' ? error.message : '排序保存失败');
+          reload(true).catch(() => {});
+        });
+    }, 450);
+  };
+
+  useEffect(() => () => {
+    if (reorderSaveTimerRef.current) window.clearTimeout(reorderSaveTimerRef.current);
+  }, []);
 
   const handlePlayAll = () => {
     if (!orderedSongs.length) return;
@@ -250,7 +316,12 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
           transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           className="flex items-center justify-between px-6 pb-3 z-20 relative"
         >
-          <button onClick={onClose} className="bg-zinc-800/50 backdrop-blur-2xl rounded-full p-3 border border-white/10 shadow-2xl hover:bg-zinc-700 transition-colors text-white active:scale-95">
+          <button
+            onClick={onClose}
+            aria-label="返回集合列表"
+            data-testid="collection-detail-back"
+            className="bg-zinc-800/50 backdrop-blur-2xl rounded-full p-3 border border-white/10 shadow-2xl hover:bg-zinc-700 transition-colors text-white active:scale-95"
+          >
             <Icons.ChevronLeft size={20} />
           </button>
           
@@ -295,6 +366,7 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
                   setMenuAnchor({ x: rect.left, y: rect.top });
                   setMenuOpen(true);
                 }}
+                aria-label={`打开${collection?.type === 'album' ? '专辑' : '歌单'}更多操作`}
                 className="bg-zinc-800/50 backdrop-blur-2xl rounded-full p-3 border border-white/10 shadow-2xl hover:bg-zinc-700 transition-colors text-white active:scale-95"
               >
                 <Icons.MoreHorizontal size={20} />
@@ -369,7 +441,7 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
           )}
 
           <div className="px-6 mt-10 space-y-4">
-            {missingCount > 0 && !isOwner ? (
+            {missingCount > 0 && !isCreator ? (
               <div className="text-xs text-zinc-400 bg-white/5 border border-white/10 rounded-2xl px-4 py-3">
                 部分歌曲因隐私设置不可见
               </div>
@@ -383,56 +455,87 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
                   ))}
                 </div>
               ) : (
-                <>
+                <Reorder.Group
+                  axis="y"
+                  values={(isSortingSongs ? orderedSongs : filteredSongs).map((song) => song.id)}
+                  onReorder={handleReorderSongs}
+                  className="space-y-1"
+                >
                   {pendingAddCount > 0
                     ? Array.from({ length: pendingAddCount }).map((_, idx) => (
                         <SongRowSkeleton key={`pending-add-${idx}`} />
                       ))
                     : null}
-                  {filteredSongs.map((s, idx) => {
+                  {(isSortingSongs ? orderedSongs : filteredSongs).map((s, idx) => {
                   const isCurrent = store.playerState.currentSongId === s.id;
                   const isPlaying = isCurrent && store.playerState.isPlaying;
 
                   return (
-                    <button
+                    <Reorder.Item
                       key={s.id}
-                      onClick={() => {
-                        if (collection) {
-                          store.playCollection(
-                            orderedSongs.map((x) => x.id),
-                            s.id,
-                            { collectionId: collection.id, collectionType: collection.type }
-                          );
-                          if (collection.type === 'playlist') {
-                            setCollection((prev) => (prev ? { ...prev, play_count: (prev.play_count ?? 0) + 1 } : prev));
-                          }
-                          return;
-                        }
-                        store.playSong(s.id);
-                      }}
-                      className={`w-full flex items-center gap-4 p-3 rounded-2xl transition active:scale-[0.99] group ${isCurrent ? 'bg-zinc-800/60' : 'hover:bg-white/5'}`}
+                      value={s.id}
+                      dragListener={isSortingSongs}
+                      className={`w-full flex items-center rounded-2xl transition group ${isSortingSongs ? 'touch-none cursor-grab active:cursor-grabbing' : 'touch-pan-y'} ${isCurrent ? 'bg-zinc-800/60' : 'hover:bg-white/5'}`}
+                      whileDrag={{ scale: 1.015, backgroundColor: 'rgba(255,255,255,0.1)', zIndex: 20 }}
                     >
-                      <div className="w-6 text-center text-xs font-mono text-zinc-500 flex justify-center">
-                        {isPlaying ? (
-                          <div className="flex gap-[2px] justify-center items-end h-3">
-                            <div className="w-0.5 bg-red-500 animate-[bounce_1s_infinite] h-full"></div>
-                            <div className="w-0.5 bg-red-500 animate-[bounce_1.2s_infinite] h-2/3"></div>
-                            <div className="w-0.5 bg-red-500 animate-[bounce_0.8s_infinite] h-1/2"></div>
-                          </div>
-                        ) : (
-                          <span className={isCurrent ? 'text-red-500 font-bold' : 'group-hover:text-white'}>{idx + 1}</span>
-                        )}
-                      </div>
-                      <img src={s.coverUrl} className="w-12 h-12 rounded-xl object-cover bg-zinc-800 shadow-sm" alt="" loading="lazy" decoding="async" />
-                      <div className="flex-1 min-w-0 text-left">
-                        <div className={`text-sm font-bold truncate ${isCurrent ? 'text-red-500' : 'text-zinc-200 group-hover:text-white'}`}>{s.title}</div>
-                        <div className="text-xs font-medium text-zinc-500 truncate">{s.artist}</div>
-                      </div>
-                      {s.isPublic === false ? <Icons.Lock size={14} className="text-zinc-500 shrink-0" /> : null}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isSortingSongs) return;
+                          if (collection) {
+                            store.playCollection(
+                              orderedSongs.map((x) => x.id),
+                              s.id,
+                              { collectionId: collection.id, collectionType: collection.type }
+                            );
+                            if (collection.type === 'playlist') {
+                              setCollection((prev) => (prev ? { ...prev, play_count: (prev.play_count ?? 0) + 1 } : prev));
+                            }
+                            return;
+                          }
+                          store.playSong(s.id);
+                        }}
+                        className="min-w-0 flex flex-1 items-center gap-4 p-3 text-left transition active:scale-[0.99]"
+                      >
+                        <div className="w-6 text-center text-xs font-mono text-zinc-500 flex justify-center">
+                          {isPlaying ? (
+                            <div className="flex gap-[2px] justify-center items-end h-3">
+                              <div className="w-0.5 bg-red-500 animate-[bounce_1s_infinite] h-full"></div>
+                              <div className="w-0.5 bg-red-500 animate-[bounce_1.2s_infinite] h-2/3"></div>
+                              <div className="w-0.5 bg-red-500 animate-[bounce_0.8s_infinite] h-1/2"></div>
+                            </div>
+                          ) : (
+                            <span className={isCurrent ? 'text-red-500 font-bold' : 'group-hover:text-white'}>{idx + 1}</span>
+                          )}
+                        </div>
+                        <img src={s.coverUrl} className="w-12 h-12 rounded-xl object-cover bg-zinc-800 shadow-sm" alt="" loading="lazy" decoding="async" />
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-sm font-bold truncate ${isCurrent ? 'text-red-500' : 'text-zinc-200 group-hover:text-white'}`}>{s.title}</div>
+                          <div className="text-xs font-medium text-zinc-500 truncate">{s.artist}</div>
+                        </div>
+                        {s.isPublic === false ? <Icons.Lock size={14} className="text-zinc-500 shrink-0" /> : null}
+                      </button>
+                      {canManageSongs && isSortingSongs ? (
+                        <div className="mr-2 flex h-11 w-11 shrink-0 items-center justify-center text-white/55" aria-hidden="true">
+                          <Icons.GripVertical size={19} />
+                        </div>
+                      ) : canManageSongs ? (
+                        <button
+                          type="button"
+                          aria-label={`从${collection?.type === 'album' ? '专辑' : '歌单'}移除 ${s.title}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveSong(s);
+                          }}
+                          className="mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/28 transition hover:bg-red-500/10 hover:text-red-400 active:scale-95"
+                        >
+                          <Icons.X size={15} />
+                        </button>
+                      ) : null}
+                    </Reorder.Item>
                   );
                 })}
-                </>
+                </Reorder.Group>
               )}
 
               {!loading && !orderedSongs.length ? <div className="text-center text-zinc-500 text-sm py-10">还没有歌曲</div> : null}
@@ -460,18 +563,32 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
 
             <button
               onClick={() => setIsAddOpen(true)}
-              className="w-11 h-11 rounded-full bg-zinc-800/50 backdrop-blur-2xl border border-white/10 text-white flex items-center justify-center shadow-2xl hover:bg-zinc-700 transition active:scale-95"
+              disabled={!canManageSongs}
+              className={`w-11 h-11 rounded-full bg-zinc-800/50 backdrop-blur-2xl border border-white/10 text-white flex items-center justify-center shadow-2xl transition active:scale-95 ${
+                canManageSongs ? 'hover:bg-zinc-700' : 'opacity-35 cursor-not-allowed'
+              }`}
               title="添加歌曲"
             >
               <Icons.PlusCircle size={20} />
             </button>
 
             <button
-              onClick={() => alert('多选功能即将开放')}
-              className="w-11 h-11 rounded-full bg-zinc-800/50 backdrop-blur-2xl border border-white/10 text-white flex items-center justify-center shadow-2xl hover:bg-zinc-700 transition active:scale-95"
-              title="多选"
+              onClick={() => {
+                setIsSearchActive(false);
+                setSearchQuery('');
+                setIsSortingSongs((value) => !value);
+              }}
+              disabled={!canManageSongs}
+              className={`min-w-11 h-11 px-3 rounded-full backdrop-blur-2xl border text-white flex items-center justify-center gap-2 shadow-2xl transition active:scale-95 ${
+                isSortingSongs ? 'bg-white text-black border-white' : 'bg-zinc-800/50 border-white/10'
+              } ${
+                canManageSongs ? 'hover:bg-zinc-700' : 'opacity-35 cursor-not-allowed'
+              }`}
+              title={isSortingSongs ? '完成排序' : '调整歌曲顺序'}
+              aria-pressed={isSortingSongs}
             >
-              <Icons.List size={20} />
+              {isSortingSongs ? <Icons.Check size={18} /> : <Icons.GripVertical size={18} />}
+              <span className="text-xs font-bold">{isSortingSongs ? '完成' : '排序'}</span>
             </button>
           </div>
         </div>
@@ -482,12 +599,12 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
             onClose={() => setMenuOpen(false)}
             anchorPosition={menuAnchor}
             collection={collection}
-            isOwner={isOwner}
+            canManageCollection={canManageSongs}
             onToggleVisibility={(next) => {
               supabaseApi
                 .setCollectionVisibility(collection.id, next)
                 .then(() => setCollection((prev) => (prev ? { ...prev, visibility: next } : prev)))
-                .catch((e: any) => alert(typeof e?.message === 'string' ? e.message : '操作失败'));
+                .catch((e: any) => feedback.error(typeof e?.message === 'string' ? e.message : '操作失败'));
             }}
             onEdit={() => setIsEditOpen(true)}
             onSearch={() => setIsSearchActive(true)}
@@ -496,7 +613,7 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
                 supabaseApi
                   .deleteCollection(collection.id)
                   .then(() => onClose())
-                  .catch((e: any) => alert(typeof e?.message === 'string' ? e.message : '删除失败'));
+                  .catch((e: any) => feedback.error(typeof e?.message === 'string' ? e.message : '删除失败'));
               }
             }}
             onTogglePin={() => {
@@ -504,7 +621,7 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
               supabaseApi
                 .updateCollection(collection.id, { pinnedAt: nextPinnedAt })
                 .then(() => setCollection((prev) => (prev ? { ...prev, pinned_at: nextPinnedAt } : prev)))
-                .catch((e: any) => alert(typeof e?.message === 'string' ? e.message : '操作失败'));
+                .catch((e: any) => feedback.error(typeof e?.message === 'string' ? e.message : '操作失败'));
             }}
           />
         ) : null}

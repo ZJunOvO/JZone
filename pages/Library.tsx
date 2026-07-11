@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
-import { LibraryCanvas } from '../components/LibraryCanvas';
+import { LibraryCanvas, type LibraryBentoItem } from '../components/LibraryCanvas';
 import { UploadModal } from '../components/UploadModal';
 import { MemoryCardModal } from '../components/MemoryCardModal';
 import { UniversalContextMenu } from '../components/UniversalContextMenu';
@@ -11,11 +11,12 @@ import { motion, PanInfo, useAnimation } from 'framer-motion';
 import { useModalPresence } from '../modalPresence';
 import { useAuth } from '../auth';
 import { CollectionRow, supabaseApi } from '../supabaseApi';
+import { LiquidGlassSurface } from '../components/LiquidGlassSurface';
 
 type LibraryContentType = 'songs' | 'albums' | 'playlists';
-type LibraryFilter = 'all' | 'mine' | 'public' | 'private' | 'favorites';
+type LibraryFilter = 'all' | 'mine' | 'collaborations' | 'public' | 'private' | 'favorites';
 
-const SwipeableListItem = ({ song, index, playSong, deleteSong, currentSongId, isPlaying, onContextMenu }: any) => {
+const SwipeableListItem = ({ song, index, playSong, deleteSong, currentSongId, isPlaying, onContextMenu, isMenuTarget }: any) => {
   const controls = useAnimation();
   const [isDeleting, setIsDeleting] = useState(false);
   const longPressTimerRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -68,7 +69,13 @@ const SwipeableListItem = ({ song, index, playSong, deleteSong, currentSongId, i
         dragElastic={0.1}
         onDragEnd={handleDragEnd}
         animate={controls}
-        className={`relative bg-black flex items-center p-3 cursor-pointer hover:bg-zinc-900 transition active:scale-[0.99] ${currentSongId === song.id ? 'bg-zinc-900' : ''}`}
+        className={`relative flex items-center p-3 cursor-pointer transition active:scale-[0.99] ${
+          isMenuTarget
+            ? 'bg-zinc-800/95 ring-1 ring-inset ring-white/18 shadow-[0_10px_28px_rgba(0,0,0,0.32)]'
+            : currentSongId === song.id
+              ? 'bg-zinc-900'
+              : 'bg-black hover:bg-zinc-900'
+        }`}
         onClick={() => playSong(song.id)}
         onContextMenu={(e) => { e.preventDefault(); onContextMenu(song, { x: e.clientX, y: e.clientY }); }}
         onTouchStart={handleTouchStart}
@@ -159,9 +166,10 @@ const CollectionListItem = ({ collection, userId }: { collection: CollectionRow;
 };
 
 export const Library: React.FC = () => {
-  const { songs, playSong, deleteSong, playerState, favoriteSongIds } = useStore();
+  const { songs, playContext, deleteSong, playerState, favoriteSongIds } = useStore();
   const { user } = useAuth();
   const [viewMode, setViewMode] = useState<'list' | 'canvas'>('list');
+  const [bentoEditing, setBentoEditing] = useState(false);
   const [contentType, setContentType] = useState<LibraryContentType>('songs');
   const [activeFilter, setActiveFilter] = useState<LibraryFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -175,6 +183,7 @@ export const Library: React.FC = () => {
   const [createMenuAnchor, setCreateMenuAnchor] = useState<{ x: number; y: number } | undefined>(undefined);
   const [createType, setCreateType] = useState<'album' | 'playlist'>('album');
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [collaboratingSongIds, setCollaboratingSongIds] = useState<Set<string>>(new Set());
 
   useModalPresence(!!memorySong);
 
@@ -205,10 +214,27 @@ export const Library: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!user?.id || !supabaseApi.isEnabled()) {
+      setCollaboratingSongIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    supabaseApi.fetchCollaboratingSongIds(user.id)
+      .then((ids) => {
+        if (!cancelled) setCollaboratingSongIds(new Set(ids));
+      })
+      .catch(() => {
+        if (!cancelled) setCollaboratingSongIds(new Set());
+      });
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredSongs = useMemo(() => {
     return songs.filter((song) => {
       if (activeFilter === 'mine' && song.ownerId !== user?.id) return false;
+      if (activeFilter === 'collaborations' && !collaboratingSongIds.has(song.id)) return false;
       if (activeFilter === 'public' && (song.isPublic === false || song.visibility === 'private')) return false;
       if (activeFilter === 'private' && !(song.isPublic === false || song.visibility === 'private')) return false;
       if (activeFilter === 'favorites' && !favoriteSongIds.includes(song.id)) return false;
@@ -216,7 +242,7 @@ export const Library: React.FC = () => {
       const haystack = `${song.title} ${song.artist} ${song.album ?? ''} ${song.genre ?? ''}`.toLowerCase();
       return haystack.includes(normalizedQuery);
     });
-  }, [activeFilter, favoriteSongIds, normalizedQuery, songs, user?.id]);
+  }, [activeFilter, collaboratingSongIds, favoriteSongIds, normalizedQuery, songs, user?.id]);
 
   const filteredCollections = useMemo(() => {
     return collections.filter((collection) => {
@@ -236,16 +262,22 @@ export const Library: React.FC = () => {
     const base: Array<{ id: LibraryFilter; label: string }> = [
       { id: 'all', label: '全部' },
       { id: 'mine', label: '我的' },
+      { id: 'collaborations', label: '合作' },
       { id: 'public', label: '公开' },
       { id: 'private', label: '私有' },
     ];
     if (contentType === 'songs') base.splice(1, 0, { id: 'favorites', label: '收藏' });
+    else return base.filter((filter) => filter.id !== 'collaborations');
     return base;
   }, [contentType]);
 
   useEffect(() => {
-    if (contentType !== 'songs' && activeFilter === 'favorites') setActiveFilter('all');
+    if (contentType !== 'songs' && (activeFilter === 'favorites' || activeFilter === 'collaborations')) setActiveFilter('all');
   }, [activeFilter, contentType]);
+
+  useEffect(() => {
+    if (viewMode === 'list') setBentoEditing(false);
+  }, [viewMode]);
 
   const handleBentoLongPress = (songId: string) => {
     const song = songs.find(s => s.id === songId);
@@ -259,41 +291,111 @@ export const Library: React.FC = () => {
       setContextMenu({ isOpen: true, anchor, item: song });
   };
 
+  const bentoItems = useMemo<LibraryBentoItem[]>(() => {
+    if (contentType === 'songs') {
+      return filteredSongs.map((song) => ({
+        id: song.id,
+        title: song.title,
+        subtitle: song.artist,
+        coverUrl: song.coverUrl,
+        kind: 'song',
+        pinned: Boolean(song.pinnedAt),
+      }));
+    }
+    return filteredCollections.map((collection) => ({
+      id: collection.id,
+      title: collection.title,
+      subtitle: collection.type === 'album' ? '专辑' : '歌单',
+      coverUrl: collection.cover_url ?? undefined,
+      kind: collection.type,
+      pinned: Boolean(collection.pinned_at),
+    }));
+  }, [contentType, filteredCollections, filteredSongs]);
+
+  const openBentoItem = (id: string) => {
+    if (contentType === 'songs') {
+      playContext(filteredSongs.map((song) => song.id), id);
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('jzone:navigate-collection', { detail: { id } }));
+  };
+
   return (
     <div className={`min-h-screen ${viewMode === 'list' ? 'pb-24 pt-12 px-6' : 'pt-0 pb-0'}`}>
        
        {/* Header with View Toggle */}
-       <div className={`flex items-center ${viewMode === 'canvas' ? 'justify-end absolute top-12 right-6 z-30 pointer-events-none' : 'justify-between mb-6'}`}>
+       <div className={`flex items-center ${viewMode === 'canvas' ? 'justify-end absolute top-12 inset-x-6 z-30 pointer-events-none' : 'justify-between mb-6'}`}>
            {viewMode === 'list' && (
              <h1 className="text-3xl font-extrabold text-white tracking-tight pointer-events-auto drop-shadow-md">资料库</h1>
            )}
+           {viewMode === 'canvas' && (
+             <div className="pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-white/72 drop-shadow-[0_1px_8px_rgba(0,0,0,0.8)]">
+               {contentType === 'songs' ? '歌曲' : contentType === 'albums' ? '专辑' : '歌单'} · {filterOptions.find((filter) => filter.id === activeFilter)?.label ?? '全部'}
+             </div>
+           )}
            
-           <div className="flex gap-2 pointer-events-auto">
-               <button 
+           <div className="flex gap-2 pointer-events-auto" data-library-glass-controls>
+             <div className="relative h-11 w-11 overflow-hidden rounded-full" data-liquid-control-root>
+               <LiquidGlassSurface borderRadiusClass="rounded-full" material="shuding" />
+               <button
+                 type="button"
+                 aria-label="打开资料库新建菜单"
+                 title="新建"
                  onClick={(e) => {
                    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
                    setCreateMenuAnchor({ x: rect.left, y: rect.bottom + 8 });
                    setCreateMenuOpen((prev) => !prev);
                  }}
-                  className="bg-zinc-800/50 backdrop-blur-2xl rounded-full p-3 border border-white/10 shadow-2xl hover:bg-zinc-700 transition-colors text-white"
+                 className="liquid-glass-interactive relative z-10 flex h-full w-full items-center justify-center rounded-full transition-colors"
+                 data-liquid-adaptive="true"
                >
-                   <Icons.PlusCircle size={18} />
+                 <Icons.PlusCircle size={18} />
                </button>
+             </div>
 
-               <div className="bg-zinc-800/50 backdrop-blur-2xl rounded-full p-1 flex gap-1 border border-white/10 shadow-2xl transition-colors duration-300">
-                   <button 
-                      onClick={() => setViewMode('list')}
-                      className={`p-2 rounded-full transition-all ${viewMode === 'list' ? 'bg-zinc-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
-                   >
-                       <Icons.ListMusic size={18} />
-                   </button>
-                   <button 
-                      onClick={() => setViewMode('canvas')}
-                      className={`p-2 rounded-full transition-all ${viewMode === 'canvas' ? 'bg-zinc-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
-                   >
-                       <Icons.Search size={18} /> {/* Using Search icon as a metaphor for exploration */}
-                   </button>
+             <div className="relative h-11 w-[84px] overflow-hidden rounded-full" data-liquid-control-root>
+               <LiquidGlassSurface borderRadiusClass="rounded-full" material="shuding" />
+               <div className="relative z-10 flex h-full w-full items-center gap-1 rounded-full p-1">
+                 <button
+                   type="button"
+                   onClick={() => {
+                     setBentoEditing(false);
+                     setViewMode('list');
+                   }}
+                   aria-label="切换到列表视图"
+                   title="列表视图"
+                   className={`liquid-glass-interactive flex h-9 w-9 items-center justify-center rounded-full transition-all ${viewMode === 'list' ? 'bg-white/[0.18] shadow-sm' : ''}`}
+                   data-liquid-adaptive="true"
+                 >
+                   <Icons.ListMusic size={18} />
+                 </button>
+                 <button
+                   type="button"
+                   onClick={() => setViewMode('canvas')}
+                   aria-label="切换到 Bento 视图"
+                   title="Bento 视图"
+                   className={`liquid-glass-interactive flex h-9 w-9 items-center justify-center rounded-full transition-all ${viewMode === 'canvas' ? 'bg-white/[0.18] shadow-sm' : ''}`}
+                   data-liquid-adaptive="true"
+                 >
+                   <Icons.LayoutDashboard size={18} />
+                 </button>
                </div>
+             </div>
+             {viewMode === 'canvas' && (
+               <div className="relative h-11 w-11 overflow-hidden rounded-full" data-liquid-control-root>
+                 <LiquidGlassSurface borderRadiusClass="rounded-full" material="shuding" />
+                 <button
+                   type="button"
+                   onClick={() => setBentoEditing((value) => !value)}
+                   className={`liquid-glass-interactive relative z-10 flex h-full w-full items-center justify-center rounded-full transition-all ${bentoEditing ? 'bg-white/[0.18]' : ''}`}
+                   data-liquid-adaptive="true"
+                   aria-label={bentoEditing ? '完成 Bento 布局调整' : '调整 Bento 布局'}
+                   title={bentoEditing ? '完成调整' : '调整布局'}
+                 >
+                   {bentoEditing ? <Icons.Check size={19} /> : <Icons.GripVertical size={19} />}
+                 </button>
+               </div>
+             )}
            </div>
        </div>
        
@@ -353,11 +455,12 @@ export const Library: React.FC = () => {
                             key={song.id}
                             song={song}
                             index={index}
-                            playSong={playSong}
+                            playSong={(songId: string) => playContext(filteredSongs.map((item) => item.id), songId)}
                             deleteSong={deleteSong}
                             currentSongId={playerState.currentSongId}
                             isPlaying={playerState.isPlaying}
                             onContextMenu={handleContextMenu}
+                            isMenuTarget={contextMenu?.item.id === song.id}
                         />
                      ))
                    ) : (
@@ -378,13 +481,16 @@ export const Library: React.FC = () => {
            </>
        ) : (
            /* Canvas View */
-           <LibraryCanvas 
-               songs={songs} 
-               onPlay={playSong} 
-               // Bento view no longer deletes directly
-               onLongPress={handleBentoLongPress}
-               currentSongId={playerState.currentSongId} 
-               isPlaying={playerState.isPlaying}
+           <LibraryCanvas
+               items={bentoItems}
+               onOpen={openBentoItem}
+               onLongPress={contentType === 'songs' ? handleBentoLongPress : undefined}
+               currentItemId={contentType === 'songs' ? playerState.currentSongId : null}
+               selectedItemId={contentType === 'songs' ? contextMenu?.item.id : null}
+               isPlaying={contentType === 'songs' && playerState.isPlaying}
+               layoutKey={`${user?.id ?? 'guest'}:${contentType}:${activeFilter}`}
+               isEditing={bentoEditing}
+               onEditingChange={setBentoEditing}
            />
        )}
 
@@ -405,10 +511,12 @@ export const Library: React.FC = () => {
          <div className="fixed inset-0 z-[260]" style={{ pointerEvents: 'none' }}>
            <div className="absolute inset-0 pointer-events-auto" onClick={() => setCreateMenuOpen(false)} />
            <div
-             className="absolute bg-zinc-800/60 backdrop-blur-xl backdrop-saturate-150 border border-white/10 rounded-2xl shadow-2xl overflow-hidden min-w-[220px] pointer-events-auto"
+             className="liquid-context-menu-panel liquid-context-menu-panel--enter absolute min-w-[220px] overflow-hidden rounded-2xl pointer-events-auto"
              style={{ left: Math.min(createMenuAnchor.x, window.innerWidth - 240), top: createMenuAnchor.y }}
+             data-liquid-control-root
            >
-             <div className="p-1.5">
+             <LiquidGlassSurface material="shuding" />
+             <div className="liquid-context-menu-content--enter relative z-10 p-1.5">
                <button
                  onClick={() => {
                    setCreateMenuOpen(false);
@@ -416,7 +524,7 @@ export const Library: React.FC = () => {
                  }}
                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10"
                >
-                 <Icons.Upload size={16} />
+                 <Icons.Upload size={16} data-liquid-adaptive="true" />
                  上传音乐
                </button>
                <button
@@ -428,7 +536,7 @@ export const Library: React.FC = () => {
                  }}
                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-50"
                >
-                 <Icons.Disc size={16} />
+                 <Icons.Disc size={16} data-liquid-adaptive="true" />
                  新建专辑
                </button>
                <button
@@ -440,7 +548,7 @@ export const Library: React.FC = () => {
                  }}
                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-50"
                >
-                 <Icons.ListMusic size={16} />
+                 <Icons.ListMusic size={16} data-liquid-adaptive="true" />
                  新建歌单
                </button>
              </div>

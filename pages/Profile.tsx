@@ -5,9 +5,11 @@ import { useAuth } from '../auth';
 import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { CollectionRow, supabaseApi, ProfileRow } from '../supabaseApi';
-import { cosClient } from '../cosClient';
 import { useModalPresence } from '../modalPresence';
 import { AvatarFrameModal } from '../components/AvatarFrameModal';
+import { ProfileContent } from '../components/profile/ProfileContent';
+import { ProfileBackgroundSheet } from '../components/profile/ProfileBackgroundSheet';
+import { ProfileSettingsSheet } from '../components/profile/ProfileSettingsSheet';
 
 import { StatusSelector } from '../components/StatusSelector';
 import { ImageCropperModal } from '../components/ImageCropperModal';
@@ -16,6 +18,7 @@ import { CollectionContextMenu } from '../components/CollectionContextMenu';
 import { EditCollectionModal } from '../components/EditCollectionModal';
 import { Song } from '../types';
 import { CreateCollectionModal } from '../components/CreateCollectionModal';
+import { feedback } from '../components/feedback';
 
 interface ProfileProps {
   userId?: string; // If undefined, show current user
@@ -24,7 +27,7 @@ interface ProfileProps {
 
 export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
   const { user, signOut } = useAuth();
-  const { songs, playSong, favoriteSongIds } = useStore();
+  const { songs, playContext, favoriteSongIds } = useStore();
   const PROFILE_CACHE_PREFIX = 'jzone_profile_cache_v1:';
   const [activeTab, setActiveTab] = useState<'creation' | 'collection'>('creation');
   const [activeSubTab, setActiveSubTab] = useState<string>('uploads');
@@ -141,7 +144,6 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
     isOpen: false,
     imageSrc: null,
   });
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isBackgroundManagerOpen, setIsBackgroundManagerOpen] = useState(false);
   const [isAvatarFrameOpen, setIsAvatarFrameOpen] = useState(false);
   const [isStatusSelectorOpen, setIsStatusSelectorOpen] = useState(false);
@@ -199,7 +201,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
     } catch (e) {
       const msg = typeof (e as any)?.message === 'string' ? (e as any).message : '';
       console.error('Upload failed', e);
-      alert(msg || '上传失败：请检查腾讯云 COS 是否欠费、密钥权限与 Bucket 区域配置');
+      feedback.error(msg || '上传失败：请检查存储服务配置后重试');
     }
   };
 
@@ -221,7 +223,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
       });
     } catch (e) {
       console.error(e);
-      alert('更新状态失败，请重试');
+      feedback.error('更新状态失败，请重试');
     }
   };
 
@@ -252,7 +254,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
       });
     } catch (e) {
       console.error(e);
-      alert('保存失败，请重试');
+      feedback.error('保存失败，请重试');
       throw e;
     }
   };
@@ -300,7 +302,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
     } catch (err) {
         const msg = typeof (err as any)?.message === 'string' ? (err as any).message : '';
         console.error('Failed to update profile:', err);
-        alert(msg || '保存失败：请检查腾讯云 COS 是否欠费、密钥权限与 Bucket 区域配置');
+        feedback.error(msg || '保存失败：请检查存储服务配置后重试');
     }
   };
 
@@ -325,33 +327,6 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
           }
       }, 500);
   };
-
-  useEffect(() => {
-    let cancelled = false;
-    const resolve = async (raw: string | null | undefined, kind: 'avatar' | 'cover') => {
-      if (!raw) return undefined;
-      try {
-        if (kind === 'avatar') return await supabaseApi.createSignedAvatarUrl(raw, 3600);
-        return await supabaseApi.createSignedCoverUrl(raw, 3600);
-      } catch {
-        return raw;
-      }
-    };
-
-    (async () => {
-      const rawAvatar = profileData?.avatar_url ?? (isCurrentUser ? (user?.user_metadata?.avatar_url as string | undefined) : undefined) ?? undefined;
-      const rawCover = profileData?.cover_url ?? (isCurrentUser ? (user?.user_metadata?.cover_url as string | undefined) : undefined) ?? undefined;
-
-      const [avatar, cover] = await Promise.all([resolve(rawAvatar, 'avatar'), resolve(rawCover, 'cover')]);
-      if (cancelled) return;
-      setResolvedAvatarUrl(avatar);
-      setResolvedCoverUrl(cover);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [profileData?.avatar_url, profileData?.cover_url, user?.user_metadata?.avatar_url, user?.user_metadata?.cover_url, isCurrentUser]);
 
   const getQQAvatar = (email?: string) => {
     if (!email) return undefined;
@@ -431,251 +406,6 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
   const myAlbums = collections.filter((c) => c.type === 'album');
   const myPlaylists = collections.filter((c) => c.type === 'playlist');
 
-  const handleCollectionLongPress = (e: React.TouchEvent | React.MouseEvent, collection: CollectionRow) => {
-     if (!isCurrentUser) return;
-     // If touch event, prevent default to stop context menu
-     // Logic handled by touch handlers usually, but here we invoke menu
-     // e.preventDefault(); 
-     // We need clientX/Y. For touch, it's e.touches[0]
-     let clientX, clientY;
-     if ('touches' in e) {
-         clientX = e.touches[0].clientX;
-         clientY = e.touches[0].clientY;
-     } else {
-         clientX = (e as React.MouseEvent).clientX;
-         clientY = (e as React.MouseEvent).clientY;
-     }
-     setCollectionMenu({ isOpen: true, anchor: { x: clientX, y: clientY }, item: collection });
-  };
-
-  const renderContent = () => {
-    return (
-        <AnimatePresence mode="wait">
-            <motion.div
-                key={activeTab}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="min-h-[400px]"
-            >
-                {activeTab === 'creation' && (
-                    <div className="grid grid-cols-1 gap-4 pb-32">
-                        {/* Sub-tabs for Creation */}
-                        <div className="flex gap-4 px-6 overflow-x-auto no-scrollbar justify-center">
-                            {[
-                                { id: 'uploads', label: '收录', count: myUploads.length },
-                                { id: 'albums', label: '专辑', count: myAlbums.length },
-                                { id: 'playlists', label: '歌单', count: myPlaylists.length }
-                            ].map(sub => (
-                                <button 
-                                    key={sub.id}
-                                    onClick={() => setActiveSubTab(sub.id)}
-                                    className={`px-3 py-1 text-sm font-bold transition-colors relative group ${activeSubTab === sub.id ? 'text-white' : 'text-white/40 hover:text-white/60'}`}
-                                >
-                                    <span className="relative inline-block pr-3">
-                                        {sub.label}
-                                        <sup className="absolute top-[2px] right-0 text-[10px] leading-none opacity-80">{sub.count}</sup>
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Content based on Sub-tab */}
-                        {activeSubTab === 'uploads' && (
-                             <div className="px-6 space-y-2">
-                                {myUploads.map((song) => (
-                                    <button
-                                        key={song.id}
-                                        onClick={() => playSong(song.id)}
-                                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ isOpen: true, anchor: { x: e.clientX, y: e.clientY }, item: song }); }}
-                                        className="w-full flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition active:scale-[0.98] text-left"
-                                    >
-                                        <div className="relative">
-                                            <img src={song.coverUrl} loading="lazy" decoding="async" className="w-12 h-12 rounded-lg object-cover shadow-lg" alt={song.title} />
-                                            {song.pinnedAt && (
-                                                <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-[2px] border border-black">
-                                                    <Icons.Pin size={8} className="text-white" fill="currentColor" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h4 className="text-white font-medium truncate">
-                                                {song.title}
-                                                {song.isPublic === false && <Icons.Lock size={12} className="inline ml-1 text-zinc-500" />}
-                                            </h4>
-                                            <p className="text-zinc-400 text-xs truncate">{song.artist}</p>
-                                        </div>
-                                        <div className="text-zinc-500 text-xs font-mono">{song.playsCount || 0} plays</div>
-                                    </button>
-                                ))}
-                                {myUploads.length === 0 && (
-                                    <div className="py-12 text-center text-zinc-500 text-sm">
-                                        还没有上传过音乐
-                                    </div>
-                                )}
-                             </div>
-                        )}
-                        
-                        {activeSubTab === 'albums' && (
-                          <div className="px-6 space-y-2">
-                            {collectionsLoading ? (
-                              <div className="py-12 text-center text-zinc-500 text-sm">加载中…</div>
-                            ) : myAlbums.length ? (
-                              myAlbums.map((c) => (
-                                    <button
-                                      key={c.id}
-                                      onClick={() => window.dispatchEvent(new CustomEvent('jzone:navigate-collection', { detail: { id: c.id } }))}
-                                      onContextMenu={(e) => {
-                                         e.preventDefault();
-                                         handleCollectionLongPress(e, c);
-                                      }}
-                                      className="w-full flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition active:scale-[0.98] text-left relative"
-                                    >
-                                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-800 shrink-0 relative">
-                                        {c.cover_url ? <img src={c.cover_url} className="w-full h-full object-cover" alt="" loading="lazy" decoding="async" /> : null}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="text-white font-bold truncate flex items-center gap-2">
-                                            {c.title}
-                                            {c.pinned_at && (
-                                                <Icons.Pin size={12} className="text-red-500 fill-red-500" />
-                                            )}
-                                        </div>
-                                        <div className="text-zinc-500 text-xs font-medium truncate">{c.visibility === 'public' ? '公开' : '私有'}</div>
-                                      </div>
-                                      <Icons.ChevronRight size={16} className="text-white/20" />
-                                    </button>
-                                  ))
-                            ) : isCurrentUser ? (
-                              <div className="py-16 text-center flex flex-col items-center gap-4">
-                                <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-600">
-                                  <Icons.Disc size={28} />
-                                </div>
-                                <p className="text-zinc-500 font-medium">还没有创建专辑</p>
-                                <button
-                                  onClick={() => {
-                                    setCreateType('album');
-                                    setCreateModalOpen(true);
-                                  }}
-                                  className="px-6 py-2 bg-white/10 rounded-full text-white text-sm font-bold"
-                                >
-                                  新建专辑
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="py-12 text-center text-zinc-500 text-sm">暂无内容</div>
-                            )}
-                          </div>
-                        )}
-
-                        {activeSubTab === 'playlists' && (
-                          <div className="px-6 space-y-2">
-                            {collectionsLoading ? (
-                              <div className="py-12 text-center text-zinc-500 text-sm">加载中…</div>
-                            ) : myPlaylists.length ? (
-                              myPlaylists.map((c) => (
-                                <button
-                                  key={c.id}
-                                  onClick={() => window.dispatchEvent(new CustomEvent('jzone:navigate-collection', { detail: { id: c.id } }))}
-                                  onContextMenu={(e) => {
-                                      e.preventDefault();
-                                      handleCollectionLongPress(e, c);
-                                  }}
-                                  className="w-full flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition active:scale-[0.98] text-left relative"
-                                >
-                                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-800 shrink-0 relative">
-                                    {c.cover_url ? <img src={c.cover_url} className="w-full h-full object-cover" alt="" loading="lazy" decoding="async" /> : null}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-white font-bold truncate flex items-center gap-2">
-                                        {c.title}
-                                        {c.pinned_at && (
-                                            <Icons.Pin size={12} className="text-red-500 fill-red-500" />
-                                        )}
-                                    </div>
-                                    <div className="text-zinc-500 text-xs font-medium truncate">
-                                      {c.visibility === 'public' ? '公开' : '私有'} · {(c.play_count ?? 0).toLocaleString()}次播放
-                                    </div>
-                                  </div>
-                                  <Icons.ChevronRight size={16} className="text-white/20" />
-                                </button>
-                              ))
-                            ) : isCurrentUser ? (
-                              <div className="py-16 text-center flex flex-col items-center gap-4">
-                                <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-600">
-                                  <Icons.ListMusic size={28} />
-                                </div>
-                                <p className="text-zinc-500 font-medium">还没有创建歌单</p>
-                                <button
-                                  onClick={() => {
-                                    setCreateType('playlist');
-                                    setCreateModalOpen(true);
-                                  }}
-                                  className="px-6 py-2 bg-white/10 rounded-full text-white text-sm font-bold"
-                                >
-                                  新建歌单
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="py-12 text-center text-zinc-500 text-sm">暂无内容</div>
-                            )}
-                          </div>
-                        )}
-                    </div>
-                )}
-
-                {activeTab === 'collection' && (
-                    <div className="grid grid-cols-1 gap-4 pb-32">
-                         {favoriteSongs.length > 0 ? (
-                            <div className="px-6 space-y-2">
-                                {favoriteSongs.map((song) => (
-                                    <button
-                                        key={song.id}
-                                        onClick={() => playSong(song.id)}
-                                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ isOpen: true, anchor: { x: e.clientX, y: e.clientY }, item: song }); }}
-                                        className="w-full flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition active:scale-[0.98] text-left"
-                                    >
-                                        <div className="relative">
-                                            <img src={song.coverUrl} loading="lazy" decoding="async" className="w-12 h-12 rounded-lg object-cover shadow-lg" alt={song.title} />
-                                            {song.pinnedAt && (
-                                                <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-[2px] border border-black">
-                                                    <Icons.Pin size={8} className="text-white" fill="currentColor" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h4 className="text-white font-medium truncate">
-                                                {song.title}
-                                                {song.isPublic === false && <Icons.Lock size={12} className="inline ml-1 text-zinc-500" />}
-                                            </h4>
-                                            <p className="text-zinc-400 text-xs truncate">{song.artist}</p>
-                                        </div>
-                                        <div className="text-zinc-500 text-xs font-mono">{song.playsCount || 0} plays</div>
-                                    </button>
-                                ))}
-                             </div>
-                         ) : (
-                            <div className="px-6 py-20 text-center flex flex-col items-center gap-4">
-                                <div className="w-16 h-16 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-600">
-                                    <Icons.Heart size={32} />
-                                </div>
-                                <p className="text-zinc-500 font-medium">还没有收藏任何内容</p>
-                                <button 
-                                    onClick={() => window.dispatchEvent(new CustomEvent('jzone:navigate-home'))}
-                                    className="px-6 py-2 bg-white/10 rounded-full text-white text-sm font-bold"
-                                >
-                                    去发现
-                                </button>
-                            </div>
-                         )}
-                    </div>
-                )}
-            </motion.div>
-        </AnimatePresence>
-    );
-  };
-
   return (
     <div className={`min-h-screen relative transition-colors duration-500 ${displayUser.backgroundStyle === 'full' ? 'bg-black/30' : 'bg-black'}`}>
       
@@ -732,7 +462,26 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
         </div>
 
         <div className="pt-6">
-            {renderContent()}
+            <ProfileContent
+              activeTab={activeTab}
+              activeSubTab={activeSubTab}
+              setActiveSubTab={setActiveSubTab}
+              myUploads={myUploads}
+              favoriteSongs={favoriteSongs}
+              myAlbums={myAlbums}
+              myPlaylists={myPlaylists}
+              collectionsLoading={collectionsLoading}
+              isCurrentUser={isCurrentUser}
+              playContext={playContext}
+              onSongContextMenu={(anchor, song) => setContextMenu({ isOpen: true, anchor, item: song })}
+              onCollectionContextMenu={(anchor, collection) => setCollectionMenu({ isOpen: true, anchor, item: collection })}
+              onCreateCollection={(type) => {
+                setCreateType(type);
+                setCreateModalOpen(true);
+              }}
+              selectedSongId={contextMenu?.item.id}
+              selectedCollectionId={collectionMenu?.item.id}
+            />
         </div>
       </div>
 
@@ -803,245 +552,40 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
 
       <AnimatePresence>
         {isBackgroundManagerOpen && (
-          <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsBackgroundManagerOpen(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="relative w-full max-w-md max-h-[80vh] overflow-y-auto bg-zinc-900 border-t border-white/10 rounded-t-3xl sm:rounded-3xl p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-5 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex justify-center">
-                <div className="w-10 h-1 bg-zinc-700 rounded-full" />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-white">自定义背景</h3>
-                <button onClick={() => setIsBackgroundManagerOpen(false)} className="text-zinc-400 hover:text-white">
-                  <Icons.X size={20} />
-                </button>
-              </div>
-
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept="image/*"
-                onChange={handleFileChange}
-              />
-
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-medium text-zinc-400">背景风格</label>
-                  <span className="text-sm font-bold text-white">{displayUser.backgroundStyle === 'full' ? '全屏模糊' : '半屏沉浸'}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={async () => {
-                      if (!targetUserId) return;
-                      try {
-                        await supabaseApi.updateProfile(targetUserId, { background_style: 'half' });
-                        setProfileData((prev) => {
-                          if (!prev) return prev;
-                          const next = { ...prev, background_style: 'half' } as ProfileRow;
-                          try {
-                            localStorage.setItem(`${PROFILE_CACHE_PREFIX}${targetUserId}`, JSON.stringify(next));
-                          } catch {}
-                          return next;
-                        });
-                      } catch (e) {
-                        console.error(e);
-                        alert('设置失败，请重试');
-                      }
-                    }}
-                    className={`w-full flex items-center justify-center py-3 rounded-xl border transition-all ${
-                      displayUser.backgroundStyle !== 'full' ? 'bg-white text-black border-white' : 'bg-white/5 text-zinc-400 border-transparent hover:bg-white/10'
-                    }`}
-                  >
-                    <span className="text-sm font-bold">半屏沉浸</span>
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!targetUserId) return;
-                      try {
-                        await supabaseApi.updateProfile(targetUserId, { background_style: 'full' });
-                        setProfileData((prev) => {
-                          if (!prev) return prev;
-                          const next = { ...prev, background_style: 'full' } as ProfileRow;
-                          try {
-                            localStorage.setItem(`${PROFILE_CACHE_PREFIX}${targetUserId}`, JSON.stringify(next));
-                          } catch {}
-                          return next;
-                        });
-                      } catch (e) {
-                        console.error(e);
-                        alert('设置失败，请重试');
-                      }
-                    }}
-                    className={`w-full flex items-center justify-center py-3 rounded-xl border transition-all ${
-                      displayUser.backgroundStyle === 'full' ? 'bg-white text-black border-white' : 'bg-white/5 text-zinc-400 border-transparent hover:bg-white/10'
-                    }`}
-                  >
-                    <span className="text-sm font-bold">全屏模糊</span>
-                  </button>
-                </div>
-              </div>
-
-              <div
-                className={`w-full ${previewHeightClass} rounded-2xl overflow-hidden bg-black/40 border border-white/10 cursor-pointer`}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {displayUser.coverUrl ? (
-                  <img
-                    src={displayUser.coverUrl}
-                    className="w-full h-full object-cover"
-                    style={{ filter: `blur(${blurPx}px)` }}
-                    alt="Custom Background"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-zinc-500 text-sm">
-                    暂无自定义背景，点击上传
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex items-center justify-center py-3 rounded-xl bg-white/10 text-white font-bold hover:bg-white/15 transition"
-                >
-                  上传新背景
-                </button>
-                <button
-                  disabled={!profileData?.cover_url}
-                  onClick={async () => {
-                    if (!targetUserId) return;
-                    const raw = profileData?.cover_url;
-                    setIsBackgroundManagerOpen(false);
-                    try {
-                      await supabaseApi.updateProfile(targetUserId, { cover_url: null });
-                      if (raw && cosClient.isEnabled && !/^https?:\/\//i.test(raw)) {
-                        await cosClient.deleteFiles([raw]).catch(() => {});
-                      }
-                      setProfileData((prev) => {
-                        if (!prev) return prev;
-                        const next = { ...prev, cover_url: null } as ProfileRow;
-                        try {
-                          localStorage.setItem(`${PROFILE_CACHE_PREFIX}${targetUserId}`, JSON.stringify(next));
-                        } catch {}
-                        return next;
-                      });
-                    } catch (e) {
-                      console.error(e);
-                      alert('恢复默认失败，请重试');
-                    }
-                  }}
-                  className={`w-full flex items-center justify-center py-3 rounded-xl font-bold transition ${
-                    profileData?.cover_url ? 'bg-white text-black hover:bg-white/90' : 'bg-white/5 text-white/30'
-                  }`}
-                >
-                  恢复默认
-                </button>
-              </div>
-            </motion.div>
-          </div>
+          <ProfileBackgroundSheet
+            displayUser={displayUser}
+            profileData={profileData}
+            targetUserId={targetUserId}
+            profileCachePrefix={PROFILE_CACHE_PREFIX}
+            previewHeightClass={previewHeightClass}
+            blurPx={blurPx}
+            onClose={() => setIsBackgroundManagerOpen(false)}
+            onPickFile={handleFileChange}
+            setProfileData={setProfileData}
+          />
         )}
       </AnimatePresence>
 
       {/* Settings Bottom Sheet */}
       <AnimatePresence>
         {isSettingsOpen && (
-            <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-                <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={() => setIsSettingsOpen(false)}
-                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                />
-                <motion.div
-                    initial={{ y: '100%' }}
-                    animate={{ y: 0 }}
-                    exit={{ y: '100%' }}
-                    transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                    className="relative w-full max-w-md max-h-[80vh] overflow-y-auto bg-zinc-900 border-t border-white/10 rounded-t-3xl sm:rounded-3xl p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 shadow-2xl"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <div className="flex justify-center mb-2">
-                        <div className="w-10 h-1 bg-zinc-700 rounded-full" />
-                    </div>
-                    
-                    <h3 className="text-lg font-bold text-white text-center">设置</h3>
-
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                                <label className="text-sm font-medium text-zinc-400">背景模糊度</label>
-                                <span className="text-sm font-bold text-white">{backgroundBlur}%</span>
-                            </div>
-                            <input 
-                                type="range" 
-                                min="0" 
-                                max="100" 
-                                value={backgroundBlur} 
-                                onChange={handleBlurChange}
-                                className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-white"
-                            />
-                        </div>
-
-                        <div className="h-px bg-white/10" />
-
-                        <button 
-                            onClick={() => {
-                                setIsSettingsOpen(false);
-                                document.getElementById('trigger-edit-profile')?.click();
-                            }}
-                            className="w-full flex items-center justify-between p-4 bg-zinc-800/50 rounded-xl text-white font-medium hover:bg-zinc-800 transition"
-                        >
-                            <span>编辑资料</span>
-                            <Icons.ChevronRight size={16} className="text-zinc-500" />
-                        </button>
-
-                        <button 
-                             onClick={() => {
-                               setIsSettingsOpen(false);
-                               setIsBackgroundManagerOpen(true);
-                             }}
-                             className="w-full flex items-center justify-between p-4 bg-zinc-800/50 rounded-xl text-white font-medium hover:bg-zinc-800 transition"
-                        >
-                             <span>更换背景</span>
-                             <div className="flex items-center gap-2">
-                                <Icons.ChevronRight size={16} className="text-zinc-500" />
-                             </div>
-                        </button>
-                        
-                        <button 
-                            onClick={async () => {
-                                setIsSettingsOpen(false);
-                                await signOut();
-                            }}
-                            className="w-full flex items-center justify-center p-4 bg-red-500/10 text-red-500 rounded-xl font-bold hover:bg-red-500/20 transition active:scale-95"
-                        >
-                            退出登录
-                        </button>
-                    </div>
-                    
-                    <button 
-                        onClick={() => setIsSettingsOpen(false)}
-                        className="w-full py-3 text-zinc-500 font-medium text-sm hover:text-white transition"
-                    >
-                        取消
-                    </button>
-                </motion.div>
-            </div>
+          <ProfileSettingsSheet
+            backgroundBlur={backgroundBlur}
+            onBlurChange={handleBlurChange}
+            onClose={() => setIsSettingsOpen(false)}
+            onEditProfile={() => {
+              setIsSettingsOpen(false);
+              document.getElementById('trigger-edit-profile')?.click();
+            }}
+            onOpenBackground={() => {
+              setIsSettingsOpen(false);
+              setIsBackgroundManagerOpen(true);
+            }}
+            onSignOut={async () => {
+              setIsSettingsOpen(false);
+              await signOut();
+            }}
+          />
         )}
       </AnimatePresence>
 
@@ -1061,14 +605,14 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
           onClose={() => setCollectionMenu(null)}
           anchorPosition={collectionMenu.anchor}
           collection={collectionMenu.item}
-          isOwner={isCurrentUser}
+          canManageCollection={isCurrentUser}
           onToggleVisibility={(next) => {
             supabaseApi
               .setCollectionVisibility(collectionMenu.item.id, next)
               .then(() => {
                 setCollections((prev) => prev.map((c) => (c.id === collectionMenu.item.id ? { ...c, visibility: next } : c)));
               })
-              .catch((e: any) => alert(typeof e?.message === 'string' ? e.message : '操作失败'));
+              .catch((e: any) => feedback.error(typeof e?.message === 'string' ? e.message : '操作失败'));
           }}
           onEdit={() => {
              setEditCollectionTarget(collectionMenu.item);
@@ -1080,7 +624,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
                     .then(() => {
                         setCollections(prev => prev.filter(c => c.id !== collectionMenu.item.id));
                     })
-                    .catch((e: any) => alert(typeof e?.message === 'string' ? e.message : '删除失败'));
+                    .catch((e: any) => feedback.error(typeof e?.message === 'string' ? e.message : '删除失败'));
              }
           }}
           onTogglePin={() => {
@@ -1089,7 +633,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
                 .then(() => {
                     setCollections(prev => prev.map(c => c.id === collectionMenu.item.id ? { ...c, pinned_at: nextPinnedAt } : c));
                 })
-                .catch((e: any) => alert(typeof e?.message === 'string' ? e.message : '操作失败'));
+                .catch((e: any) => feedback.error(typeof e?.message === 'string' ? e.message : '操作失败'));
           }}
         />
       )}

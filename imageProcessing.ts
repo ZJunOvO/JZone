@@ -2,8 +2,8 @@ export const downscaleImageBlob = async (
   input: Blob,
   options: { maxWidth: number; maxHeight?: number; mimeType?: string; quality?: number }
 ): Promise<Blob> => {
-  const isImage = typeof input?.type === 'string' ? input.type.startsWith('image/') : false;
-  if (!isImage) return input;
+  const hasKnownNonImageType = typeof input?.type === 'string' && Boolean(input.type) && !input.type.startsWith('image/');
+  if (hasKnownNonImageType) return input;
 
   const maxWidth = Math.max(1, Math.floor(options.maxWidth));
   const maxHeight = Math.max(1, Math.floor(options.maxHeight ?? options.maxWidth));
@@ -78,3 +78,9 @@ export const downscaleImageBlob = async (
   });
 };
 
+export const prepareImageForEditing = (input: Blob, maxDimension = 2048) => downscaleImageBlob(input, {
+  maxWidth: maxDimension,
+  maxHeight: maxDimension,
+  mimeType: 'image/jpeg',
+  quality: 0.9,
+});

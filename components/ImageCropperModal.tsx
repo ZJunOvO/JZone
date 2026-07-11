@@ -20,6 +20,9 @@ const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
 };
 
 const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<Blob> => {
+  const cropWidth = Math.max(0, Math.floor(Number(pixelCrop?.width) || 0));
+  const cropHeight = Math.max(0, Math.floor(Number(pixelCrop?.height) || 0));
+  if (!imageSrc || cropWidth < 1 || cropHeight < 1) throw new Error('裁剪区域尚未准备好');
   const image = new Image();
   image.src = imageSrc;
   await new Promise<void>((resolve, reject) => {
@@ -34,19 +37,19 @@ const getCroppedImg = async (imageSrc: string, pixelCrop: any): Promise<Blob> =>
     throw new Error('No 2d context');
   }
 
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
 
   ctx.drawImage(
     image,
     pixelCrop.x,
     pixelCrop.y,
-    pixelCrop.width,
-    pixelCrop.height,
+    cropWidth,
+    cropHeight,
     0,
     0,
-    pixelCrop.width,
-    pixelCrop.height
+    cropWidth,
+    cropHeight
   );
 
   if (typeof canvas.toBlob === 'function') {

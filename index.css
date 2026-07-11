@@ -1,9 +1,43 @@
+@import "./styles/auth.css";
+@import "./styles/liquid-navigation.css";
+@import "./styles/profile-glass-preview.css";
+@import "./styles/glass-materials.css";
+
+@font-face {
+  font-family: "JZone HarmonyOS Sans SC";
+  src: url("/fonts/HarmonyOS_Sans_SC_Medium.woff") format("woff");
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JZone HarmonyOS Sans SC";
+  src: url("/fonts/HarmonyOS_Sans_SC_Bold.woff") format("woff");
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JZone HarmonyOS Sans SC";
+  src: url("/fonts/HarmonyOS_Sans_SC_Black.woff") format("woff");
+  font-style: normal;
+  font-weight: 800 900;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   color-scheme: dark;
+}
+
+html,
+body {
+  font-family: "JZone HarmonyOS Sans SC", "HarmonyOS Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .pb-safe {
@@ -20,4 +54,886 @@
 
 .pr-safe {
   padding-right: env(safe-area-inset-right);
+}
+
+.lab-live-page {
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+}
+
+.lab-live-phone {
+  position: relative;
+  margin: 0 auto;
+  width: min(430px, 100vw);
+  height: 100vh;
+  overflow: hidden;
+  background: #050505;
+}
+
+.lab-live-toolbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: calc(env(safe-area-inset-top) + 16px) 18px 12px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(0,0,0,0.74), transparent);
+}
+
+.lab-live-toolbar strong,
+.lab-live-toolbar span {
+  display: block;
+}
+
+.lab-live-toolbar strong {
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.lab-live-toolbar span {
+  margin-top: 4px;
+  color: rgba(255,255,255,0.52);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lab-live-toolbar a {
+  pointer-events: auto;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 999px;
+  padding: 9px 12px;
+  color: rgba(255,255,255,0.88);
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
+}
+
+.lab-live-segment {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: calc(env(safe-area-inset-top) + 76px);
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  padding: 6px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(20,20,22,0.78);
+  backdrop-filter: blur(22px) saturate(1.45);
+}
+
+.lab-live-segment button {
+  min-width: 0;
+  border-radius: 15px;
+  padding: 8px 5px;
+  text-align: left;
+  color: rgba(255,255,255,0.62);
+}
+
+.lab-live-segment button.active {
+  color: #fff;
+  background: rgba(255,255,255,0.12);
+  box-shadow: inset 0 1px rgba(255,255,255,0.16);
+}
+
+.lab-live-segment strong,
+.lab-live-segment span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-live-segment strong {
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.lab-live-segment span {
+  margin-top: 2px;
+  font-size: 8px;
+  color: rgba(255,255,255,0.42);
+}
+
+.lab-live-list {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: calc(env(safe-area-inset-top) + 146px) 18px 128px;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(37, 99, 235, 0.34), transparent 30%),
+    radial-gradient(circle at 88% 26%, rgba(244, 63, 94, 0.28), transparent 28%),
+    radial-gradient(circle at 54% 72%, rgba(34, 197, 94, 0.14), transparent 34%),
+    linear-gradient(145deg, #050505, #090b16 48%, #15080a);
+}
+
+.lab-live-hero {
+  position: relative;
+  height: 190px;
+  overflow: hidden;
+  border-radius: 30px;
+  padding: 24px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.lab-live-hero span {
+  color: rgba(255,255,255,0.56);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.lab-live-hero h1 {
+  position: relative;
+  z-index: 2;
+  margin-top: 12px;
+  max-width: 250px;
+  font-size: 42px;
+  line-height: 0.96;
+  font-weight: 950;
+}
+
+.lab-live-hero-orb {
+  position: absolute;
+  right: -42px;
+  bottom: -52px;
+  width: 180px;
+  height: 180px;
+  border-radius: 999px;
+  background: conic-gradient(from 120deg, #fb7185, #f97316, #facc15, #22c55e, #38bdf8, #fb7185);
+  opacity: 0.78;
+}
+
+.lab-live-section {
+  margin-top: 28px;
+}
+
+.lab-live-section h2 {
+  margin-bottom: 14px;
+  font-size: 26px;
+  font-weight: 950;
+}
+
+.lab-live-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.lab-live-card,
+.lab-live-row {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.045);
+  box-shadow: inset 0 1px rgba(255,255,255,0.06);
+}
+
+.lab-live-card {
+  min-height: 188px;
+  border-radius: 24px;
+  padding: 12px;
+}
+
+.lab-live-cover {
+  width: 58px;
+  height: 58px;
+  flex: none;
+  border-radius: 15px;
+  box-shadow: inset 0 1px rgba(255,255,255,0.22), 0 16px 34px rgba(0,0,0,0.28);
+}
+
+.lab-live-cover.large {
+  width: 100%;
+  height: 112px;
+  border-radius: 18px;
+}
+
+.lab-live-card strong,
+.lab-live-card span,
+.lab-live-row strong,
+.lab-live-row span {
+  display: block;
+}
+
+.lab-live-card strong {
+  margin-top: 12px;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.lab-live-card span,
+.lab-live-row span {
+  margin-top: 4px;
+  color: rgba(255,255,255,0.52);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lab-live-rows {
+  display: grid;
+  gap: 12px;
+}
+
+.lab-live-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 82px;
+  border-radius: 22px;
+  padding: 12px;
+}
+
+.lab-live-row strong {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.lab-live-row em {
+  margin-left: auto;
+  color: rgba(255,255,255,0.44);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.lab-live-dock {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: calc(env(safe-area-inset-bottom) + 18px);
+  z-index: 30;
+  height: 72px;
+  overflow: hidden;
+  border-radius: 36px;
+  box-shadow: 0 18px 42px rgba(0,0,0,0.44);
+}
+
+.lab-shape-probe {
+  position: absolute;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 152px);
+  z-index: 28;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.lab-shape-probe--frosted {
+  left: 18px;
+  right: 18px;
+  width: auto;
+  height: 72px;
+  border-radius: 36px;
+  border: 2px solid transparent;
+  background: rgba(255,255,255,0.08);
+  transform: none;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.22),
+    0 16px 32px rgba(0,0,0,0.24),
+    inset 0 1px rgba(255,255,255,0.18);
+  backdrop-filter: url("#lab-frosted-e");
+  -webkit-backdrop-filter: url("#lab-frosted-e");
+}
+
+.lab-shape-probe--frosted::before,
+.lab-shape-probe--frosted::after {
+  content: "";
+  position: absolute;
+  left: calc(50% - 28px);
+  top: calc(50% - 4px);
+  width: 56px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.92);
+}
+
+.lab-shape-probe--frosted::after {
+  transform: rotate(90deg);
+}
+
+.lab-shape-probe--shuding {
+  left: 18px;
+  right: 18px;
+  width: auto;
+  height: 72px;
+  max-height: none;
+  overflow: hidden;
+  border-radius: 36px;
+  padding: 0 26px;
+  transform: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255,255,255,0.03);
+  color: #fff;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.25),
+    0 -10px 25px inset rgba(0, 0, 0, 0.15),
+    inset 0 1px rgba(255,255,255,0.16);
+  backdrop-filter: var(--lab-shuding-probe-filter) blur(0.25px) contrast(1.2) brightness(1.05) saturate(1.1);
+  -webkit-backdrop-filter: var(--lab-shuding-probe-filter) blur(0.25px) contrast(1.2) brightness(1.05) saturate(1.1);
+}
+
+.lab-shape-probe--shuding span,
+.lab-shape-probe--shuding strong {
+  display: block;
+  text-shadow: 0 2px 16px rgba(0,0,0,0.24);
+}
+
+.lab-shape-probe--shuding span {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.58);
+}
+
+.lab-shape-probe--shuding strong {
+  margin-top: 0;
+  max-width: none;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.lab-original-frame {
+  position: absolute;
+  inset: calc(env(safe-area-inset-top) + 136px) 12px 12px;
+  z-index: 24;
+  width: calc(100% - 24px);
+  height: calc(100% - env(safe-area-inset-top) - 148px);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 28px;
+  background: #050505;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5), inset 0 1px rgba(255,255,255,0.08);
+}
+
+.lab-live-dock-icons {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: center;
+  padding: 0 10px;
+}
+
+.lab-live-dock-icon {
+  display: grid;
+  place-items: center;
+  color: rgba(255,255,255,0.72);
+}
+
+.lab-live-dock-icon.active {
+  color: #ff4545;
+  filter: drop-shadow(0 0 16px rgba(239,68,68,0.48));
+}
+
+.lab-live-dock-icons--refract {
+  z-index: 2;
+  inset: -10px -8px;
+  padding: 0 18px;
+  color: rgba(255,255,255,0.72);
+  opacity: 0.58;
+  pointer-events: none;
+  transform: scale(1.18);
+  transform-origin: 62% 50%;
+  filter:
+    url("#lab-edge-icon-refraction")
+    drop-shadow(2px 0 rgba(255, 70, 84, 0.24))
+    drop-shadow(-2px 0 rgba(92, 180, 255, 0.2));
+  mix-blend-mode: screen;
+  -webkit-mask-image:
+    radial-gradient(ellipse 118px 72px at 63% 50%, #000 0%, #000 36%, rgba(0,0,0,0.62) 52%, transparent 78%),
+    linear-gradient(90deg, rgba(0,0,0,0.34), transparent 18%, transparent 82%, rgba(0,0,0,0.34));
+  mask-image:
+    radial-gradient(ellipse 118px 72px at 63% 50%, #000 0%, #000 36%, rgba(0,0,0,0.62) 52%, transparent 78%),
+    linear-gradient(90deg, rgba(0,0,0,0.34), transparent 18%, transparent 82%, rgba(0,0,0,0.34));
+}
+
+.lab-live-dock-icons--refract .lab-live-dock-icon.active {
+  color: rgba(255, 74, 84, 0.88);
+  filter:
+    blur(0.25px)
+    drop-shadow(0 0 18px rgba(255, 70, 84, 0.48));
+}
+
+.lab-live-dock-material,
+.lab-live-dock-lens {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.lab-live-dock-material {
+  z-index: 3;
+  background:
+    radial-gradient(circle at 62% 12%, rgba(255,255,255,0.24), transparent 32%),
+    linear-gradient(130deg, rgba(255,255,255,0.14), rgba(255,255,255,0.04) 48%, rgba(255,255,255,0.12)),
+    rgba(10,10,12,0.2);
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: inset 0 1px rgba(255,255,255,0.24), inset 0 -1px rgba(0,0,0,0.24);
+}
+
+.lab-live-dock-lens {
+  z-index: 4;
+  left: 55%;
+  top: 9px;
+  width: 82px;
+  height: 54px;
+  border-radius: 27px;
+  background:
+    radial-gradient(circle at 34% 16%, rgba(255,255,255,0.36), transparent 34%),
+    linear-gradient(130deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04) 48%, rgba(255,255,255,0.12));
+  box-shadow: inset 0 1px rgba(255,255,255,0.34), inset 0 -1px rgba(0,0,0,0.26), 0 10px 26px rgba(0,0,0,0.36);
+  transform: translateX(-50%);
+}
+
+.lab-live-dock--css .lab-live-css-effect {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  filter: url("#lab-dynamic-distortion") blur(2.4px) saturate(1.82) contrast(1.05);
+  backdrop-filter: blur(6px) saturate(1.92) contrast(1.06);
+  -webkit-backdrop-filter: blur(6px) saturate(1.92) contrast(1.06);
+  background: rgba(255,255,255,0.075);
+}
+
+.lab-live-dock--css .lab-live-dock-material {
+  background:
+    radial-gradient(circle at 62% 12%, rgba(255,255,255,0.18), transparent 32%),
+    linear-gradient(130deg, rgba(255,255,255,0.1), rgba(255,255,255,0.025) 48%, rgba(255,255,255,0.09)),
+    rgba(10,10,12,0.2);
+  border-color: rgba(255,255,255,0.16);
+}
+
+.lab-live-dock--css .lab-live-dock-lens {
+  top: 5px;
+  width: 92px;
+  height: 62px;
+  border-radius: 34px;
+  background:
+    radial-gradient(circle at 34% 14%, rgba(255,255,255,0.26), transparent 34%),
+    linear-gradient(130deg, rgba(255,255,255,0.12), rgba(255,255,255,0.025) 48%, rgba(255,255,255,0.09));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,0.24),
+    inset 0 -1px rgba(0,0,0,0.22),
+    0 10px 26px rgba(0,0,0,0.3);
+}
+
+.lab-live-mirror-sampler {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: inherit;
+  filter: blur(10px) saturate(1.9) contrast(1.1);
+  opacity: 0.78;
+}
+
+.lab-live-list-clone {
+  position: absolute !important;
+  inset: auto auto auto 0;
+  pointer-events: none !important;
+  overflow: visible !important;
+  padding-bottom: 128px;
+  will-change: transform;
+  scrollbar-width: none;
+}
+
+.lab-live-list-clone--base {
+  opacity: 0.86;
+}
+
+.lab-live-list-clone--lens {
+  opacity: 0.36;
+  filter: saturate(1.35) contrast(1.12) brightness(1.08);
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(ellipse 58px 40px at 62% 50%, #000 0%, #000 48%, transparent 76%);
+  mask-image: radial-gradient(ellipse 58px 40px at 62% 50%, #000 0%, #000 48%, transparent 76%);
+}
+
+.lab-live-dock--bplus {
+  overflow: hidden;
+  border-radius: 36px;
+  background: rgba(255,255,255,0.026);
+  box-shadow:
+    0 18px 42px rgba(0,0,0,0.44),
+    inset 0 1px rgba(255,255,255,0.12);
+}
+
+.lab-live-bplus-sampler {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  contain: paint;
+  transform: translateZ(0);
+}
+
+.lab-live-bplus-sampler::before,
+.lab-live-bplus-sampler::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.lab-live-bplus-sampler::before {
+  background:
+    radial-gradient(ellipse 118px 72px at 62% 50%, rgba(255,255,255,0.18), transparent 64%),
+    linear-gradient(90deg, rgba(255,255,255,0.08), transparent 18%, transparent 82%, rgba(255,255,255,0.08));
+  mix-blend-mode: screen;
+  opacity: 0.68;
+}
+
+.lab-live-bplus-sampler::after {
+  inset: 1px;
+  border: 1px solid rgba(255,255,255,0.11);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,0.16),
+    inset 0 -1px rgba(0,0,0,0.26),
+    inset 18px 0 34px rgba(255,255,255,0.035),
+    inset -18px 0 34px rgba(255,255,255,0.03);
+  opacity: 0.82;
+}
+
+.lab-live-bplus-clone {
+  position: absolute !important;
+  left: 0;
+  top: 0;
+  max-width: none !important;
+  pointer-events: none !important;
+  overflow: visible !important;
+  padding-bottom: 128px;
+  scrollbar-width: none;
+  user-select: none !important;
+  will-change: transform, filter;
+}
+
+.lab-live-bplus-clone * {
+  pointer-events: none !important;
+}
+
+.lab-live-bplus-clone--base {
+  z-index: 1;
+  opacity: 0.54;
+  filter: blur(7px) saturate(1.7) contrast(1.08) brightness(1.08);
+  transform-origin: 62% 50%;
+}
+
+.lab-live-bplus-clone--refract {
+  z-index: 2;
+  opacity: 0.78;
+  filter: url("#lab-bplus-backdrop-refraction") saturate(1.52) contrast(1.1) brightness(1.08);
+  mix-blend-mode: screen;
+  -webkit-mask-image:
+    radial-gradient(ellipse 146px 92px at 62% 50%, #000 0%, #000 38%, rgba(0,0,0,0.72) 54%, transparent 78%),
+    linear-gradient(90deg, rgba(0,0,0,0.42), transparent 18%, transparent 82%, rgba(0,0,0,0.42));
+  mask-image:
+    radial-gradient(ellipse 146px 92px at 62% 50%, #000 0%, #000 38%, rgba(0,0,0,0.72) 54%, transparent 78%),
+    linear-gradient(90deg, rgba(0,0,0,0.42), transparent 18%, transparent 82%, rgba(0,0,0,0.42));
+}
+
+.lab-live-bplus-clone--lens {
+  z-index: 3;
+  opacity: 0.46;
+  filter: saturate(1.72) contrast(1.14) brightness(1.14);
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(ellipse 82px 56px at 62% 50%, #000 0%, #000 52%, rgba(0,0,0,0.36) 68%, transparent 82%);
+  mask-image: radial-gradient(ellipse 82px 56px at 62% 50%, #000 0%, #000 52%, rgba(0,0,0,0.36) 68%, transparent 82%);
+}
+
+.lab-live-bplus-clone--red,
+.lab-live-bplus-clone--blue {
+  z-index: 4;
+  opacity: 0.22;
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(ellipse 108px 70px at 62% 50%, #000 0%, rgba(0,0,0,0.72) 46%, transparent 76%);
+  mask-image: radial-gradient(ellipse 108px 70px at 62% 50%, #000 0%, rgba(0,0,0,0.72) 46%, transparent 76%);
+}
+
+.lab-live-bplus-clone--red {
+  filter: saturate(1.7) contrast(1.1) sepia(1) hue-rotate(315deg) brightness(1.06);
+}
+
+.lab-live-bplus-clone--blue {
+  filter: saturate(1.7) contrast(1.1) sepia(1) hue-rotate(165deg) brightness(1.04);
+}
+
+.lab-live-bplus-liquid {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse 102px 64px at 62% 48%, rgba(255,255,255,0.2), transparent 66%),
+    linear-gradient(125deg, rgba(255,255,255,0.14), rgba(255,255,255,0.035) 42%, rgba(255,255,255,0.1)),
+    rgba(8,8,10,0.08);
+  border: 1px solid rgba(255,255,255,0.13);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,0.24),
+    inset 0 -1px rgba(0,0,0,0.24);
+  filter: url("#lab-bplus-edge-light");
+}
+
+.lab-live-bplus-material {
+  z-index: 6;
+  opacity: 0.68;
+  background:
+    linear-gradient(130deg, rgba(255,255,255,0.08), rgba(255,255,255,0.018) 46%, rgba(255,255,255,0.07)),
+    rgba(10,10,12,0.1);
+  border-color: rgba(255,255,255,0.12);
+}
+
+.lab-live-bplus-lens {
+  z-index: 7;
+  top: 4px;
+  left: 62%;
+  width: 94px;
+  height: 64px;
+  border-radius: 34px;
+  opacity: 0.82;
+  background:
+    radial-gradient(circle at 34% 14%, rgba(255,255,255,0.24), transparent 34%),
+    linear-gradient(130deg, rgba(255,255,255,0.13), rgba(255,255,255,0.025) 48%, rgba(255,255,255,0.08));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,0.26),
+    inset 0 -1px rgba(0,0,0,0.24),
+    0 10px 26px rgba(0,0,0,0.3);
+}
+
+.lab-live-dock--rdev {
+  overflow: visible;
+  background: transparent;
+}
+
+.lab-live-rdev-glass {
+  z-index: 1;
+  display: block;
+}
+
+.lab-live-dock--rdev .glass {
+  width: 100%;
+  height: 100%;
+  overflow: hidden !important;
+  border-radius: 100px !important;
+}
+
+.lab-live-dock--rdev .glass__warp {
+  inset: -24px !important;
+  border-radius: 124px !important;
+  background:
+    linear-gradient(130deg, rgba(255,255,255,0.105), rgba(255,255,255,0.035) 48%, rgba(255,255,255,0.075)),
+    rgba(255,255,255,0.055) !important;
+  -webkit-backdrop-filter: blur(4px) saturate(2) !important;
+  backdrop-filter: blur(4px) saturate(2) !important;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,0.26),
+    inset 0 -1px rgba(0,0,0,0.24) !important;
+}
+
+.lab-live-dock--frosted {
+  border: 2px solid transparent;
+  background: rgba(255,255,255,0.08);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.2),
+    0 16px 32px rgba(0,0,0,0.28),
+    inset 0 1px rgba(255,255,255,0.18);
+}
+
+.lab-live-frosted-effect {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: url("#lab-frosted-e");
+  -webkit-backdrop-filter: url("#lab-frosted-e");
+}
+
+.lab-live-frosted-material {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 24% 8%, rgba(255,255,255,0.28), transparent 28%),
+    radial-gradient(circle at 78% 100%, rgba(255,255,255,0.1), transparent 34%),
+    linear-gradient(130deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02) 48%, rgba(255,255,255,0.08)),
+    rgba(8,8,10,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,0.2),
+    inset 0 -1px rgba(0,0,0,0.22);
+}
+
+.lab-live-frosted-lens {
+  z-index: 4;
+  top: 4px;
+  left: 62%;
+  width: 94px;
+  height: 64px;
+  border-radius: 34px;
+  background:
+    radial-gradient(circle at 34% 14%, rgba(255,255,255,0.3), transparent 35%),
+    linear-gradient(130deg, rgba(255,255,255,0.16), rgba(255,255,255,0.03) 50%, rgba(255,255,255,0.1));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,0.28),
+    inset 0 -1px rgba(0,0,0,0.22),
+    0 10px 24px rgba(0,0,0,0.28);
+}
+
+.lab-live-dock--shuding {
+  overflow: hidden;
+  background: transparent;
+  box-shadow:
+    0 18px 42px rgba(0,0,0,0.4),
+    inset 0 1px rgba(255,255,255,0.16),
+    inset 0 -10px 25px rgba(0,0,0,0.15);
+}
+
+.lab-live-shuding-effect {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background:
+    linear-gradient(130deg, rgba(255,255,255,0.09), rgba(255,255,255,0.022) 52%, rgba(255,255,255,0.07)),
+    rgba(255,255,255,0.035);
+  backdrop-filter: var(--lab-shuding-filter) blur(0.25px) contrast(1.2) brightness(1.05) saturate(1.1);
+  -webkit-backdrop-filter: var(--lab-shuding-filter) blur(0.25px) contrast(1.2) brightness(1.05) saturate(1.1);
+}
+
+.lab-live-dock--shuding-clean {
+  position: relative;
+  height: 72px;
+  overflow: hidden;
+  border-radius: 36px;
+  background: transparent;
+  box-shadow:
+    0 10px 26px rgba(0,0,0,0.3),
+    inset 0 1px rgba(255,255,255,0.14);
+}
+
+.lab-live-dock--shuding-clean {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: calc(env(safe-area-inset-bottom) + 18px);
+  z-index: 32;
+}
+
+.lab-f-glass-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: rgba(255,255,255,0.03);
+  backdrop-filter: var(--lab-shuding-filter) blur(0.25px) contrast(1.2) brightness(1.05) saturate(1.1);
+  -webkit-backdrop-filter: var(--lab-shuding-filter) blur(0.25px) contrast(1.2) brightness(1.05) saturate(1.1);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,0.16),
+    inset 0 -10px 25px rgba(0,0,0,0.15);
+}
+
+.lab-live-shuding-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  border-radius: inherit;
+  border: 1px solid rgba(255,255,255,0.16);
+  background:
+    radial-gradient(ellipse 128px 72px at 62% 48%, rgba(255,255,255,0.18), transparent 66%),
+    linear-gradient(90deg, rgba(255,255,255,0.08), transparent 22%, transparent 78%, rgba(255,255,255,0.06));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,0.22),
+    inset 0 -1px rgba(0,0,0,0.24);
+  mix-blend-mode: screen;
+}
+
+.lab-live-shuding-icons-under-lens {
+  z-index: 4;
+}
+
+.lab-f-icons-above-lens {
+  z-index: 8;
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.lab-live-shuding-lens {
+  z-index: 7;
+  top: -2px;
+  left: 62%;
+  width: 116px;
+  height: 76px;
+  border-radius: 42px;
+  opacity: 0.88;
+  background:
+    radial-gradient(circle at 34% 14%, rgba(255,255,255,0.24), transparent 34%),
+    linear-gradient(130deg, rgba(255,255,255,0.1), rgba(255,255,255,0.018) 50%, rgba(255,255,255,0.07)),
+    rgba(255,255,255,0.025);
+  backdrop-filter: var(--lab-shuding-lens-filter) blur(0.18px) contrast(1.22) brightness(1.07) saturate(1.16);
+  -webkit-backdrop-filter: var(--lab-shuding-lens-filter) blur(0.18px) contrast(1.22) brightness(1.07) saturate(1.16);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,0.24),
+    inset 0 -1px rgba(0,0,0,0.22),
+    0 10px 26px rgba(0,0,0,0.3);
+}
+
+.lab-live-rdev-glass > div:first-child {
+  width: 100%;
+  height: 100%;
+}
+
+.lab-live-rdev-fill {
+  width: 100%;
+  height: 72px;
+  min-width: calc(min(430px, 100vw) - 36px);
+  border-radius: 36px;
+  background: rgba(255,255,255,0.012);
+}
+
+.lab-live-rdev-material {
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0.22;
+  background:
+    radial-gradient(circle at 62% 12%, rgba(255,255,255,0.14), transparent 32%),
+    linear-gradient(130deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02) 48%, rgba(255,255,255,0.075)),
+    rgba(10,10,12,0.08);
+  border-color: rgba(255,255,255,0.1);
+}
+
+.lab-live-rdev-lens {
+  z-index: 4;
+  top: 5px;
+  height: 62px;
+  opacity: 0.32;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(circle at 36% 16%, rgba(255,255,255,0.24), transparent 34%),
+    linear-gradient(130deg, rgba(255,255,255,0.11), rgba(255,255,255,0.02) 48%, rgba(255,255,255,0.08));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,0.24),
+    inset 0 -1px rgba(0,0,0,0.22),
+    0 10px 26px rgba(0,0,0,0.28);
 }

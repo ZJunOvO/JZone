@@ -78,7 +78,7 @@ try {
   for (const [tabId, expected] of checks) {
     await page.getByTestId(`bottom-nav-${tabId}`).click();
     if (expected instanceof RegExp) {
-      await page.locator('body').getByText(expected).first().waitFor({ timeout: 15000 });
+      await waitForEitherText(page, [expected], 15000);
     } else {
       await page.getByText(expected).first().waitFor({ timeout: 15000 });
     }

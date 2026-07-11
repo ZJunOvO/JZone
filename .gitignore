@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+.codex-tools/
+artifacts/
+output/
 
 # Editor directories and files
 .vscode/*

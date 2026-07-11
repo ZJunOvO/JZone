@@ -6,6 +6,7 @@ import { hasSupabaseConfig } from './supabaseClient';
 import { useAuth } from './auth';
 import { supabaseApi } from './supabaseApi';
 import { getFallbackAvatarUrl, getQQAvatarUrl } from './utils/avatar';
+import { feedback } from './components/feedback';
 
 interface AppContextType {
   songs: Song[];
@@ -15,7 +16,12 @@ interface AppContextType {
   favoriteSongIds: string[];
   // Actions
   playSong: (songId: string) => void;
+  playContext: (songIds: string[], startSongId: string, context?: { collectionId?: string; collectionType?: 'album' | 'playlist' }) => void;
   playCollection: (songIds: string[], startSongId: string, context?: { collectionId?: string; collectionType?: 'album' | 'playlist' }) => void;
+  playNext: (songId: string) => void;
+  playLater: (songId: string) => void;
+  moveQueueItem: (songId: string, targetIndex: number) => void;
+  reorderQueue: (songIds: string[]) => void;
   togglePlay: () => void;
   nextSong: () => void;
   prevSong: () => void;
@@ -23,12 +29,13 @@ interface AppContextType {
   seek: (time: number) => void;
   setVolume: (volume: number) => void;
   addSong: (song: Song) => void;
+  patchSongs: (songIds: string[], updates: Partial<Song>) => void;
   addComment: (comment: Comment) => Promise<void>;
   setSkin: (skin: PlayerSkin) => void;
   getCurrentSong: () => Song | undefined;
   removeFromQueue: (songId: string) => void;
   deleteSong: (songId: string) => Promise<void>;
-  updateSong: (songId: string, updates: Partial<Song>) => Promise<void>;
+  updateSong: (songId: string, updates: Partial<Song>, options?: { syncAlbumByTitle?: boolean }) => Promise<void>;
   toggleFavorite: (songId: string) => Promise<void>;
   isFavorite: (songId: string) => boolean;
   toggleCommentLike: (commentId: string) => Promise<void>;
@@ -36,6 +43,19 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 const PLAYBACK_MODE_SEQUENCE: PlaybackMode[] = ['sequence', 'repeat-one', 'shuffle'];
+const QUALIFYING_PLAY_RATIO = 0.2;
+const SONGS_REFRESH_MS = 5 * 60 * 1000;
+
+const getQualifyingPlaySeconds = (song: Song, mediaDuration: number) => {
+  const start = Number.isFinite(song.trimStart) ? Math.max(0, song.trimStart) : 0;
+  const rawEnd = Number.isFinite(song.trimEnd)
+    ? song.trimEnd
+    : Number.isFinite(song.duration) && song.duration > 0
+      ? song.duration
+      : mediaDuration;
+  const playableDuration = Math.max(0, rawEnd - start);
+  return Math.max(1, playableDuration * QUALIFYING_PLAY_RATIO);
+};
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { status, user } = useAuth();
@@ -140,8 +160,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const raw = localStorage.getItem(`${SONGS_CACHE_PREFIX}${user.id}`);
       if (!raw) return;
-      const parsed = JSON.parse(raw) as { songs?: Song[] };
+      const parsed = JSON.parse(raw) as { songs?: Song[]; fetchedAt?: number };
       if (!parsed?.songs?.length) return;
+      lastSongsFetchAtRef.current = parsed.fetchedAt ?? 0;
       setSongs(parsed.songs);
       setPlayerState((prev) => ({ ...prev, queue: parsed.songs!.map((s) => s.id) }));
     } catch {}
@@ -152,7 +173,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (status !== 'signed_in' || !user) return;
     if (!songs.length) return;
     try {
-      localStorage.setItem(`${SONGS_CACHE_PREFIX}${user.id}`, JSON.stringify({ songs }));
+      localStorage.setItem(`${SONGS_CACHE_PREFIX}${user.id}`, JSON.stringify({
+        songs,
+        fetchedAt: lastSongsFetchAtRef.current || Date.now(),
+      }));
     } catch {}
   }, [songs, status, user]);
 
@@ -207,14 +231,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!hasSupabaseConfig) return;
     if (status !== 'signed_in' || !user) return;
-    if (loadedSongsForUserRef.current === user.id && stateRef.current.songs.length) return;
-    if (
-      loadedSongsForUserRef.current === user.id &&
-      stateRef.current.songs.length &&
-      Date.now() - lastSongsFetchAtRef.current < 60_000
-    ) {
-      return;
-    }
 
     let cancelled = false;
 
@@ -268,15 +284,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastSongsFetchAtRef.current = Date.now();
     };
 
-    load().catch(() => {});
+    const refresh = () => load().catch(() => {});
+    const cacheIsFresh = stateRef.current.songs.length > 0
+      && Date.now() - lastSongsFetchAtRef.current < SONGS_REFRESH_MS;
+    if (!cacheIsFresh) refresh();
+    const timer = window.setInterval(refresh, SONGS_REFRESH_MS);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
-  }, [status, user]);
+  }, [status, user?.id]);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
   const playSeqRef = useRef(0);
+  const playbackSessionRef = useRef({
+    songId: null as string | null,
+    listenedSeconds: 0,
+    lastTickAt: 0,
+    lastMediaTime: 0,
+    counted: false,
+  });
   
   // Refs for event handlers to avoid dependency cycles while keeping latest state access
   const stateRef = useRef({ songs, playerState });
@@ -299,9 +327,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const audio = audioRef.current;
 
+    const beginPlaybackSession = (songId: string | null) => {
+      playbackSessionRef.current = {
+        songId,
+        listenedSeconds: 0,
+        lastTickAt: Date.now(),
+        lastMediaTime: audio.currentTime || 0,
+        counted: false,
+      };
+    };
+
+    const recordQualifiedPlay = (songId: string) => {
+      if (!hasSupabaseConfig) return;
+      supabaseApi.incrementSongPlay(songId).catch(() => {});
+      supabaseApi.incrementUserSongPlay(songId).catch(() => {});
+      setSongs((prev) => prev.map((song) => (
+        song.id === songId ? { ...song, playsCount: (song.playsCount ?? 0) + 1 } : song
+      )));
+      window.dispatchEvent(new CustomEvent('jzone:play-counted', { detail: { songId } }));
+    };
+
+    const samplePlaybackSession = () => {
+      const { songs, playerState } = stateRef.current;
+      const currentSong = songs.find(s => s.id === playerState.currentSongId);
+      if (!currentSong) return;
+
+      const now = Date.now();
+      const session = playbackSessionRef.current;
+      if (session.songId !== currentSong.id) {
+        beginPlaybackSession(currentSong.id);
+        return;
+      }
+
+      const currentMediaTime = audio.currentTime || 0;
+      if (playerState.isPlaying && !audio.paused && !audio.seeking && !audio.ended && audio.readyState >= 2) {
+        const wallDelta = Math.max(0, (now - session.lastTickAt) / 1000);
+        const mediaDelta = Math.max(0, currentMediaTime - session.lastMediaTime);
+        // seek 会让媒体时间跳跃，但不会超过真实经过时间，因此无法通过拖动进度刷次数。
+        const sampledDelta = mediaDelta > 0.01
+          ? Math.min(wallDelta, mediaDelta + 0.2)
+          : Math.min(wallDelta, 0.75);
+        session.listenedSeconds += sampledDelta;
+        const qualifyingSeconds = getQualifyingPlaySeconds(currentSong, audio.duration);
+        if (!session.counted && session.listenedSeconds >= qualifyingSeconds) {
+          session.counted = true;
+          recordQualifiedPlay(currentSong.id);
+        }
+      }
+      session.lastTickAt = now;
+      session.lastMediaTime = currentMediaTime;
+    };
+
     const handleTimeUpdate = () => {
       setPlayerState(prev => ({ ...prev, currentTime: audio.currentTime || 0 }));
-      
+
       const { songs, playerState } = stateRef.current;
       const currentSong = songs.find(s => s.id === playerState.currentSongId);
       if (!currentSong) return;
@@ -313,6 +392,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (Number.isFinite(currentSong.trimEnd) && audio.currentTime >= currentSong.trimEnd) {
         audio.currentTime = currentSong.trimStart;
         if (playerState.playbackMode === 'repeat-one') {
+          beginPlaybackSession(currentSong.id);
           audio.play().catch(() => {});
         } else if (playerState.isPlaying && nextSongRef.current) {
           nextSongRef.current();
@@ -321,15 +401,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const handleEnded = () => {
+       beginPlaybackSession(null);
        if (nextSongRef.current) {
            nextSongRef.current();
        }
     };
 
+    const playbackSampler = window.setInterval(samplePlaybackSession, 500);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
 
     return () => {
+      window.clearInterval(playbackSampler);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
     };
@@ -351,6 +434,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         playPromiseRef.current = audio.play();
         await playPromiseRef.current;
+        playbackSessionRef.current.lastTickAt = Date.now();
+        playbackSessionRef.current.lastMediaTime = audio.currentTime || 0;
         setPlayerState(prev => ({ ...prev, isPlaying: true }));
       } catch (e) {
         console.warn("Toggle play interrupted or failed:", e);
@@ -366,14 +451,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     if (!song || !audio) return;
 
-    // If same song, just toggle
-    if (playerState.currentSongId === songId) {
-        togglePlay();
-        return;
+    // 刷新后只会恢复歌曲 ID，Audio 实例并没有对应音源；此时必须重新装载。
+    const hasLoadedSource = Boolean(audio.currentSrc || audio.getAttribute('src'));
+    if (playerState.currentSongId === songId && hasLoadedSource) {
+      togglePlay();
+      return;
     }
 
     // Resetting src cancels any pending play()
     audio.pause();
+    playbackSessionRef.current = {
+      songId,
+      listenedSeconds: 0,
+      lastTickAt: Date.now(),
+      lastMediaTime: song.trimStart || 0,
+      counted: false,
+    };
     setPlayerState(prev => ({ ...prev, currentSongId: songId, isPlaying: false, isAudioLoading: true, currentTime: song.trimStart || 0 }));
 
     let src = song.audioUrl;
@@ -382,7 +475,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         src = await supabaseApi.createSignedAudioUrl(song.audioPath);
       } catch {
         if (!src) {
-          alert('音频加载失败：请检查 Storage bucket 名称与读取策略（SELECT）。');
+          feedback.error('音频加载失败，请检查音频读取配置');
           return;
         }
       }
@@ -411,7 +504,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e: any) {
       const code = audio.error?.code ? `MediaError(${audio.error.code})` : 'unknown';
       const detail = typeof e?.message === 'string' ? e.message : code;
-      alert(`音频加载失败：${detail}`);
+      feedback.error(`音频加载失败：${detail}`);
       return;
     }
 
@@ -432,11 +525,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localStorage.setItem(key, JSON.stringify(next));
         window.dispatchEvent(new CustomEvent('jzone:recent-played', { detail: { songId } }));
       } catch {}
-      if (hasSupabaseConfig) {
-        supabaseApi.incrementSongPlay(songId).catch(() => {});
-        supabaseApi.incrementUserSongPlay(songId).catch(() => {});
-        setSongs((prev) => prev.map((s) => (s.id === songId ? { ...s, playsCount: (s.playsCount ?? 0) + 1 } : s)));
-      }
     } catch (error: any) {
       if (error.name === 'AbortError') {
         // Expected when src changes rapidly
@@ -447,9 +535,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [togglePlay]);
 
-  const playCollection = useCallback(
+  const playContext = useCallback(
     (songIds: string[], startSongId: string, context?: { collectionId?: string; collectionType?: 'album' | 'playlist' }) => {
-      const nextQueue = songIds.filter(Boolean);
+      const knownSongIds = new Set(stateRef.current.songs.map((song) => song.id));
+      const nextQueue = Array.from(new Set(songIds.filter((id) => id && knownSongIds.has(id))));
+      if (!nextQueue.includes(startSongId) && knownSongIds.has(startSongId)) nextQueue.unshift(startSongId);
       stateRef.current = { ...stateRef.current, playerState: { ...stateRef.current.playerState, queue: nextQueue } };
       setPlayerState((prev) => ({ ...prev, queue: nextQueue }));
       if (hasSupabaseConfig && context?.collectionType === 'playlist' && context.collectionId) {
@@ -459,6 +549,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [playSong]
   );
+
+  const playCollection = playContext;
+
+  const playNext = useCallback((songId: string) => {
+    setPlayerState((prev) => {
+      const withoutSong = prev.queue.filter((id) => id !== songId);
+      const currentIndex = withoutSong.indexOf(prev.currentSongId ?? '');
+      const insertAt = currentIndex >= 0 ? currentIndex + 1 : 0;
+      const queue = [...withoutSong];
+      queue.splice(insertAt, 0, songId);
+      return { ...prev, queue };
+    });
+  }, []);
+
+  const playLater = useCallback((songId: string) => {
+    setPlayerState((prev) => ({
+      ...prev,
+      queue: [...prev.queue.filter((id) => id !== songId), songId],
+    }));
+  }, []);
+
+  const moveQueueItem = useCallback((songId: string, targetIndex: number) => {
+    setPlayerState((prev) => {
+      const sourceIndex = prev.queue.indexOf(songId);
+      if (sourceIndex < 0) return prev;
+      const queue = [...prev.queue];
+      queue.splice(sourceIndex, 1);
+      queue.splice(Math.max(0, Math.min(queue.length, targetIndex)), 0, songId);
+      return { ...prev, queue };
+    });
+  }, []);
+
+  const reorderQueue = useCallback((songIds: string[]) => {
+    const knownIds = new Set(stateRef.current.songs.map((song) => song.id));
+    setPlayerState((prev) => {
+      const queue = Array.from(new Set(songIds.filter((id) => knownIds.has(id))));
+      return queue.length === prev.queue.length ? { ...prev, queue } : prev;
+    });
+  }, []);
 
   const nextSong = useCallback(() => {
     const { queue, currentSongId, playbackMode } = stateRef.current.playerState;
@@ -553,7 +682,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error('Favorite update failed:', e);
       favoriteSongIdsRef.current = previous;
       setFavoriteSongIds(previous);
-      alert('收藏状态同步失败，已恢复原状态，请稍后重试');
+      feedback.error('收藏状态同步失败，已恢复原状态');
     }
   }, [user]);
 
@@ -586,7 +715,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.error('Comment like update failed:', e);
       setComments(previous);
-      alert('点赞状态同步失败，已恢复原状态，请稍后重试');
+      feedback.error('点赞状态同步失败，已恢复原状态');
     }
   }, [comments, user]);
 
@@ -601,6 +730,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     });
     setPlayerState(prev => ({...prev, queue: [song.id, ...prev.queue]}));
+  }, []);
+
+  const patchSongs = useCallback((songIds: string[], updates: Partial<Song>) => {
+    if (!songIds.length) return;
+    const ids = new Set(songIds);
+    setSongs((prev) => prev.map((song) => (ids.has(song.id) ? { ...song, ...updates } : song)));
   }, []);
 
   useEffect(() => {
@@ -716,11 +851,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const getCurrentSong = useCallback(() => songs.find(s => s.id === playerState.currentSongId), [songs, playerState.currentSongId]);
 
-  const updateSong = useCallback(async (songId: string, updates: Partial<Song>) => {
+  const updateSong = useCallback(async (songId: string, updates: Partial<Song>, options?: { syncAlbumByTitle?: boolean }) => {
     const normalizedUpdates: Partial<Song> =
       updates.isPublic !== undefined && updates.visibility === undefined
         ? { ...updates, visibility: updates.isPublic ? 'public' : 'private' }
         : updates;
+    const previousSongs = stateRef.current.songs;
+    const previousSong = previousSongs.find((song) => song.id === songId);
     // Optimistic update
     setSongs(prev => {
         const next = prev.map(s => s.id === songId ? { ...s, ...normalizedUpdates } : s);
@@ -737,22 +874,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     if (hasSupabaseConfig) {
-       const rowUpdates: any = {};
-       if (normalizedUpdates.title !== undefined) rowUpdates.title = normalizedUpdates.title;
-       if (normalizedUpdates.artist !== undefined) rowUpdates.artist = normalizedUpdates.artist;
-       if (normalizedUpdates.album !== undefined) rowUpdates.album = normalizedUpdates.album;
-       if (normalizedUpdates.genre !== undefined) rowUpdates.genre = normalizedUpdates.genre;
-       if (normalizedUpdates.story !== undefined) rowUpdates.story = normalizedUpdates.story;
-       if (normalizedUpdates.coverPath !== undefined) rowUpdates.cover_path = normalizedUpdates.coverPath;
-       if (normalizedUpdates.isPublic !== undefined) {
-         rowUpdates.is_public = normalizedUpdates.isPublic;
-         rowUpdates.visibility = normalizedUpdates.isPublic ? 'public' : 'private';
-       }
-       if (normalizedUpdates.pinnedAt !== undefined) rowUpdates.pinned_at = normalizedUpdates.pinnedAt;
-       
-       if (Object.keys(rowUpdates).length > 0) {
-           await supabaseApi.updateSong(songId, rowUpdates);
-       }
+      const toRowUpdates = (songUpdates: Partial<Song>) => {
+        const rowUpdates: any = {};
+        if (songUpdates.title !== undefined) rowUpdates.title = songUpdates.title;
+        if (songUpdates.artist !== undefined) rowUpdates.artist = songUpdates.artist;
+        if (songUpdates.album !== undefined) rowUpdates.album = songUpdates.album;
+        if (songUpdates.genre !== undefined) rowUpdates.genre = songUpdates.genre;
+        if (songUpdates.story !== undefined) rowUpdates.story = songUpdates.story;
+        if (songUpdates.coverPath !== undefined) rowUpdates.cover_path = songUpdates.coverPath;
+        if (songUpdates.isPublic !== undefined) {
+          rowUpdates.is_public = songUpdates.isPublic;
+          rowUpdates.visibility = songUpdates.isPublic ? 'public' : 'private';
+        }
+        if (songUpdates.pinnedAt !== undefined) rowUpdates.pinned_at = songUpdates.pinnedAt;
+        return rowUpdates;
+      };
+
+      const rowUpdates = toRowUpdates(normalizedUpdates);
+
+      try {
+        if (Object.keys(rowUpdates).length > 0) {
+          await supabaseApi.updateSong(songId, rowUpdates);
+        }
+        if (options?.syncAlbumByTitle !== false && Object.prototype.hasOwnProperty.call(normalizedUpdates, 'album')) {
+          await supabaseApi.syncSongAlbumByTitle(songId, normalizedUpdates.album ?? null);
+        }
+      } catch (error) {
+        setSongs(previousSongs);
+        if (previousSong) {
+          const rollback: Partial<Song> = {};
+          if (normalizedUpdates.title !== undefined) rollback.title = previousSong.title;
+          if (normalizedUpdates.artist !== undefined) rollback.artist = previousSong.artist;
+          if (normalizedUpdates.album !== undefined) rollback.album = previousSong.album;
+          if (normalizedUpdates.genre !== undefined) rollback.genre = previousSong.genre;
+          if (normalizedUpdates.story !== undefined) rollback.story = previousSong.story;
+          if (normalizedUpdates.coverPath !== undefined) rollback.coverPath = previousSong.coverPath;
+          if (normalizedUpdates.isPublic !== undefined) rollback.isPublic = previousSong.isPublic;
+          if (normalizedUpdates.pinnedAt !== undefined) rollback.pinnedAt = previousSong.pinnedAt;
+
+          const rollbackRowUpdates = toRowUpdates(rollback);
+          if (Object.keys(rollbackRowUpdates).length > 0) {
+            await supabaseApi.updateSong(songId, rollbackRowUpdates).catch(() => {});
+          }
+          if (options?.syncAlbumByTitle !== false && Object.prototype.hasOwnProperty.call(normalizedUpdates, 'album')) {
+            await supabaseApi.syncSongAlbumByTitle(songId, previousSong.album ?? null).catch(() => {});
+          }
+        }
+        throw error;
+      }
     }
   }, []);
 
@@ -784,7 +953,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSongs(previousSongs);
       setFavoriteSongIds(previousFavorites);
       setPlayerState(previousPlayerState);
-      alert('删除失败，已恢复本地列表，请稍后重试');
+      feedback.error('删除失败，已恢复本地列表');
     }
   }, [favoriteSongIds, user]);
 
@@ -796,7 +965,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       favoriteSongIds,
       playerState, 
       playSong, 
+      playContext,
       playCollection,
+      playNext,
+      playLater,
+      moveQueueItem,
+      reorderQueue,
       togglePlay, 
       nextSong, 
       prevSong, 
@@ -804,6 +978,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       seek, 
       setVolume,
       addSong,
+      patchSongs,
       addComment,
       setSkin,
       getCurrentSong,
