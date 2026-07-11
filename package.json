@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run build",
     "smoke:auth": "node scripts/smoke-auth-tabs.mjs",
-    "smoke:collection": "node scripts/smoke-collection-detail.mjs"
+    "smoke:collection": "node scripts/smoke-collection-detail.mjs",
+    "smoke:glass": "node scripts/smoke-liquid-glass.mjs"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",

@@ -100,10 +100,23 @@ image.setAttributeNS(
 
 - 两者都保留独立且唯一的 `LiquidGlassSurface`。
 - Mini 播放器的材质层不使用 `will-change: backdrop-filter` 预提升。
-- 两个悬浮组件保持至少 `20px` 的 CSS 像素间隔，不能让位移采样边界接触。
+- 两个悬浮组件保持 `12-15px` 的 CSS 像素间隔；当前经压力测试的基准值为 `14px`。
 - 不使用 `contain: paint`、额外 `translateZ(0)` 或第二层毛玻璃强行隔离；实测这些属性会建立新的合成上下文并再次破坏背景采样。
 
 这类故障必须通过连续切换页面、滚动和重绘压力测试验证，单张静态截图不足以证明稳定。
+
+### 7.2 宽面板与 Q 弹动画
+
+Shuding F 位移默认强调边缘。小圆形按钮几乎全部处于边缘区域，而 Mini 播放器和菜单中间面积较大，仅使用边缘位移会表现为“有高光、无折射”。宽面板应使用 `coverage="full"`：保留原始边缘折射，并增加平滑中心透镜和低强度波动。
+
+缩放与模糊不能施加在 `LiquidGlassSurface` 或其祖先。统一使用 `LiquidGlassMotionContent`：
+
+1. `LiquidGlassSurface` 保持静态并负责真实背景采样。
+2. `liquid-glass-elastic-rim` 作为兄弟层完成 Q 弹轮廓缩放。
+3. 内容兄弟层完成 `scale + blur + opacity` 动画。
+4. 菜单关闭时先反向模糊和缩小，再由调用方卸载。
+
+该结构既保留 iOS 风格的可见形变，也不会让动画层成为新的 Backdrop Root。
 
 ## 8. 新组件接入清单
 
@@ -115,6 +128,6 @@ image.setAttributeNS(
 - [ ] 页面不存在为图标适配而添加的 `mix-blend-mode`。
 - [ ] 祖先不存在 `filter` 或第二层 `backdrop-filter`。
 - [ ] 参数从高级设置同步变化。
-- [ ] 与其他 SVG 液态玻璃悬浮层保持至少 `20px` 间隔。
+- [ ] 与其他 SVG 液态玻璃悬浮层保持经压力测试验证的 `12-15px` 间隔。
 - [ ] 安卓 / 鸿蒙至少能显示毛玻璃兜底。
 - [ ] 桌面和移动尺寸完成截图与控制台检查。

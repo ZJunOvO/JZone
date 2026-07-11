@@ -7,6 +7,8 @@ export type LiquidGlassDisplacementOptions = {
   profile?: 'adaptive' | 'shuding';
   edgeScale?: number;
   centerStrength?: number;
+  centerLensStrength?: number;
+  centerWaveStrength?: number;
   sideVerticalDamp?: number;
   sideHorizontalBoost?: number;
   normalization?: number;
@@ -34,7 +36,9 @@ export const createLiquidGlassDisplacementMap = (
   const resolvedHeight = Math.max(1, Math.round(height));
   const isShudingProfile = options.profile === 'shuding';
   const edgeScale = Math.max(0, Math.min(1.4, options.edgeScale ?? 1));
-  const centerStrength = Math.max(0, Math.min(0.35, options.centerStrength ?? 0));
+  const centerStrength = Math.max(0, Math.min(0.8, options.centerStrength ?? 0));
+  const centerLensStrength = Math.max(0, Math.min(0.8, options.centerLensStrength ?? centerStrength));
+  const centerWaveStrength = Math.max(0, Math.min(0.8, options.centerWaveStrength ?? centerStrength));
   const sideVerticalDamp = Math.max(0, Math.min(1, options.sideVerticalDamp ?? 1));
   const sideHorizontalBoost = Math.max(0.75, Math.min(1.4, options.sideHorizontalBoost ?? 1));
   const normalization = Math.max(0.45, Math.min(1.2, options.normalization ?? 0.5));
@@ -77,10 +81,10 @@ export const createLiquidGlassDisplacementMap = (
     const posX = ix * scaled + 0.5;
     const posY = iy * scaled + 0.5;
     const centerFalloff = Math.max(0, 1 - distance(ix, iy) / 0.58);
-    const centerWaveX = Math.sin((uvY * Math.PI * 2.1) + 0.4) * resolvedWidth * 0.012 * centerFalloff * centerStrength;
-    const centerWaveY = Math.sin((uvX * Math.PI * 2.3) + 1.1) * resolvedHeight * 0.01 * centerFalloff * centerStrength;
-    const centerLensX = ix * resolvedWidth * 0.035 * centerFalloff * centerStrength;
-    const centerLensY = iy * resolvedHeight * 0.03 * centerFalloff * centerStrength;
+    const centerWaveX = Math.sin((uvY * Math.PI * 2.1) + 0.4) * resolvedWidth * 0.012 * centerFalloff * centerWaveStrength;
+    const centerWaveY = Math.sin((uvX * Math.PI * 2.3) + 1.1) * resolvedHeight * 0.01 * centerFalloff * centerWaveStrength;
+    const centerLensX = ix * resolvedWidth * 0.035 * centerFalloff * centerLensStrength;
+    const centerLensY = iy * resolvedHeight * 0.03 * centerFalloff * centerLensStrength;
     const sidePresence = smoothStep(0.18, 0.46, Math.abs(ix));
     const verticalScale = 1 - sidePresence * (1 - sideVerticalDamp);
     const horizontalScale = 1 + sidePresence * (sideHorizontalBoost - 1);

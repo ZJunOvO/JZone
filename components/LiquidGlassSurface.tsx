@@ -11,7 +11,8 @@ export const LiquidGlassSurface: React.FC<{
   className?: string;
   style?: React.CSSProperties;
   material?: 'settings' | 'shuding';
-}> = ({ borderRadiusClass = 'rounded-2xl', className = '', style: customStyle, material = 'settings' }) => {
+  coverage?: 'edge' | 'full';
+}> = ({ borderRadiusClass = 'rounded-2xl', className = '', style: customStyle, material = 'settings', coverage = 'edge' }) => {
   const settings = useLiquidGlassSettings();
   const filterId = React.useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const surfaceRef = React.useRef<HTMLDivElement>(null);
@@ -35,15 +36,18 @@ export const LiquidGlassSurface: React.FC<{
   }, []);
 
   React.useEffect(() => {
+    const useFullCoverage = material === 'shuding' && coverage === 'full';
     setMap(createLiquidGlassDisplacementMap(size.width, size.height, {
       profile: material === 'shuding' ? 'shuding' : 'adaptive',
       edgeScale: settings.edgeRefraction,
       centerStrength: material === 'shuding' ? 0 : 0.14,
+      centerLensStrength: useFullCoverage ? 0.58 : undefined,
+      centerWaveStrength: useFullCoverage ? 0.16 : undefined,
       sideVerticalDamp: material === 'shuding' ? 1 : 0.34,
       sideHorizontalBoost: material === 'shuding' ? 1 : 1.12,
-      normalization: material === 'shuding' ? 0.5 : 0.74,
+      normalization: useFullCoverage ? 0.56 : material === 'shuding' ? 0.5 : 0.74,
     }));
-  }, [material, settings.edgeRefraction, size.height, size.width]);
+  }, [coverage, material, settings.edgeRefraction, size.height, size.width]);
 
   React.useEffect(() => {
     if (!feImageRef.current || !map.href) return;
@@ -67,6 +71,7 @@ export const LiquidGlassSurface: React.FC<{
       style={style}
       aria-hidden
       data-liquid-material={material}
+      data-liquid-coverage={coverage}
     >
       <svg className="liquid-tab-filter-defs" focusable="false">
         <filter

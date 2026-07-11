@@ -110,22 +110,18 @@ export const AppShell: React.FC = () => {
               ? {
                   top: 'calc(env(safe-area-inset-top) + 12px)',
                   bottom: 'auto',
-                  left: '50%',
-                  right: 'auto',
-                  x: '-50%',
+                  left: '12px',
+                  right: '12px',
                   width: 'min(320px, calc(100% - 24px))',
-                  scale: 0.985,
                   opacity: 1,
                 }
               : {
                   top: 'auto',
-                  // 与底部导航的 SVG backdrop 采样边界保持间隔，避免 Chromium 合成层互相污染。
-                  bottom: '100px',
-                  left: '50%',
-                  right: 'auto',
-                  x: '-50%',
+                  // 当前导航顶部与播放器底部保持 14px，兼顾触达密度和 SVG 滤镜采样稳定性。
+                  bottom: '94px',
+                  left: '12px',
+                  right: '12px',
                   width: 'min(400px, calc(100% - 24px))',
-                  scale: 1,
                   opacity: 1,
                 }
           }
@@ -133,11 +129,9 @@ export const AppShell: React.FC = () => {
             top: { type: 'spring', damping: 26, stiffness: 320 },
             bottom: { type: 'spring', damping: 26, stiffness: 320 },
             width: { type: 'spring', damping: 26, stiffness: 320 },
-            scale: { type: 'spring', damping: 24, stiffness: 360 },
             opacity: { duration: 0.12 },
           }}
-          className="fixed z-[160] transform-gpu"
-          style={{ willChange: 'transform, width, opacity' }}
+          className="fixed z-[160] mx-auto"
         >
           <PlayerBar onExpand={() => setIsPlayerOpen(true)} variant={isModalActive ? 'island' : 'dock'} />
         </motion.div>

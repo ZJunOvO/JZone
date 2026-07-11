@@ -7,11 +7,12 @@ import { MemoryCardModal } from '../components/MemoryCardModal';
 import { UniversalContextMenu } from '../components/UniversalContextMenu';
 import { CreateCollectionModal } from '../components/CreateCollectionModal';
 import { Song } from '../types';
-import { motion, PanInfo, useAnimation } from 'framer-motion';
+import { AnimatePresence, motion, PanInfo, useAnimation } from 'framer-motion';
 import { useModalPresence } from '../modalPresence';
 import { useAuth } from '../auth';
 import { CollectionRow, supabaseApi } from '../supabaseApi';
 import { LiquidGlassSurface } from '../components/LiquidGlassSurface';
+import { LiquidGlassMotionContent } from '../components/LiquidGlassMotionContent';
 
 type LibraryContentType = 'songs' | 'albums' | 'playlists';
 type LibraryFilter = 'all' | 'mine' | 'collaborations' | 'public' | 'private' | 'favorites';
@@ -508,15 +509,20 @@ export const Library: React.FC = () => {
        )}
 
        {createMenuOpen && createMenuAnchor && (
-         <div className="fixed inset-0 z-[260]" style={{ pointerEvents: 'none' }}>
-           <div className="absolute inset-0 pointer-events-auto" onClick={() => setCreateMenuOpen(false)} />
-           <div
-             className="liquid-context-menu-panel liquid-context-menu-panel--enter absolute min-w-[220px] overflow-hidden rounded-2xl pointer-events-auto"
+         <div className="fixed inset-0 z-[259]" onClick={() => setCreateMenuOpen(false)} />
+       )}
+       <AnimatePresence>
+         {createMenuOpen && createMenuAnchor && (
+           <motion.div
+             className="liquid-context-menu-panel fixed z-[260] min-w-[220px] overflow-hidden rounded-2xl pointer-events-auto"
              style={{ left: Math.min(createMenuAnchor.x, window.innerWidth - 240), top: createMenuAnchor.y }}
              data-liquid-control-root
+             initial={{ opacity: 0 }}
+             animate={{ opacity: 1 }}
+             exit={{ opacity: 0 }}
+             transition={{ duration: 0.46, ease: [0.22, 0.74, 0.22, 1] }}
            >
-             <LiquidGlassSurface material="shuding" />
-             <div className="liquid-context-menu-content--enter relative z-10 p-1.5">
+             <LiquidGlassMotionContent profile="menu" className="p-1.5">
                <button
                  onClick={() => {
                    setCreateMenuOpen(false);
@@ -551,10 +557,10 @@ export const Library: React.FC = () => {
                  <Icons.ListMusic size={16} data-liquid-adaptive="true" />
                  新建歌单
                </button>
-             </div>
-           </div>
-         </div>
-       )}
+             </LiquidGlassMotionContent>
+           </motion.div>
+         )}
+       </AnimatePresence>
 
        <CreateCollectionModal
          isOpen={createModalOpen}

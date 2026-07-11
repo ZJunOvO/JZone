@@ -2,7 +2,7 @@ import React from 'react';
 import { useStore } from '../store';
 import { Icons } from './Icons';
 import { SkeletonBlock } from './Skeletons';
-import { LiquidGlassSurface } from './LiquidGlassSurface';
+import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
 
 interface PlayerBarProps {
   onExpand: () => void;
@@ -26,12 +26,13 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
       onClick={onExpand}
       data-liquid-control-root
     >
-      <LiquidGlassSurface
-        material="shuding"
+      <LiquidGlassMotionContent
+        profile="player"
         borderRadiusClass={variant === 'island' ? 'rounded-full' : 'rounded-[18px]'}
-      />
+        className="flex h-full w-full items-center"
+      >
       {/* Album Art */}
-      <div className={`relative z-10 h-full aspect-square p-1.5 ${variant === 'island' ? 'hidden' : ''}`}>
+      <div className={`h-full aspect-square p-1.5 ${variant === 'island' ? 'hidden' : ''}`}>
         <img 
           src={song.coverUrl} 
           alt="Cover" 
@@ -41,7 +42,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
       </div>
 
       {/* Info */}
-      <div className={`relative z-10 flex-1 min-w-0 flex flex-col justify-center ${variant === 'island' ? 'px-4' : 'px-2'}`}>
+      <div className={`flex-1 min-w-0 flex flex-col justify-center ${variant === 'island' ? 'px-4' : 'px-2'}`}>
         <h4 className="text-[14px] font-medium text-white truncate leading-tight">
             {song.title}
         </h4>
@@ -51,7 +52,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
       </div>
 
       {/* Controls */}
-      <div className="relative z-10 flex items-center gap-1 pr-3">
+      <div className="flex items-center gap-1 pr-3">
         <button 
           onClick={(e) => { e.stopPropagation(); togglePlay(); }}
           aria-label={playerState.isPlaying ? `暂停 ${song.title}` : `播放 ${song.title}`}
@@ -71,7 +72,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
       </div>
       
       {/* Progress Bar Background */}
-      <div className="absolute bottom-0 left-0 z-10 h-[1px] bg-white/10 w-full">
+      <div className="absolute bottom-0 left-0 h-[1px] bg-white/10 w-full">
          {playerState.isAudioLoading ? (
             <SkeletonBlock className="h-full w-full" />
          ) : (
@@ -81,6 +82,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
             ></div>
          )}
       </div>
+      </LiquidGlassMotionContent>
     </div>
   );
 };

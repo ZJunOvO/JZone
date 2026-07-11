@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Icons } from './Icons';
 import { Song } from '../types';
@@ -8,7 +8,7 @@ import { EditSongModal } from './EditSongModal';
 import { AddSongToCollectionDialog } from './AddSongToCollectionDialog';
 import { getAnchoredMenuPlacement } from '../utils/menuPlacement';
 import { feedback } from './feedback';
-import { LiquidGlassSurface } from './LiquidGlassSurface';
+import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
 
 interface UniversalContextMenuProps {
   isOpen: boolean;
@@ -22,6 +22,8 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
   const { user } = useAuth();
   const { updateSong, deleteSong, isFavorite, toggleFavorite, playNext, playLater } = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const [isVisible, setIsVisible] = useState(isOpen);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showCollectionDialog, setShowCollectionDialog] = useState(false);
 
@@ -30,23 +32,38 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
   const isPinned = !!item.pinnedAt;
   const isPublic = item.isPublic !== false; // Default true if undefined
 
+  const requestClose = useCallback(() => {
+    setIsVisible(false);
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = window.setTimeout(onClose, 580);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (isOpen) setIsVisible(true);
+    else setIsVisible(false);
+  }, [isOpen]);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       // If modal is open, don't close menu (though menu is hidden/replaced)
       if (showEditModal) return;
       
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose();
+        requestClose();
       }
     };
-    if (isOpen) {
+    if (isVisible) {
         // Use timeout to prevent immediate close if triggered by click
         setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen, onClose, showEditModal]);
+  }, [isVisible, requestClose, showEditModal]);
 
   if (showCollectionDialog) {
       return (
@@ -84,7 +101,7 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
         feedback.error('操作失败，请稍后重试');
       }
     } finally {
-      onClose();
+      requestClose();
     }
   };
 
@@ -185,56 +202,36 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
 
   const placement = getAnchoredMenuPlacement(anchorPosition, menuItems.length);
   const style: React.CSSProperties = anchorPosition ? {
-      position: 'absolute',
+      position: 'fixed',
       zIndex: 260,
       left: placement?.left ?? 12,
       top: placement?.top ?? 12,
   } : {
       position: 'fixed',
       bottom: 24,
-      left: '50%',
+      left: 'calc(50% - 118px)',
       zIndex: 260,
   };
   const visibleMenuItems = placement?.opensUp ? [...menuItems].reverse() : menuItems;
 
   return (
     <AnimatePresence>
-      {isOpen && (
+      {isVisible && (
         <motion.div
-          className="fixed inset-0 z-[260]"
-          style={{ pointerEvents: 'none' }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          ref={menuRef}
+          className="liquid-context-menu-panel relative w-[236px] overflow-hidden rounded-2xl pointer-events-auto"
+          style={style}
+          data-liquid-control-root
+          initial={anchorPosition ? { opacity: 0, left: placement?.left ?? 12, top: placement?.top ?? 12 } : { opacity: 0 }}
+          animate={anchorPosition ? { opacity: 1, left: placement?.left ?? 12, top: placement?.top ?? 12 } : { opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          transition={{
+            opacity: { duration: 0.46, ease: [0.22, 0.74, 0.22, 1] },
+            left: { type: 'spring', stiffness: 500, damping: 40, mass: 0.78 },
+            top: { type: 'spring', stiffness: 500, damping: 40, mass: 0.78 },
+          }}
         >
-        {/* Backdrop for click outside - handled by useEffect, but visual dimming can be added here if needed */}
-        {/* <div className="absolute inset-0 bg-black/20 pointer-events-auto" onMouseDown={onClose} /> */}
-        
-        <motion.div
-            ref={menuRef}
-            className={`liquid-context-menu-panel liquid-context-menu-panel--enter ${
-              anchorPosition ? (placement?.opensUp ? 'liquid-context-menu-panel--up' : '') : 'liquid-context-menu-panel--centered'
-            } relative rounded-2xl w-[236px] pointer-events-auto`}
-            style={style}
-            data-liquid-control-root
-            initial={anchorPosition ? { opacity: 0, left: placement?.left ?? 12, top: placement?.top ?? 12 } : { opacity: 0 }}
-            animate={anchorPosition ? { opacity: 1, left: placement?.left ?? 12, top: placement?.top ?? 12 } : { opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{
-              opacity: { duration: 0.34, ease: [0.22, 0.74, 0.22, 1] },
-              left: { type: 'spring', stiffness: 560, damping: 42, mass: 0.72 },
-              top: { type: 'spring', stiffness: 560, damping: 42, mass: 0.72 },
-            }}
-        >
-            <LiquidGlassSurface material="shuding" />
-            <motion.div
-              className="relative z-10 p-1.5"
-              initial={{ opacity: 0, filter: 'blur(14px)' }}
-              animate={{ opacity: 1, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, filter: 'blur(8px)' }}
-              transition={{ duration: 0.46, delay: 0.04, ease: [0.22, 0.74, 0.22, 1] }}
-            >
+            <LiquidGlassMotionContent profile="menu" className="p-1.5">
                 {visibleMenuItems.map((menuItem, idx) => (
                     <button
                         key={`${menuItem.label}-${idx}`}
@@ -249,9 +246,8 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
                         {menuItem.label}
                     </button>
                 ))}
-            </motion.div>
+            </LiquidGlassMotionContent>
         </motion.div>
-      </motion.div>
       )}
     </AnimatePresence>
   );
