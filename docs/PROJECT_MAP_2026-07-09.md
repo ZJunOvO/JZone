@@ -72,6 +72,7 @@
 - `components/LiquidGlassMotionContent.tsx`：保持采样层静态，以 inset 几何驱动整块玻璃 Q 弹，并同步内容模糊。
 - `components/motion/sharedElementRegistry.ts`：头像、歌曲和合集的稳定共享对象 ID 与弹簧参数。
 - `components/motion/SharedElementLayer.tsx`：全局 Framer Motion `LayoutGroup` 与减少动态效果策略。
+- `components/motion/playerTransition.ts`：播放器容器三段展开/收拢曲线、来源边界和封面/文字共享时间轴。
 - `utils/viewTransition.ts`：头像/页面原生 View Transition 调度，快速导航时中断旧过渡并立即提交新状态。
 - `components/PlayerBar.tsx`：mini player。
 - `components/UniversalContextMenu.tsx`：歌曲 mini 菜单。
@@ -91,6 +92,7 @@
 - `npm run smoke:collection`：登录后从个人页打开第一个专辑/歌单详情并返回；如果当前账号没有集合，会明确输出 skipped。
 - `npm run smoke:glass`：验证播放器/菜单 SVG 折射、`panel` 几何、Backdrop Root、12px 间距和三视口稳定性。
 - `npm run smoke:shared`：验证头像、播放器、合集共享过渡、焦点恢复及播放器连续往返 10 次无残留。
+- `npm run smoke:player-transition`：按 20/100/220/380/780ms 采样播放器裁剪边界、背景、控制项及封面/歌名/艺人矩阵，并验证反向收拢。
 
 ## 当前工程任务状态
 

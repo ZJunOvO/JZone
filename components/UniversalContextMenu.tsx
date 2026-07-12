@@ -36,7 +36,7 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
     if (isClosing) return;
     setIsClosing(true);
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = window.setTimeout(onClose, 740);
+    closeTimerRef.current = window.setTimeout(onClose, 400);
   }, [isClosing, onClose]);
 
   useEffect(() => {

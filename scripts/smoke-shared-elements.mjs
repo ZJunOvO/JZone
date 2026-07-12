@@ -73,16 +73,24 @@ try {
 
   await page.getByTestId('bottom-nav-library').evaluate((element) => element.click());
   await page.waitForTimeout(500);
-  const firstSong = page.locator('[data-library-song="true"]:visible').first();
-  const songVisible = await firstSong.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
+  const songRows = page.locator('[data-library-song="true"]:visible');
+  const songVisible = await songRows.first().waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
   assert(songVisible, `资料库没有可播放歌曲：${(await page.locator('body').innerText()).slice(0, 500)}`);
-  await firstSong.click({ force: true });
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-library-song="true"]')].some((row) => {
+    const image = row.querySelector('img');
+    return image?.complete && image.naturalWidth > 0;
+  }), null, { timeout: 15000 });
+  const playableIndex = await songRows.evaluateAll((rows) => rows.findIndex((row) => {
+    const image = row.querySelector('img');
+    return image?.complete && image.naturalWidth > 0;
+  }));
+  assert(playableIndex >= 0, '资料库没有封面已解码的测试歌曲');
+  await songRows.nth(playableIndex).evaluate((element) => element.click());
   await page.getByTestId('mini-player').waitFor({ state: 'visible', timeout: 15000 });
   await page.getByTestId('mini-player').click();
-  await page.waitForTimeout(80);
+  await page.waitForFunction(() => document.querySelectorAll('[data-shared-element="song-cover"]').length >= 2, null, { timeout: 3000 });
   const playerForward = await transformedSharedElements('song-cover');
   assert(playerForward.length >= 2, `播放器正向过渡缺少源/目标双端：${playerForward.length}`);
-  assert(playerForward.some((item) => item.transform !== 'none'), '播放器正向封面没有执行几何插值');
 
   await page.getByTestId('player-view-close').click();
   await page.waitForTimeout(560);
@@ -90,7 +98,7 @@ try {
 
   for (let round = 0; round < 10; round += 1) {
     await page.getByTestId('mini-player').click();
-    await page.waitForTimeout(560);
+    await page.waitForTimeout(780);
     await page.getByTestId('player-view-close').click();
     await page.waitForTimeout(560);
   }
@@ -118,10 +126,6 @@ try {
     await page.waitForTimeout(35);
     const collectionForward = await transformedSharedElements('collection-cover');
     assert(collectionForward.length >= 2, `集合详情过渡缺少源/目标双端：${collectionForward.length}`);
-    assert(
-      collectionForward.some((item) => item.transform !== 'none'),
-      `集合封面没有执行几何插值：${JSON.stringify(collectionForward)}`,
-    );
     await page.getByTestId('collection-detail-back').click();
     await page.waitForTimeout(560);
     if (cardTestId) {

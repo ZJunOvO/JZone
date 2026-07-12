@@ -198,7 +198,7 @@ export const Library: React.FC = () => {
       setCreateMenuOpen(false);
       setCreateMenuClosing(false);
       afterClose?.();
-    }, 740);
+    }, 400);
   }, [createMenuClosing]);
 
   useEffect(() => () => {

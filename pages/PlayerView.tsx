@@ -6,12 +6,24 @@ import { MemoryCardModal } from '../components/MemoryCardModal';
 import { UniversalContextMenu } from '../components/UniversalContextMenu';
 import { useModalPresence } from '../modalPresence';
 import { SkeletonBlock } from '../components/Skeletons';
-import { motion, Reorder, useDragControls } from 'framer-motion';
+import { motion, Reorder, useDragControls, useReducedMotion } from 'framer-motion';
 import type { Song } from '../types';
-import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from '../components/motion/sharedElementRegistry';
+import { sharedElementIds } from '../components/motion/sharedElementRegistry';
+import {
+  getPlayerOriginClipPath,
+  getPlayerMidClipPath,
+  PLAYER_SHARED_TRANSITION,
+  PLAYER_SHELL_DURATION,
+  PLAYER_SHELL_EASE,
+  PLAYER_SHELL_EXIT_DURATION,
+  type PlayerTransitionOrigin,
+  type PlayerTransitionPhase,
+} from '../components/motion/playerTransition';
 
 interface PlayerViewProps {
   onClose: () => void;
+  transitionPhase: PlayerTransitionPhase;
+  transitionOrigin: PlayerTransitionOrigin;
 }
 
 const formatTime = (time: number) => {
@@ -93,7 +105,7 @@ const QueueSongRow: React.FC<{
   );
 };
 
-export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
+export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase, transitionOrigin }) => {
   const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, cyclePlaybackMode, seek, setVolume, playSong, removeFromQueue, reorderQueue, toggleFavorite, isFavorite } = useStore();
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isQueueSorting, setIsQueueSorting] = useState(false);
@@ -104,6 +116,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
   const [isChangingVolume, setIsChangingVolume] = useState(false);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | undefined>(undefined);
+  const reduceMotion = useReducedMotion();
 
   useModalPresence(isMemoryOpen);
   useModalPresence(isQueueOpen);
@@ -122,6 +135,34 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
     shuffle: { label: '随机播放', Icon: Icons.Shuffle },
   }[playerState.playbackMode];
   const PlaybackModeIcon = playbackModeMeta.Icon;
+  const originClipPath = getPlayerOriginClipPath(transitionOrigin);
+  const midClipPath = getPlayerMidClipPath(transitionOrigin);
+  const fullClipPath = 'inset(0px 0px 0px 0px round 0px)';
+  const isClosing = transitionPhase === 'closing';
+  const shellTransition = transitionPhase === 'open'
+    ? { duration: 0.01 }
+    : reduceMotion
+    ? { duration: 0.14 }
+    : {
+        duration: isClosing ? PLAYER_SHELL_EXIT_DURATION : PLAYER_SHELL_DURATION,
+        ease: PLAYER_SHELL_EASE,
+        times: [0, isClosing ? 0.54 : 0.44, 1],
+      };
+  const clipPathAnimation = transitionPhase === 'open'
+    ? fullClipPath
+    : isClosing
+      ? [fullClipPath, midClipPath, originClipPath]
+      : [originClipPath, midClipPath, fullClipPath];
+  const ambientTransition = reduceMotion
+    ? { duration: 0.14 }
+    : { duration: isClosing ? PLAYER_SHELL_EXIT_DURATION : PLAYER_SHELL_DURATION, ease: PLAYER_SHELL_EASE };
+  const secondaryInitial = reduceMotion ? false : { opacity: 0, y: 12 };
+  const secondaryAnimate = isClosing ? { opacity: 0, y: 8 } : { opacity: 1, y: 0 };
+  const secondaryTransition = reduceMotion
+    ? { duration: 0.12 }
+    : isClosing
+      ? { duration: 0.16, ease: 'easeIn' as const }
+      : { duration: 0.3, delay: 0.2, ease: PLAYER_SHELL_EASE };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     seek(Number(e.target.value));
@@ -144,9 +185,23 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
     .sort((a, b) => playerState.queue.indexOf(a.id) - playerState.queue.indexOf(b.id));
 
   return (
-    <div className="fixed inset-0 bg-black z-[200] flex flex-col h-screen justify-between py-8 animate-[slideUp_0.4s_cubic-bezier(0.33,1,0.68,1)] overflow-hidden">
+    <motion.div
+      className="fixed inset-0 bg-black z-[200] flex flex-col h-screen justify-between py-8 overflow-hidden"
+      initial={reduceMotion ? false : { clipPath: originClipPath }}
+      animate={{ clipPath: clipPathAnimation }}
+      transition={shellTransition}
+      style={{ willChange: 'clip-path' }}
+      data-testid="player-transition-shell"
+      data-player-transition-phase={transitionPhase}
+    >
       {/* 1. Immersive Dynamic Background Layer */}
-      <div className="absolute inset-0 -z-10 scale-150 overflow-hidden pointer-events-none transition-opacity duration-500 ease-in-out">
+      <motion.div
+        className="absolute inset-0 z-0 scale-150 overflow-hidden pointer-events-none"
+        initial={reduceMotion ? false : { opacity: 0.28, scale: 1.34 }}
+        animate={{ opacity: isClosing ? 0.24 : 1, scale: 1.5 }}
+        transition={ambientTransition}
+        data-player-transition-part="background"
+      >
         <img 
           key={song.coverUrl}
           src={song.coverUrl} 
@@ -154,12 +209,21 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
           alt="immersive background" 
         />
         <div className="absolute inset-0 bg-black/20"></div>
-      </div>
+      </motion.div>
 
       {/* Top Handle indicator */}
-      <button type="button" className="flex justify-center pt-2 pb-2 cursor-pointer relative z-10" onClick={onClose} aria-label="收起播放页" data-testid="player-view-close">
+      <motion.button
+        type="button"
+        className="flex justify-center pt-2 pb-2 cursor-pointer relative z-10"
+        onClick={onClose}
+        aria-label="收起播放页"
+        data-testid="player-view-close"
+        initial={secondaryInitial}
+        animate={secondaryAnimate}
+        transition={secondaryTransition}
+      >
         <div className="w-10 h-1.5 bg-white/20 rounded-full"></div>
-      </button>
+      </motion.button>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col px-8 justify-between mt-2 relative z-10">
@@ -169,7 +233,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
           <motion.div
             className="w-[96%] max-w-[400px] aspect-square relative transition-all duration-500 ease-out"
             layoutId={sharedElementIds.songCover(song.id)}
-            transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+            transition={{ layout: PLAYER_SHARED_TRANSITION }}
             data-shared-element="song-cover"
           >
             <img 
@@ -186,16 +250,26 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
             <motion.h2
               className="text-2xl font-bold text-white truncate tracking-tight mb-0.5"
               layoutId={sharedElementIds.songTitle(song.id)}
-              transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+              transition={{ layout: PLAYER_SHARED_TRANSITION }}
               data-shared-element="song-title"
             >
               {song.title}
             </motion.h2>
-            <p className="text-lg text-white/60 font-medium truncate">
+            <motion.p
+              className="text-lg text-white/60 font-medium truncate"
+              layoutId={sharedElementIds.songArtist(song.id)}
+              transition={{ layout: PLAYER_SHARED_TRANSITION }}
+              data-shared-element="song-artist"
+            >
               {song.artist}
-            </p>
+            </motion.p>
           </div>
-          <div className="flex items-center gap-2">
+          <motion.div
+            className="flex items-center gap-2"
+            initial={secondaryInitial}
+            animate={secondaryAnimate}
+            transition={secondaryTransition}
+          >
             <button
               onClick={() => toggleFavorite(song.id)}
               className={`w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition ${isFav ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-white/90'}`}
@@ -214,11 +288,17 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
             >
               <Icons.MoreHorizontal size={18} strokeWidth={1.5} />
             </button>
-          </div>
+          </motion.div>
         </div>
 
         {/* 5. Progress Bar - Apple style with Thickening Animation */}
-        <div className="mt-8">
+        <motion.div
+          className="mt-8"
+          initial={secondaryInitial}
+          animate={secondaryAnimate}
+          transition={secondaryTransition}
+          data-player-transition-part="secondary"
+        >
           {playerState.isAudioLoading ? (
             <SkeletonBlock className="w-full h-1.5 rounded-full" />
           ) : (
@@ -249,10 +329,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
             <span>{formatTime(currentTime)}</span>
             <span>-{formatTime(remainingTime)}</span>
           </div>
-        </div>
+        </motion.div>
 
         {/* Main Playback Controls */}
-        <div className="flex items-center justify-around px-4 mt-2">
+        <motion.div className="flex items-center justify-around px-4 mt-2" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition}>
           <button onClick={prevSong} className="w-11 h-11 flex items-center justify-center text-white opacity-80 hover:opacity-100 transition active:scale-90" aria-label="上一首">
             <Icons.SkipBack size={26} fill="currentColor" />
           </button>
@@ -269,10 +349,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
           <button onClick={nextSong} className="w-11 h-11 flex items-center justify-center text-white opacity-80 hover:opacity-100 transition active:scale-90" aria-label="下一首">
             <Icons.SkipForward size={26} fill="currentColor" />
           </button>
-        </div>
+        </motion.div>
 
         {/* 7. Volume Control Slider - Functional with Thickening Animation */}
-        <div className="flex items-center gap-4 px-2 my-6 group">
+        <motion.div className="flex items-center gap-4 px-2 my-6 group" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition}>
           <div className="w-4 flex justify-center">
             {playerState.volume === 0 ? (
               <Icons.VolumeX size={14} strokeWidth={1.5} className="text-white/40" />
@@ -309,10 +389,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
           <div className="w-4 flex justify-center">
             <Icons.Volume2 size={14} strokeWidth={1.5} className="text-white/40" />
           </div>
-        </div>
+        </motion.div>
 
         {/* Footer Function Bar */}
-        <div className="flex justify-center pb-[calc(env(safe-area-inset-bottom)+12px)]">
+        <motion.div className="flex justify-center pb-[calc(env(safe-area-inset-bottom)+12px)]" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition}>
           <div className="flex items-center justify-between w-full max-w-[280px]">
             <button 
               onClick={() => setIsCommentsOpen(true)}
@@ -339,7 +419,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
               <Icons.List size={20} strokeWidth={1.5} />
             </button>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Memory Card Overlay */}
@@ -431,6 +511,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
           type="song"
           anchorPosition={menuAnchor}
       />
-    </div>
+    </motion.div>
   );
 };

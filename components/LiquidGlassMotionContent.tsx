@@ -10,12 +10,13 @@ interface LiquidGlassMotionContentProps {
   borderRadiusClass?: string;
   profile?: LiquidGlassMotionProfile;
   closing?: boolean;
+  animateOnMount?: boolean;
 }
 
 const motionProfiles = {
   menu: {
     duration: 0.84,
-    exitDuration: 0.68,
+    exitDuration: 0.36,
     initialScale: 0.88,
     overshootScale: 1.028,
     initialBlur: 18,
@@ -43,6 +44,7 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
   borderRadiusClass = 'rounded-2xl',
   profile = 'menu',
   closing = false,
+  animateOnMount = true,
 }) => {
   const reduceMotion = useReducedMotion();
   const config = motionProfiles[profile];
@@ -61,28 +63,31 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
       enterTransition,
       exitTransition,
       shellInitial: reduceMotion
-        ? { top: 0, right: 0, bottom: 0, left: 0 }
+        ? { top: 0, right: 0, bottom: 0, left: 0, opacity: 1 }
         : {
             top: config.verticalInset,
             right: config.horizontalInset,
             bottom: config.verticalInset,
             left: config.horizontalInset,
+            opacity: 0.36,
           },
       shellEnter: reduceMotion
-        ? { top: 0, right: 0, bottom: 0, left: 0 }
+        ? { top: 0, right: 0, bottom: 0, left: 0, opacity: 1 }
         : {
             top: [config.verticalInset, 6, -2, 0],
             right: [config.horizontalInset, 5, -2, 0],
             bottom: [config.verticalInset, 6, -2, 0],
             left: [config.horizontalInset, 5, -2, 0],
+            opacity: [0.36, 0.82, 1, 1],
           },
       shellClose: reduceMotion
-        ? { top: 0, right: 0, bottom: 0, left: 0 }
+        ? { top: 0, right: 0, bottom: 0, left: 0, opacity: 0 }
         : {
             top: config.verticalInset * 0.72,
             right: config.horizontalInset * 0.72,
             bottom: config.verticalInset * 0.72,
             left: config.horizontalInset * 0.72,
+            opacity: 0,
           },
       contentInitial: reduceMotion
         ? { opacity: 0 }
@@ -106,8 +111,12 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
         aria-hidden
         className={`liquid-glass-motion-shell pointer-events-none absolute z-[2] overflow-hidden ${borderRadiusClass}`}
         data-liquid-motion-shell
-        initial={animation.shellInitial}
-        animate={closing ? animation.shellClose : animation.shellEnter}
+        initial={animateOnMount ? animation.shellInitial : false}
+        animate={closing
+          ? animation.shellClose
+          : animateOnMount
+            ? animation.shellEnter
+            : { top: 0, right: 0, bottom: 0, left: 0, opacity: 1 }}
         transition={closing ? animation.exitTransition : animation.enterTransition}
       >
         <LiquidGlassSurface
@@ -120,8 +129,12 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
       </motion.div>
       <motion.div
         className={`relative z-10 overflow-hidden ${borderRadiusClass} ${className}`}
-        initial={animation.contentInitial}
-        animate={closing ? animation.contentClose : animation.contentAnimate}
+        initial={animateOnMount ? animation.contentInitial : false}
+        animate={closing
+          ? animation.contentClose
+          : animateOnMount
+            ? animation.contentAnimate
+            : { opacity: 1, scale: 1, filter: 'blur(0px)' }}
         transition={closing ? animation.exitTransition : animation.enterTransition}
       >
         {children}

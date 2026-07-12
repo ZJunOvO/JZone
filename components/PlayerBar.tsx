@@ -4,14 +4,16 @@ import { useStore } from '../store';
 import { Icons } from './Icons';
 import { SkeletonBlock } from './Skeletons';
 import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
-import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from './motion/sharedElementRegistry';
+import { sharedElementIds } from './motion/sharedElementRegistry';
+import { PLAYER_SHARED_TRANSITION } from './motion/playerTransition';
 
 interface PlayerBarProps {
   onExpand: () => void;
   variant?: 'dock' | 'island';
+  suppressEntryMotion?: boolean;
 }
 
-export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock' }) => {
+export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock', suppressEntryMotion = false }) => {
   const { playerState, getCurrentSong, togglePlay, nextSong } = useStore();
   const song = getCurrentSong();
 
@@ -42,12 +44,13 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
         profile="player"
         borderRadiusClass={variant === 'island' ? 'rounded-full' : 'rounded-[18px]'}
         className="flex h-full w-full items-center"
+        animateOnMount={!suppressEntryMotion}
       >
       {/* Album Art */}
       <motion.div
         className={`h-full aspect-square p-1.5 ${variant === 'island' ? 'hidden' : ''}`}
         layoutId={variant === 'dock' ? sharedElementIds.songCover(song.id) : undefined}
-        transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+        transition={{ layout: PLAYER_SHARED_TRANSITION }}
         data-shared-element="song-cover"
       >
         <img 
@@ -63,14 +66,19 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
         <motion.h4
           className="text-[14px] font-medium text-white truncate leading-tight"
           layoutId={variant === 'dock' ? sharedElementIds.songTitle(song.id) : undefined}
-          transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+          transition={{ layout: PLAYER_SHARED_TRANSITION }}
           data-shared-element="song-title"
         >
             {song.title}
         </motion.h4>
-        <div className="flex items-center text-zinc-400">
-             <span className="text-[12px] truncate">{song.artist}</span>
-        </div>
+        <motion.div
+          className="flex items-center text-zinc-400"
+          layoutId={variant === 'dock' ? sharedElementIds.songArtist(song.id) : undefined}
+          transition={{ layout: PLAYER_SHARED_TRANSITION }}
+          data-shared-element="song-artist"
+        >
+          <span className="text-[12px] truncate">{song.artist}</span>
+        </motion.div>
       </div>
 
       {/* Controls */}

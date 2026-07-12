@@ -12,6 +12,13 @@ import { feedback } from '../feedback';
 import { useLiquidGlassAdaptiveForeground } from '../../hooks/useLiquidGlassAdaptiveForeground';
 import { SharedElementLayer } from '../motion/SharedElementLayer';
 import { runViewTransition } from '../../utils/viewTransition';
+import {
+  getDefaultPlayerOrigin,
+  PLAYER_SHELL_DURATION,
+  PLAYER_SHELL_EXIT_DURATION,
+  type PlayerTransitionOrigin,
+  type PlayerTransitionPhase,
+} from '../motion/playerTransition';
 
 const Home = lazy(() => import('../../pages/Home').then((module) => ({ default: module.Home })));
 const Library = lazy(() => import('../../pages/Library').then((module) => ({ default: module.Library })));
@@ -42,7 +49,8 @@ export const AppShell: React.FC = () => {
     closeCollection,
   } = useAppRoute();
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
-  const [isPlayerTransitioning, setIsPlayerTransitioning] = useState(false);
+  const [playerTransitionPhase, setPlayerTransitionPhase] = useState<PlayerTransitionPhase>('open');
+  const [playerTransitionOrigin, setPlayerTransitionOrigin] = useState<PlayerTransitionOrigin | null>(null);
   const playerTransitionTimerRef = React.useRef<number | null>(null);
   const [modalCount, setModalCount] = useState(0);
   const [uploadMounted, setUploadMounted] = useState(activeTab === 'upload');
@@ -73,26 +81,58 @@ export const AppShell: React.FC = () => {
     if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
   }, []);
 
+  const capturePlayerOrigin = React.useCallback((): PlayerTransitionOrigin => {
+    const player = document.querySelector<HTMLElement>('[data-testid="mini-player"]');
+    if (!player) return getDefaultPlayerOrigin();
+    const rect = player.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      borderRadius: Number.parseFloat(getComputedStyle(player).borderRadius) || 18,
+    };
+  }, []);
+
   const openPlayer = React.useCallback(() => {
-    setIsPlayerTransitioning(true);
+    if (isPlayerOpen) return;
+    setPlayerTransitionOrigin(capturePlayerOrigin());
+    setPlayerTransitionPhase('opening');
     setIsPlayerOpen(true);
     if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
-    playerTransitionTimerRef.current = window.setTimeout(() => setIsPlayerTransitioning(false), 520);
-  }, []);
+    playerTransitionTimerRef.current = window.setTimeout(
+      () => setPlayerTransitionPhase('open'),
+      PLAYER_SHELL_DURATION * 1000 + 120,
+    );
+  }, [capturePlayerOrigin, isPlayerOpen]);
 
   const closePlayer = React.useCallback(() => {
-    setIsPlayerOpen(false);
-    window.requestAnimationFrame(() => {
-      document.querySelector<HTMLElement>('[data-testid="mini-player"]')?.focus();
-    });
-  }, []);
+    if (!isPlayerOpen || playerTransitionPhase === 'closing') return;
+    if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
+    setPlayerTransitionOrigin(capturePlayerOrigin());
+    setPlayerTransitionPhase('closing');
+    playerTransitionTimerRef.current = window.setTimeout(() => {
+      setIsPlayerOpen(false);
+      setPlayerTransitionPhase('open');
+      setPlayerTransitionOrigin(null);
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('[data-testid="mini-player"]')?.focus();
+      });
+    }, PLAYER_SHELL_EXIT_DURATION * 1000 + 40);
+  }, [capturePlayerOrigin, isPlayerOpen, playerTransitionPhase]);
 
   React.useEffect(() => {
-    if (collectionId) setIsPlayerOpen(false);
+    if (collectionId) {
+      setIsPlayerOpen(false);
+      setPlayerTransitionPhase('open');
+    }
   }, [collectionId]);
 
   React.useEffect(() => {
-    if (profileUserId) setIsPlayerOpen(false);
+    if (profileUserId) {
+      setIsPlayerOpen(false);
+      setPlayerTransitionPhase('open');
+    }
   }, [profileUserId]);
 
   React.useEffect(() => {
@@ -106,10 +146,18 @@ export const AppShell: React.FC = () => {
       return;
     }
     playContext([song.id], song.id);
+    setPlayerTransitionOrigin(getDefaultPlayerOrigin());
+    setPlayerTransitionPhase('opening');
     setIsPlayerOpen(true);
+    if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
+    playerTransitionTimerRef.current = window.setTimeout(
+      () => setPlayerTransitionPhase('open'),
+      PLAYER_SHELL_DURATION * 1000 + 120,
+    );
   }, [playContext, songs]);
 
   const isModalActive = modalCount > 0;
+  const isPlayerTransitioning = isPlayerOpen && playerTransitionPhase !== 'open';
 
   return (
     <div className="jzone-app-shell max-w-md mx-auto bg-black h-screen overflow-hidden relative shadow-2xl flex flex-col" style={liquidGlassCssVars}>
@@ -166,7 +214,11 @@ export const AppShell: React.FC = () => {
           }}
           className="fixed z-[160] mx-auto"
         >
-          <PlayerBar onExpand={openPlayer} variant={isModalActive ? 'island' : 'dock'} />
+          <PlayerBar
+            onExpand={openPlayer}
+            variant={isModalActive ? 'island' : 'dock'}
+            suppressEntryMotion={playerTransitionPhase === 'closing'}
+          />
         </motion.div>
       )}
 
@@ -182,7 +234,11 @@ export const AppShell: React.FC = () => {
 
       {isPlayerOpen && (
         <Suspense fallback={null}>
-          <PlayerView onClose={closePlayer} />
+          <PlayerView
+            onClose={closePlayer}
+            transitionPhase={playerTransitionPhase}
+            transitionOrigin={playerTransitionOrigin ?? getDefaultPlayerOrigin()}
+          />
         </Suspense>
       )}
       <PwaInstallPrompt />

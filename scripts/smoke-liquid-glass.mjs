@@ -205,10 +205,17 @@ try {
   const closing = await page.evaluate(() => {
     const menu = document.querySelector('.liquid-context-menu-panel');
     const content = menu?.querySelector(':scope > div.relative.z-10');
-    return content ? { exists: true, filter: getComputedStyle(content).filter, transform: getComputedStyle(content).transform } : { exists: false };
+    const shell = menu?.querySelector('[data-liquid-motion-shell]');
+    return content ? {
+      exists: true,
+      filter: getComputedStyle(content).filter,
+      transform: getComputedStyle(content).transform,
+      shellOpacity: shell ? Number(getComputedStyle(shell).opacity) : null,
+    } : { exists: false };
   });
   assert(closing.exists && (closing.filter !== 'none' || closing.transform !== 'none'), 'Mini 菜单关闭时没有反向缩放模糊');
-  await page.waitForTimeout(700);
+  assert(closing.shellOpacity !== null && closing.shellOpacity < 0.9, `Mini 菜单高光框没有同步淡出：${JSON.stringify(closing)}`);
+  await page.waitForTimeout(350);
   assert((await page.locator('.liquid-context-menu-panel').count()) === 0, 'Mini 菜单退出动画后仍残留');
 
   assert(consoleErrors.length === 0, `Console errors: ${JSON.stringify(consoleErrors)}`);
