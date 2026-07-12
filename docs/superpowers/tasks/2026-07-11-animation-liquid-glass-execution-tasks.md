@@ -4,7 +4,7 @@
 
 **Goal:** 在不破坏 Chromium 背景采样的前提下实现可见的 iOS 26 风格缩放、模糊与 Q 弹动效，并按 PRD 逐批补齐共享元素、导航、操作反馈和播放沉浸体验。
 
-**Architecture:** F 材质固定在无 `transform`、`filter` 的采样根中；缩放、模糊和弹性高光只作用于材质的兄弟内容层。所有悬浮玻璃继续使用 `LiquidGlassSurface(material="shuding")` 和统一高级参数，Mini 播放器与底部 Tab 的最终间距以浏览器压力测试确定在 12 至 15px。
+**Architecture:** F 材质固定在无 `transform`、`filter`、`will-change: opacity` 的采样根中；整块玻璃以 inset 几何插值 Q 弹，缩放和模糊只作用于兄弟内容层。所有悬浮玻璃继续使用 `LiquidGlassSurface(material="shuding")` 和统一高级参数，Mini 播放器与底部 Tab 的最终间距为 12px。
 
 **Tech Stack:** React 18、TypeScript、Framer Motion 10、CSS/SVG backdrop-filter、Vite、Playwright。
 
@@ -71,7 +71,7 @@ Expected: 共享组件只有一个材质层，弹性层不包含第二个 `backd
 
 - [x] **Step 3: 调整播放器与 Tab 间距**
 
-先使用 14px，对应当前导航尺寸下播放器 `bottom: 94px`；若压力测试失败则只允许在 12 至 15px 内选择稳定值。
+最终使用 12px，对应当前导航尺寸下播放器 `bottom: 92px`；已通过 390×844、430×932 和 1440×900 三视口压力测试。
 
 - [x] **Step 4: 检查实际背景采样**
 
@@ -87,11 +87,11 @@ Expected: 共享组件只有一个材质层，弹性层不包含第二个 `backd
 
 - [x] **Step 1: 删除菜单材质根的 transform 动画**
 
-移除 `liquid-context-menu-panel--enter` 对面板根的缩放；菜单位置切换只使用 `left/top` 弹簧，不能给材质祖先添加 `filter` 或 `transform`。
+移除 `liquid-context-menu-panel--enter` 对面板根的缩放；菜单位置切换只使用 `left/top` 弹簧。实测并移除会建立 Backdrop Root 的 `will-change: opacity`，采样根只保留 `will-change: left, top`。
 
 - [x] **Step 2: 三类菜单接入共享 Q 弹层**
 
-通用歌曲菜单、合集菜单和资料库新建菜单全部复用 `LiquidGlassMotionContent`。内容从模糊 14px、缩放 0.84、透明 0 过渡到清晰状态，并轻微过冲；关闭时按相反顺序完成。
+通用歌曲菜单、合集菜单和资料库新建菜单全部复用 `LiquidGlassMotionContent`。整块材质壳使用 inset 几何执行约 840ms 的 Q 弹，内容从模糊 18px、缩放状态过渡到清晰状态；关闭约 680ms 并按相反顺序完成。菜单使用 `panel` 几何消除长面板角落放射波纹。
 
 - [x] **Step 3: 保留锚点连续性**
 
@@ -112,19 +112,19 @@ Expected: 共享组件只有一个材质层，弹性层不包含第二个 `backd
 - Modify: `pages/PlayerView.tsx`
 - Modify: `pages/CollectionDetailPage.tsx`
 
-- [ ] **Step 1: 建立共享对象注册表**
+- [x] **Step 1: 建立共享对象注册表**
 
 以稳定对象 ID 注册头像、歌曲封面和合集封面的来源/目标 DOMRect，不使用数组下标或显示名称作为身份。
 
-- [ ] **Step 2: 完成头像与播放器两条路径**
+- [x] **Step 2: 完成头像与播放器两条路径**
 
 先实现现在就听头像 ↔ 个人页头像、Mini 播放器 ↔ 全屏播放页；返回时沿原路径逆向收拢，目标离屏时退化为 180ms 淡入淡出。
 
-- [ ] **Step 3: 完成封面与合集路径**
+- [x] **Step 3: 完成封面与合集路径**
 
-实现歌曲/Bento 封面 ↔ 播放页以及歌单/专辑封面 ↔ 合集详情页，图片未完成解码时不启动位移动画。
+实现 Mini 播放器封面 ↔ 播放页以及歌单/专辑封面 ↔ 合集详情页。歌曲列表点击仍遵循“先开始播放并进入 Mini 播放器”的产品路径，不强制打开全屏页；播放页与合集详情代码在来源页提前预加载，避免首次懒加载错过共享窗口。
 
-- [ ] **Step 4: 回归快速往返**
+- [x] **Step 4: 回归快速往返**
 
 连续前进/返回 10 次，Expected: 无残留克隆层、无历史页面闪回、焦点回到触发元素。
 
@@ -188,7 +188,9 @@ Expected: 共享组件只有一个材质层，弹性层不包含第二个 `backd
 
 - [x] **Step 1: 建立玻璃合成冒烟脚本**
 
-脚本从 `JZONE_TEST_EMAIL`、`JZONE_TEST_PASSWORD` 和 `JZONE_BASE_URL` 读取环境变量，播放一首歌曲后连续切换四个 Tab 三轮，检查 Mini 播放器、底部 Tab 和菜单的 SVG backdrop URL、14px 间距、可见图片数量和控制台错误。
+脚本从 `JZONE_TEST_EMAIL`、`JZONE_TEST_PASSWORD` 和 `JZONE_BASE_URL` 读取环境变量，播放一首歌曲后连续切换四个 Tab 三轮，检查 Mini 播放器、底部 Tab 和菜单的 SVG backdrop URL、12px 间距、`panel` 几何、Backdrop Root、安全可见图片数量和控制台错误。
+
+另建 `smoke:shared` 验证头像、播放器和合集封面共享过渡、返回焦点及播放器连续往返 10 次无残留节点。
 
 - [ ] **Step 2: 运行完整自动回归**
 

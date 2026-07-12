@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { useAuth } from '../auth';
 import { Icons } from '../components/Icons';
 import { useCurrentArtistProfile } from '../hooks/useCurrentArtistProfile';
 import { supabaseApi } from '../supabaseApi';
 import { useStore } from '../store';
 import type { Song } from '../types';
+import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from '../components/motion/sharedElementRegistry';
 
 const RECENT_KEY = 'jzone_recent_song_ids_v1';
 const PLAY_STATS_CACHE_PREFIX = 'jzone_home_play_stats_v1:';
@@ -253,6 +255,10 @@ const FrequentListening = ({
 
 export const Home: React.FC = () => {
   const { user } = useAuth();
+
+  useEffect(() => {
+    void import('./Profile');
+  }, []);
   const { resolvedAvatarUrl } = useCurrentArtistProfile();
   const { songs, playContext, playerState } = useStore();
   const [recentSongIds, setRecentSongIds] = useState<string[]>(() => {
@@ -356,18 +362,22 @@ export const Home: React.FC = () => {
     <div className="relative pb-24 pt-14 px-6 space-y-9 bg-black min-h-screen overflow-hidden">
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-3xl font-extrabold text-white tracking-tight">现在就听</h1>
-        <button
+        <motion.button
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent('jzone:navigate-profile'))}
           className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center text-white shadow-lg overflow-hidden border border-white/10 active:scale-95 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
           aria-label="进入我的页面"
+          layoutId={sharedElementIds.profileAvatar(user?.id)}
+          transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+          data-shared-element="profile-avatar"
+          style={{ viewTransitionName: 'jzone-profile-avatar' }}
         >
           {resolvedAvatarUrl ? (
             <img src={resolvedAvatarUrl} alt="" className="w-full h-full object-cover" />
           ) : (
             <Icons.User size={18} fill="currentColor" />
           )}
-        </button>
+        </motion.button>
       </div>
 
       <div className="flex overflow-x-auto gap-4 pb-2 -mx-6 px-6 scroll-pl-6 snap-x snap-mandatory no-scrollbar">

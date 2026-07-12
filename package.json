@@ -11,7 +11,8 @@
     "check": "npm run typecheck && npm run build",
     "smoke:auth": "node scripts/smoke-auth-tabs.mjs",
     "smoke:collection": "node scripts/smoke-collection-detail.mjs",
-    "smoke:glass": "node scripts/smoke-liquid-glass.mjs"
+    "smoke:glass": "node scripts/smoke-liquid-glass.mjs",
+    "smoke:shared": "node scripts/smoke-shared-elements.mjs"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",

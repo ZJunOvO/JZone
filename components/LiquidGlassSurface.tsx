@@ -12,7 +12,8 @@ export const LiquidGlassSurface: React.FC<{
   style?: React.CSSProperties;
   material?: 'settings' | 'shuding';
   coverage?: 'edge' | 'full';
-}> = ({ borderRadiusClass = 'rounded-2xl', className = '', style: customStyle, material = 'settings', coverage = 'edge' }) => {
+  geometry?: 'standard' | 'panel';
+}> = ({ borderRadiusClass = 'rounded-2xl', className = '', style: customStyle, material = 'settings', coverage = 'edge', geometry = 'standard' }) => {
   const settings = useLiquidGlassSettings();
   const filterId = React.useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const surfaceRef = React.useRef<HTMLDivElement>(null);
@@ -37,17 +38,19 @@ export const LiquidGlassSurface: React.FC<{
 
   React.useEffect(() => {
     const useFullCoverage = material === 'shuding' && coverage === 'full';
+    const usePanelGeometry = material === 'shuding' && geometry === 'panel';
     setMap(createLiquidGlassDisplacementMap(size.width, size.height, {
-      profile: material === 'shuding' ? 'shuding' : 'adaptive',
+      profile: usePanelGeometry ? 'panel' : material === 'shuding' ? 'shuding' : 'adaptive',
       edgeScale: settings.edgeRefraction,
       centerStrength: material === 'shuding' ? 0 : 0.14,
-      centerLensStrength: useFullCoverage ? 0.58 : undefined,
-      centerWaveStrength: useFullCoverage ? 0.16 : undefined,
+      centerLensStrength: usePanelGeometry ? 0.46 : useFullCoverage ? 0.58 : undefined,
+      centerWaveStrength: usePanelGeometry ? 0.08 : useFullCoverage ? 0.16 : undefined,
       sideVerticalDamp: material === 'shuding' ? 1 : 0.34,
       sideHorizontalBoost: material === 'shuding' ? 1 : 1.12,
-      normalization: useFullCoverage ? 0.56 : material === 'shuding' ? 0.5 : 0.74,
+      normalization: usePanelGeometry ? 1 : useFullCoverage ? 0.56 : material === 'shuding' ? 0.5 : 0.74,
+      balancedEncoding: usePanelGeometry,
     }));
-  }, [coverage, material, settings.edgeRefraction, size.height, size.width]);
+  }, [coverage, geometry, material, settings.edgeRefraction, size.height, size.width]);
 
   React.useEffect(() => {
     if (!feImageRef.current || !map.href) return;
@@ -72,6 +75,7 @@ export const LiquidGlassSurface: React.FC<{
       aria-hidden
       data-liquid-material={material}
       data-liquid-coverage={coverage}
+      data-liquid-geometry={geometry}
     >
       <svg className="liquid-tab-filter-defs" focusable="false">
         <filter

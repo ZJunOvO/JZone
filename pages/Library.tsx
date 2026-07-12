@@ -65,6 +65,8 @@ const SwipeableListItem = ({ song, index, playSong, deleteSong, currentSongId, i
 
       {/* Foreground Content */}
       <motion.div 
+        data-testid={`library-song-${song.id}`}
+        data-library-song="true"
         drag={isOwner ? "x" : false}
         dragConstraints={{ left: -100, right: 0 }}
         dragElastic={0.1}
@@ -181,10 +183,27 @@ export const Library: React.FC = () => {
   const [memoryOpenNonce, setMemoryOpenNonce] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ isOpen: boolean; anchor?: { x: number; y: number }; item: Song } | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createMenuClosing, setCreateMenuClosing] = useState(false);
+  const createMenuCloseTimerRef = React.useRef<number | null>(null);
   const [createMenuAnchor, setCreateMenuAnchor] = useState<{ x: number; y: number } | undefined>(undefined);
   const [createType, setCreateType] = useState<'album' | 'playlist'>('album');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [collaboratingSongIds, setCollaboratingSongIds] = useState<Set<string>>(new Set());
+
+  const closeCreateMenu = React.useCallback((afterClose?: () => void) => {
+    if (createMenuClosing) return;
+    setCreateMenuClosing(true);
+    if (createMenuCloseTimerRef.current) window.clearTimeout(createMenuCloseTimerRef.current);
+    createMenuCloseTimerRef.current = window.setTimeout(() => {
+      setCreateMenuOpen(false);
+      setCreateMenuClosing(false);
+      afterClose?.();
+    }, 740);
+  }, [createMenuClosing]);
+
+  useEffect(() => () => {
+    if (createMenuCloseTimerRef.current) window.clearTimeout(createMenuCloseTimerRef.current);
+  }, []);
 
   useModalPresence(!!memorySong);
 
@@ -345,7 +364,11 @@ export const Library: React.FC = () => {
                  onClick={(e) => {
                    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
                    setCreateMenuAnchor({ x: rect.left, y: rect.bottom + 8 });
-                   setCreateMenuOpen((prev) => !prev);
+                   if (createMenuOpen) closeCreateMenu();
+                   else {
+                     setCreateMenuClosing(false);
+                     setCreateMenuOpen(true);
+                   }
                  }}
                  className="liquid-glass-interactive relative z-10 flex h-full w-full items-center justify-center rounded-full transition-colors"
                  data-liquid-adaptive="true"
@@ -509,24 +532,19 @@ export const Library: React.FC = () => {
        )}
 
        {createMenuOpen && createMenuAnchor && (
-         <div className="fixed inset-0 z-[259]" onClick={() => setCreateMenuOpen(false)} />
+         <div className="fixed inset-0 z-[259]" onClick={() => closeCreateMenu()} />
        )}
        <AnimatePresence>
          {createMenuOpen && createMenuAnchor && (
            <motion.div
-             className="liquid-context-menu-panel fixed z-[260] min-w-[220px] overflow-hidden rounded-2xl pointer-events-auto"
+             className={`liquid-context-menu-panel fixed z-[260] min-w-[220px] rounded-2xl ${createMenuClosing ? 'pointer-events-none' : 'pointer-events-auto'}`}
              style={{ left: Math.min(createMenuAnchor.x, window.innerWidth - 240), top: createMenuAnchor.y }}
              data-liquid-control-root
-             initial={{ opacity: 0 }}
-             animate={{ opacity: 1 }}
-             exit={{ opacity: 0 }}
-             transition={{ duration: 0.46, ease: [0.22, 0.74, 0.22, 1] }}
            >
-             <LiquidGlassMotionContent profile="menu" className="p-1.5">
+             <LiquidGlassMotionContent profile="menu" className="p-1.5" closing={createMenuClosing}>
                <button
                  onClick={() => {
-                   setCreateMenuOpen(false);
-                   setShowUpload(true);
+                   closeCreateMenu(() => setShowUpload(true));
                  }}
                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10"
                >
@@ -536,9 +554,10 @@ export const Library: React.FC = () => {
                <button
                  disabled={!user}
                  onClick={() => {
-                   setCreateMenuOpen(false);
-                   setCreateType('album');
-                   setCreateModalOpen(true);
+                   closeCreateMenu(() => {
+                     setCreateType('album');
+                     setCreateModalOpen(true);
+                   });
                  }}
                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-50"
                >
@@ -548,9 +567,10 @@ export const Library: React.FC = () => {
                <button
                  disabled={!user}
                  onClick={() => {
-                   setCreateMenuOpen(false);
-                   setCreateType('playlist');
-                   setCreateModalOpen(true);
+                   closeCreateMenu(() => {
+                     setCreateType('playlist');
+                     setCreateModalOpen(true);
+                   });
                  }}
                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-50"
                >

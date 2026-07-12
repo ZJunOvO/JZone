@@ -4,7 +4,7 @@ export type LiquidGlassDisplacementMap = {
 };
 
 export type LiquidGlassDisplacementOptions = {
-  profile?: 'adaptive' | 'shuding';
+  profile?: 'adaptive' | 'shuding' | 'panel';
   edgeScale?: number;
   centerStrength?: number;
   centerLensStrength?: number;
@@ -12,6 +12,7 @@ export type LiquidGlassDisplacementOptions = {
   sideVerticalDamp?: number;
   sideHorizontalBoost?: number;
   normalization?: number;
+  balancedEncoding?: boolean;
 };
 
 const smoothStep = (a: number, b: number, value: number) => {
@@ -35,6 +36,7 @@ export const createLiquidGlassDisplacementMap = (
   const resolvedWidth = Math.max(1, Math.round(width));
   const resolvedHeight = Math.max(1, Math.round(height));
   const isShudingProfile = options.profile === 'shuding';
+  const isPanelProfile = options.profile === 'panel';
   const edgeScale = Math.max(0, Math.min(1.4, options.edgeScale ?? 1));
   const centerStrength = Math.max(0, Math.min(0.8, options.centerStrength ?? 0));
   const centerLensStrength = Math.max(0, Math.min(0.8, options.centerLensStrength ?? centerStrength));
@@ -65,33 +67,67 @@ export const createLiquidGlassDisplacementMap = (
     const uvY = y / resolvedHeight;
     const ix = uvX - 0.5;
     const iy = uvY - 0.5;
-    const distanceToEdge = roundedRectSdf(
-      ix,
-      iy,
-      isShudingProfile ? 0.3 : 0.34,
-      isShudingProfile ? 0.2 : 0.22,
-      isShudingProfile ? 0.6 : 0.62,
-    );
-    const displacement = smoothStep(
-      isShudingProfile ? 0.8 : 0.78,
-      0,
-      distanceToEdge - (isShudingProfile ? 0.15 : 0.16),
-    );
-    const scaled = smoothStep(0, 1, displacement);
-    const posX = ix * scaled + 0.5;
-    const posY = iy * scaled + 0.5;
-    const centerFalloff = Math.max(0, 1 - distance(ix, iy) / 0.58);
-    const centerWaveX = Math.sin((uvY * Math.PI * 2.1) + 0.4) * resolvedWidth * 0.012 * centerFalloff * centerWaveStrength;
-    const centerWaveY = Math.sin((uvX * Math.PI * 2.3) + 1.1) * resolvedHeight * 0.01 * centerFalloff * centerWaveStrength;
-    const centerLensX = ix * resolvedWidth * 0.035 * centerFalloff * centerLensStrength;
-    const centerLensY = iy * resolvedHeight * 0.03 * centerFalloff * centerLensStrength;
-    const sidePresence = smoothStep(0.18, 0.46, Math.abs(ix));
-    const verticalScale = 1 - sidePresence * (1 - sideVerticalDamp);
-    const horizontalScale = 1 + sidePresence * (sideHorizontalBoost - 1);
-    const dx = (posX * resolvedWidth - x) * edgeScale * horizontalScale + centerLensX + centerWaveX;
-    const dy = (posY * resolvedHeight - y) * edgeScale * verticalScale + centerLensY + centerWaveY;
+    let dx: number;
+    let dy: number;
+    if (isPanelProfile) {
+      const shortSide = Math.min(resolvedWidth, resolvedHeight);
+      const edgeBand = Math.min(38, Math.max(16, shortSide * 0.16));
+      const edgeX = Math.min(x, resolvedWidth - 1 - x);
+      const edgeY = Math.min(y, resolvedHeight - 1 - y);
+      const edgeWeightX = 1 - smoothStep(0, edgeBand, edgeX);
+      const edgeWeightY = 1 - smoothStep(0, edgeBand, edgeY);
+      const directionX = x < resolvedWidth / 2 ? 1 : -1;
+      const directionY = y < resolvedHeight / 2 ? 1 : -1;
+      const normalizedDistance = distance(ix * 2, iy * 2);
+      const centerFalloff = Math.max(0, 1 - normalizedDistance);
+      const centerLensX = ix * shortSide * 0.032 * centerFalloff * centerLensStrength;
+      const centerLensY = iy * shortSide * 0.026 * centerFalloff * centerLensStrength;
+      const centerWaveX = Math.sin((uvY * Math.PI * 1.35) + 0.4) * shortSide * 0.004 * centerFalloff * centerWaveStrength;
+      const centerWaveY = Math.sin((uvX * Math.PI * 1.45) + 1.1) * shortSide * 0.003 * centerFalloff * centerWaveStrength;
+      dx = directionX * edgeWeightX * edgeBand * 0.34 * edgeScale + centerLensX + centerWaveX;
+      dy = directionY * edgeWeightY * edgeBand * 0.22 * edgeScale + centerLensY + centerWaveY;
+    } else {
+      const distanceToEdge = roundedRectSdf(
+        ix,
+        iy,
+        isShudingProfile ? 0.3 : 0.34,
+        isShudingProfile ? 0.2 : 0.22,
+        isShudingProfile ? 0.6 : 0.62,
+      );
+      const displacement = smoothStep(
+        isShudingProfile ? 0.8 : 0.78,
+        0,
+        distanceToEdge - (isShudingProfile ? 0.15 : 0.16),
+      );
+      const scaled = smoothStep(0, 1, displacement);
+      const posX = ix * scaled + 0.5;
+      const posY = iy * scaled + 0.5;
+      const centerFalloff = Math.max(0, 1 - distance(ix, iy) / 0.58);
+      const centerWaveX = Math.sin((uvY * Math.PI * 2.1) + 0.4) * resolvedWidth * 0.012 * centerFalloff * centerWaveStrength;
+      const centerWaveY = Math.sin((uvX * Math.PI * 2.3) + 1.1) * resolvedHeight * 0.01 * centerFalloff * centerWaveStrength;
+      const centerLensX = ix * resolvedWidth * 0.035 * centerFalloff * centerLensStrength;
+      const centerLensY = iy * resolvedHeight * 0.03 * centerFalloff * centerLensStrength;
+      const sidePresence = smoothStep(0.18, 0.46, Math.abs(ix));
+      const verticalScale = 1 - sidePresence * (1 - sideVerticalDamp);
+      const horizontalScale = 1 + sidePresence * (sideHorizontalBoost - 1);
+      dx = (posX * resolvedWidth - x) * edgeScale * horizontalScale + centerLensX + centerWaveX;
+      dy = (posY * resolvedHeight - y) * edgeScale * verticalScale + centerLensY + centerWaveY;
+    }
     maxScale = Math.max(maxScale, Math.abs(dx), Math.abs(dy));
     rawValues.push(dx, dy);
+  }
+
+  if (options.balancedEncoding) {
+    const denominator = maxScale || 1;
+    let index = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.max(0, Math.min(255, (rawValues[index++] / (2 * denominator) + 0.5) * 255));
+      data[i + 1] = Math.max(0, Math.min(255, (rawValues[index++] / (2 * denominator) + 0.5) * 255));
+      data[i + 2] = 0;
+      data[i + 3] = 255;
+    }
+    context.putImageData(new ImageData(data, resolvedWidth, resolvedHeight), 0, 0);
+    return { href: canvas.toDataURL(), scale: maxScale * 2 };
   }
 
   maxScale *= normalization;

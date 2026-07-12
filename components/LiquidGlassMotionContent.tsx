@@ -9,24 +9,31 @@ interface LiquidGlassMotionContentProps {
   className?: string;
   borderRadiusClass?: string;
   profile?: LiquidGlassMotionProfile;
+  closing?: boolean;
 }
 
 const motionProfiles = {
   menu: {
-    duration: 0.56,
-    initialScale: 0.84,
-    overshootScale: 1.035,
-    initialBlur: 14,
-    exitScale: 0.88,
-    exitBlur: 10,
+    duration: 0.84,
+    exitDuration: 0.68,
+    initialScale: 0.88,
+    overshootScale: 1.028,
+    initialBlur: 18,
+    exitScale: 0.9,
+    exitBlur: 14,
+    verticalInset: 16,
+    horizontalInset: 12,
   },
   player: {
-    duration: 0.46,
+    duration: 0.72,
+    exitDuration: 0.58,
     initialScale: 0.92,
-    overshootScale: 1.02,
-    initialBlur: 9,
-    exitScale: 0.94,
-    exitBlur: 7,
+    overshootScale: 1.018,
+    initialBlur: 14,
+    exitScale: 0.93,
+    exitBlur: 11,
+    verticalInset: 5,
+    horizontalInset: 12,
   },
 } as const;
 
@@ -35,35 +42,59 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
   className = '',
   borderRadiusClass = 'rounded-2xl',
   profile = 'menu',
+  closing = false,
 }) => {
   const reduceMotion = useReducedMotion();
   const config = motionProfiles[profile];
   const animation = React.useMemo(() => {
-    const transition = reduceMotion
+    const enterTransition = reduceMotion
       ? { duration: 0.14, ease: 'easeOut' as const }
       : {
           duration: config.duration,
-          times: [0, 0.72, 1],
+          times: [0, 0.34, 0.78, 1],
           ease: [0.22, 0.74, 0.22, 1] as [number, number, number, number],
         };
+    const exitTransition = reduceMotion
+      ? { duration: 0.14, ease: 'easeOut' as const }
+      : { duration: config.exitDuration, ease: [0.32, 0, 0.24, 1] as [number, number, number, number] };
     return {
-      transition,
-      rimInitial: reduceMotion ? { opacity: 0 } : { opacity: 0, scale: config.initialScale },
-      rimAnimate: reduceMotion
-        ? { opacity: 1 }
-        : { opacity: [0, 0.92, 1], scale: [config.initialScale, config.overshootScale, 1] },
-      rimExit: reduceMotion ? { opacity: 0 } : { opacity: 0, scale: config.exitScale },
+      enterTransition,
+      exitTransition,
+      shellInitial: reduceMotion
+        ? { top: 0, right: 0, bottom: 0, left: 0 }
+        : {
+            top: config.verticalInset,
+            right: config.horizontalInset,
+            bottom: config.verticalInset,
+            left: config.horizontalInset,
+          },
+      shellEnter: reduceMotion
+        ? { top: 0, right: 0, bottom: 0, left: 0 }
+        : {
+            top: [config.verticalInset, 6, -2, 0],
+            right: [config.horizontalInset, 5, -2, 0],
+            bottom: [config.verticalInset, 6, -2, 0],
+            left: [config.horizontalInset, 5, -2, 0],
+          },
+      shellClose: reduceMotion
+        ? { top: 0, right: 0, bottom: 0, left: 0 }
+        : {
+            top: config.verticalInset * 0.72,
+            right: config.horizontalInset * 0.72,
+            bottom: config.verticalInset * 0.72,
+            left: config.horizontalInset * 0.72,
+          },
       contentInitial: reduceMotion
         ? { opacity: 0 }
         : { opacity: 0, scale: config.initialScale, filter: `blur(${config.initialBlur}px)` },
       contentAnimate: reduceMotion
         ? { opacity: 1 }
         : {
-            opacity: [0, 0.9, 1],
-            scale: [config.initialScale, config.overshootScale, 1],
-            filter: [`blur(${config.initialBlur}px)`, 'blur(1.5px)', 'blur(0px)'],
+            opacity: [0, 0.58, 0.94, 1],
+            scale: [config.initialScale, 0.97, config.overshootScale, 1],
+            filter: [`blur(${config.initialBlur}px)`, `blur(${config.initialBlur * 0.58}px)`, 'blur(1.5px)', 'blur(0px)'],
           },
-      contentExit: reduceMotion
+      contentClose: reduceMotion
         ? { opacity: 0 }
         : { opacity: 0, scale: config.exitScale, filter: `blur(${config.exitBlur}px)` },
     };
@@ -71,21 +102,27 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
 
   return (
     <>
-      <LiquidGlassSurface material="shuding" coverage="full" borderRadiusClass={borderRadiusClass} />
       <motion.div
         aria-hidden
-        className={`liquid-glass-elastic-rim pointer-events-none absolute inset-0 z-[2] ${borderRadiusClass}`}
-        initial={animation.rimInitial}
-        animate={animation.rimAnimate}
-        exit={animation.rimExit}
-        transition={animation.transition}
-      />
+        className={`liquid-glass-motion-shell pointer-events-none absolute z-[2] overflow-hidden ${borderRadiusClass}`}
+        data-liquid-motion-shell
+        initial={animation.shellInitial}
+        animate={closing ? animation.shellClose : animation.shellEnter}
+        transition={closing ? animation.exitTransition : animation.enterTransition}
+      >
+        <LiquidGlassSurface
+          material="shuding"
+          coverage="full"
+          geometry={profile === 'menu' ? 'panel' : 'standard'}
+          borderRadiusClass={borderRadiusClass}
+        />
+        <div className={`liquid-glass-elastic-rim pointer-events-none absolute inset-0 z-[2] ${borderRadiusClass}`} />
+      </motion.div>
       <motion.div
-        className={`relative z-10 ${className}`}
+        className={`relative z-10 overflow-hidden ${borderRadiusClass} ${className}`}
         initial={animation.contentInitial}
-        animate={animation.contentAnimate}
-        exit={animation.contentExit}
-        transition={animation.transition}
+        animate={closing ? animation.contentClose : animation.contentAnimate}
+        transition={closing ? animation.exitTransition : animation.enterTransition}
       >
         {children}
       </motion.div>

@@ -19,17 +19,17 @@ export const CollectionContextMenu: React.FC<{
 }> = ({ isOpen, onClose, anchorPosition, collection, canManageCollection, onToggleVisibility, onEdit, onSearch, onDelete, onTogglePin }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<number | null>(null);
-  const [isVisible, setIsVisible] = useState(isOpen);
+  const [isClosing, setIsClosing] = useState(false);
 
   const requestClose = useCallback(() => {
-    setIsVisible(false);
+    if (isClosing) return;
+    setIsClosing(true);
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = window.setTimeout(onClose, 580);
-  }, [onClose]);
+    closeTimerRef.current = window.setTimeout(onClose, 740);
+  }, [isClosing, onClose]);
 
   useEffect(() => {
-    if (isOpen) setIsVisible(true);
-    else setIsVisible(false);
+    if (isOpen) setIsClosing(false);
   }, [isOpen]);
 
   useEffect(() => () => {
@@ -40,9 +40,9 @@ export const CollectionContextMenu: React.FC<{
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) requestClose();
     };
-    if (isVisible) setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
+    if (isOpen && !isClosing) setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isVisible, requestClose]);
+  }, [isClosing, isOpen, requestClose]);
 
   if (!canManageCollection) return null;
 
@@ -124,22 +124,19 @@ export const CollectionContextMenu: React.FC<{
 
   return (
     <AnimatePresence>
-      {isVisible && (
+      {isOpen && (
         <motion.div
           ref={menuRef}
-          className="liquid-context-menu-panel relative w-[236px] overflow-hidden rounded-2xl pointer-events-auto"
+          className={`liquid-context-menu-panel relative w-[236px] rounded-2xl ${isClosing ? 'pointer-events-none' : 'pointer-events-auto'}`}
           style={style}
           data-liquid-control-root
-          initial={anchorPosition ? { opacity: 0, left: placement?.left ?? 12, top: placement?.top ?? 12 } : { opacity: 0 }}
-          animate={anchorPosition ? { opacity: 1, left: placement?.left ?? 12, top: placement?.top ?? 12 } : { opacity: 1 }}
-          exit={{ opacity: 0 }}
+          animate={anchorPosition ? { left: placement?.left ?? 12, top: placement?.top ?? 12 } : undefined}
           transition={{
-            opacity: { duration: 0.46, ease: [0.22, 0.74, 0.22, 1] },
             left: { type: 'spring', stiffness: 500, damping: 40, mass: 0.78 },
             top: { type: 'spring', stiffness: 500, damping: 40, mass: 0.78 },
           }}
         >
-        <LiquidGlassMotionContent profile="menu" className="p-1.5">
+        <LiquidGlassMotionContent profile="menu" className="p-1.5" closing={isClosing}>
           {visibleEntries.map((entry) => {
             if ('divider' in entry) return <div key={entry.key} className="h-px bg-white/5 my-1" />;
             const Icon = entry.icon;

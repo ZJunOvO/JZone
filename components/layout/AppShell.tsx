@@ -10,13 +10,17 @@ import { BottomNavigation } from '../navigation/BottomNavigation';
 import { useStore } from '../../store';
 import { feedback } from '../feedback';
 import { useLiquidGlassAdaptiveForeground } from '../../hooks/useLiquidGlassAdaptiveForeground';
+import { SharedElementLayer } from '../motion/SharedElementLayer';
+import { runViewTransition } from '../../utils/viewTransition';
 
 const Home = lazy(() => import('../../pages/Home').then((module) => ({ default: module.Home })));
 const Library = lazy(() => import('../../pages/Library').then((module) => ({ default: module.Library })));
 const Upload = lazy(() => import('../../pages/Upload').then((module) => ({ default: module.Upload })));
 const Profile = lazy(() => import('../../pages/Profile').then((module) => ({ default: module.Profile })));
-const CollectionDetailPage = lazy(() => import('../../pages/CollectionDetailPage').then((module) => ({ default: module.CollectionDetailPage })));
-const PlayerView = lazy(() => import('../../pages/PlayerView').then((module) => ({ default: module.PlayerView })));
+const loadCollectionDetail = () => import('../../pages/CollectionDetailPage').then((module) => ({ default: module.CollectionDetailPage }));
+const CollectionDetailPage = lazy(loadCollectionDetail);
+const loadPlayerView = () => import('../../pages/PlayerView').then((module) => ({ default: module.PlayerView }));
+const PlayerView = lazy(loadPlayerView);
 
 const PageFallback = () => (
   <div className="min-h-screen bg-black px-6 pt-16" aria-label="页面加载中">
@@ -38,6 +42,8 @@ export const AppShell: React.FC = () => {
     closeCollection,
   } = useAppRoute();
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+  const [isPlayerTransitioning, setIsPlayerTransitioning] = useState(false);
+  const playerTransitionTimerRef = React.useRef<number | null>(null);
   const [modalCount, setModalCount] = useState(0);
   const [uploadMounted, setUploadMounted] = useState(activeTab === 'upload');
   const sharedSongHandledRef = React.useRef<string | null>(null);
@@ -54,6 +60,32 @@ export const AppShell: React.FC = () => {
   React.useEffect(() => {
     if (activeTab === 'upload') setUploadMounted(true);
   }, [activeTab]);
+
+  React.useEffect(() => {
+    if (songs.length > 0) void loadPlayerView();
+  }, [songs.length]);
+
+  React.useEffect(() => {
+    if (activeTab === 'profile') void loadCollectionDetail();
+  }, [activeTab]);
+
+  React.useEffect(() => () => {
+    if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
+  }, []);
+
+  const openPlayer = React.useCallback(() => {
+    setIsPlayerTransitioning(true);
+    setIsPlayerOpen(true);
+    if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
+    playerTransitionTimerRef.current = window.setTimeout(() => setIsPlayerTransitioning(false), 520);
+  }, []);
+
+  const closePlayer = React.useCallback(() => {
+    setIsPlayerOpen(false);
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('[data-testid="mini-player"]')?.focus();
+    });
+  }, []);
 
   React.useEffect(() => {
     if (collectionId) setIsPlayerOpen(false);
@@ -81,6 +113,7 @@ export const AppShell: React.FC = () => {
 
   return (
     <div className="jzone-app-shell max-w-md mx-auto bg-black h-screen overflow-hidden relative shadow-2xl flex flex-col" style={liquidGlassCssVars}>
+      <SharedElementLayer>
       <div className="jzone-glass-source flex-1 overflow-y-auto no-scrollbar scroll-smooth bg-black">
         <Suspense fallback={<PageFallback />}>
           {activeTab === 'home' && <Home />}
@@ -102,7 +135,7 @@ export const AppShell: React.FC = () => {
         </Suspense>
       )}
 
-      {!isPlayerOpen && (
+      {(!isPlayerOpen || isPlayerTransitioning) && (
         <motion.div
           initial={false}
           animate={
@@ -117,8 +150,8 @@ export const AppShell: React.FC = () => {
                 }
               : {
                   top: 'auto',
-                  // 当前导航顶部与播放器底部保持 14px，兼顾触达密度和 SVG 滤镜采样稳定性。
-                  bottom: '94px',
+                  // 当前导航顶部与播放器底部保持 12px，兼顾触达密度和 SVG 滤镜采样稳定性。
+                  bottom: '92px',
                   left: '12px',
                   right: '12px',
                   width: 'min(400px, calc(100% - 24px))',
@@ -133,24 +166,27 @@ export const AppShell: React.FC = () => {
           }}
           className="fixed z-[160] mx-auto"
         >
-          <PlayerBar onExpand={() => setIsPlayerOpen(true)} variant={isModalActive ? 'island' : 'dock'} />
+          <PlayerBar onExpand={openPlayer} variant={isModalActive ? 'island' : 'dock'} />
         </motion.div>
       )}
 
       <BottomNavigation
         currentTab={activeTab}
         setTab={(tab) => {
-          setActiveTab(tab);
-          if (tab === 'profile') setProfileUserId(undefined);
+          runViewTransition(() => {
+            setActiveTab(tab);
+            if (tab === 'profile') setProfileUserId(undefined);
+          });
         }}
       />
 
       {isPlayerOpen && (
         <Suspense fallback={null}>
-          <PlayerView onClose={() => setIsPlayerOpen(false)} />
+          <PlayerView onClose={closePlayer} />
         </Suspense>
       )}
       <PwaInstallPrompt />
+      </SharedElementLayer>
     </div>
   );
 };

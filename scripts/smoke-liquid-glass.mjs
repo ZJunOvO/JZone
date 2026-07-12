@@ -54,27 +54,63 @@ try {
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await login();
 
-  await page.getByTestId('bottom-nav-library').click({ force: true });
+  await page.getByTestId('bottom-nav-library').evaluate((element) => element.click());
   await page.waitForTimeout(400);
-  const firstSong = page.locator('div[draggable="false"].cursor-pointer:visible').first();
-  await firstSong.click({ force: true });
+  const firstSong = page.locator('[data-library-song="true"]:visible').first();
+  await firstSong.evaluate((element) => element.click());
   await page.locator('.liquid-mini-player').waitFor({ state: 'visible', timeout: 15000 });
+  await page.waitForTimeout(35);
+  const playerOpening = await page.evaluate(() => {
+    const player = document.querySelector('.liquid-mini-player');
+    const shell = player?.querySelector('[data-liquid-motion-shell]');
+    const content = player?.querySelector(':scope > div.relative.z-10');
+    const playerRect = player?.getBoundingClientRect();
+    const shellRect = shell?.getBoundingClientRect();
+    return {
+      playerWidth: playerRect?.width,
+      shellWidth: shellRect?.width,
+      contentFilter: content ? getComputedStyle(content).filter : null,
+    };
+  });
+  assert(
+    (playerOpening.shellWidth ?? 0) < (playerOpening.playerWidth ?? 0) || playerOpening.contentFilter !== 'none',
+    'Mini 播放器整个玻璃壳没有执行入场形变',
+  );
 
   for (let round = 0; round < 3; round += 1) {
     for (const tab of ['upload', 'profile', 'home', 'library']) {
-      await page.getByTestId(`bottom-nav-${tab}`).click({ force: true });
+      await page.getByTestId(`bottom-nav-${tab}`).evaluate((element) => element.click());
       await page.waitForTimeout(180);
     }
   }
 
-  await firstSong.click({ button: 'right', force: true });
+  await firstSong.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    element.dispatchEvent(new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      button: 2,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+    }));
+  });
   await page.locator('.liquid-context-menu-panel').waitFor({ state: 'visible' });
   await page.waitForTimeout(35);
   const opening = await page.evaluate(() => {
+    const menu = document.querySelector('.liquid-context-menu-panel');
     const content = document.querySelector('.liquid-context-menu-panel > div.relative.z-10');
-    return content ? { filter: getComputedStyle(content).filter, transform: getComputedStyle(content).transform } : null;
+    const shell = menu?.querySelector('[data-liquid-motion-shell]');
+    const menuRect = menu?.getBoundingClientRect();
+    const shellRect = shell?.getBoundingClientRect();
+    return content ? {
+      filter: getComputedStyle(content).filter,
+      transform: getComputedStyle(content).transform,
+      menuWidth: menuRect?.width,
+      shellWidth: shellRect?.width,
+    } : null;
   });
   assert(opening && (opening.filter !== 'none' || opening.transform !== 'none'), 'Mini 菜单没有执行缩放模糊入场');
+  assert((opening?.shellWidth ?? 0) < (opening?.menuWidth ?? 0), 'Mini 菜单整个玻璃壳没有执行入场形变');
 
   await page.waitForTimeout(620);
   const state = await page.evaluate(() => {
@@ -99,8 +135,10 @@ try {
       menuFilter: menu ? getComputedStyle(menu.querySelector('.liquid-tab-f-glass')).backdropFilter : null,
       miniCoverage: miniMaterial?.getAttribute('data-liquid-coverage'),
       menuCoverage: menuMaterial?.getAttribute('data-liquid-coverage'),
+      menuGeometry: menuMaterial?.getAttribute('data-liquid-geometry'),
       menuRootFilter: menu ? getComputedStyle(menu).filter : null,
       menuRootTransform: menu ? getComputedStyle(menu).transform : null,
+      menuRootWillChange: menu ? getComputedStyle(menu).willChange : null,
       gap: miniRect && navRect ? navRect.top - miniRect.bottom : null,
       unsafeAncestors,
       visibleImages: [...document.images].filter((image) => {
@@ -113,13 +151,15 @@ try {
   assert(state.miniFilter?.includes('url('), 'Mini 播放器缺少 SVG 背景折射');
   assert(state.menuFilter?.includes('url('), 'Mini 菜单缺少 SVG 背景折射');
   assert(state.miniCoverage === 'full' && state.menuCoverage === 'full', '宽面板没有启用全幅折射');
+  assert(state.menuGeometry === 'panel', 'Mini 菜单没有启用纵向面板折射几何');
   assert(state.gap >= 12 && state.gap <= 15, `Mini 播放器与 Tab 间距异常：${state.gap}`);
   assert(state.unsafeAncestors.length === 0, `Mini 播放器存在不安全合成祖先：${JSON.stringify(state.unsafeAncestors)}`);
   assert(state.menuRootFilter === 'none' && state.menuRootTransform === 'none', 'Mini 菜单材质根仍存在 filter 或 transform');
+  assert(!state.menuRootWillChange?.includes('opacity'), 'Mini 菜单材质根的 will-change 重新建立了 Backdrop Root');
   assert(state.visibleImages > 0, '页面可见图片在 SVG 合成后消失');
 
   let continuity = null;
-  const songRows = page.locator('div[draggable="false"].cursor-pointer:visible');
+  const songRows = page.locator('[data-library-song="true"]:visible');
   if (await songRows.count() > 1) {
     const before = await page.evaluate(() => {
       const menu = document.querySelector('.liquid-context-menu-panel');
@@ -168,13 +208,13 @@ try {
     return content ? { exists: true, filter: getComputedStyle(content).filter, transform: getComputedStyle(content).transform } : { exists: false };
   });
   assert(closing.exists && (closing.filter !== 'none' || closing.transform !== 'none'), 'Mini 菜单关闭时没有反向缩放模糊');
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(700);
   assert((await page.locator('.liquid-context-menu-panel').count()) === 0, 'Mini 菜单退出动画后仍残留');
 
   assert(consoleErrors.length === 0, `Console errors: ${JSON.stringify(consoleErrors)}`);
   assert(failedResponses.length === 0, `Failed responses: ${JSON.stringify(failedResponses)}`);
 
-  console.log(JSON.stringify({ ok: true, baseUrl, viewport: `${viewportWidth}x${viewportHeight}`, opening, state, continuity, closing, consoleErrors, failedResponses }, null, 2));
+  console.log(JSON.stringify({ ok: true, baseUrl, viewport: `${viewportWidth}x${viewportHeight}`, playerOpening, opening, state, continuity, closing, consoleErrors, failedResponses }, null, 2));
 } finally {
   await browser.close();
 }

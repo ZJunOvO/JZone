@@ -1,8 +1,10 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { useStore } from '../store';
 import { Icons } from './Icons';
 import { SkeletonBlock } from './Skeletons';
 import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
+import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from './motion/sharedElementRegistry';
 
 interface PlayerBarProps {
   onExpand: () => void;
@@ -20,11 +22,21 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
 
   return (
     <div 
-      className={`liquid-mini-player relative h-[56px] rounded-[18px] flex items-center cursor-pointer overflow-hidden ${
+      className={`liquid-mini-player relative h-[56px] rounded-[18px] flex items-center cursor-pointer ${
         variant === 'island' ? 'rounded-full h-[48px]' : ''
       }`}
       onClick={onExpand}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onExpand();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`展开播放器：${song.title}`}
       data-liquid-control-root
+      data-testid="mini-player"
     >
       <LiquidGlassMotionContent
         profile="player"
@@ -32,20 +44,30 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
         className="flex h-full w-full items-center"
       >
       {/* Album Art */}
-      <div className={`h-full aspect-square p-1.5 ${variant === 'island' ? 'hidden' : ''}`}>
+      <motion.div
+        className={`h-full aspect-square p-1.5 ${variant === 'island' ? 'hidden' : ''}`}
+        layoutId={variant === 'dock' ? sharedElementIds.songCover(song.id) : undefined}
+        transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+        data-shared-element="song-cover"
+      >
         <img 
           src={song.coverUrl} 
           alt="Cover" 
           decoding="async"
           className="w-full h-full rounded-md object-cover shadow-sm bg-zinc-800" 
         />
-      </div>
+      </motion.div>
 
       {/* Info */}
       <div className={`flex-1 min-w-0 flex flex-col justify-center ${variant === 'island' ? 'px-4' : 'px-2'}`}>
-        <h4 className="text-[14px] font-medium text-white truncate leading-tight">
+        <motion.h4
+          className="text-[14px] font-medium text-white truncate leading-tight"
+          layoutId={variant === 'dock' ? sharedElementIds.songTitle(song.id) : undefined}
+          transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+          data-shared-element="song-title"
+        >
             {song.title}
-        </h4>
+        </motion.h4>
         <div className="flex items-center text-zinc-400">
              <span className="text-[12px] truncate">{song.artist}</span>
         </div>

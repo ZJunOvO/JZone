@@ -55,6 +55,7 @@ image.setAttributeNS(
 
 - `filter`，包括看似无效的 `filter: blur(0)`。
 - 另一层 `backdrop-filter`。
+- `will-change: opacity`。Chromium 会为它预建独立合成层和 Backdrop Root。
 - 不必要的 mask、clip 或会建立独立合成背景的效果。
 
 这些属性会建立新的 Backdrop Root，使液态玻璃只能采样透明祖先，表现为“有边框、没有背景折射”。需要页面背景模糊时，应放在玻璃组件的同级层，而不是祖先层。
@@ -100,20 +101,20 @@ image.setAttributeNS(
 
 - 两者都保留独立且唯一的 `LiquidGlassSurface`。
 - Mini 播放器的材质层不使用 `will-change: backdrop-filter` 预提升。
-- 两个悬浮组件保持 `12-15px` 的 CSS 像素间隔；当前经压力测试的基准值为 `14px`。
+- 两个悬浮组件保持 `12-15px` 的 CSS 像素间隔；当前经三视口压力测试的基准值为 `12px`。
 - 不使用 `contain: paint`、额外 `translateZ(0)` 或第二层毛玻璃强行隔离；实测这些属性会建立新的合成上下文并再次破坏背景采样。
 
 这类故障必须通过连续切换页面、滚动和重绘压力测试验证，单张静态截图不足以证明稳定。
 
 ### 7.2 宽面板与 Q 弹动画
 
-Shuding F 位移默认强调边缘。小圆形按钮几乎全部处于边缘区域，而 Mini 播放器和菜单中间面积较大，仅使用边缘位移会表现为“有高光、无折射”。宽面板应使用 `coverage="full"`：保留原始边缘折射，并增加平滑中心透镜和低强度波动。
+Shuding F 位移默认强调边缘。小圆形按钮几乎全部处于边缘区域，而 Mini 播放器和菜单中间面积较大，仅使用边缘位移会表现为“有高光、无折射”。宽面板应使用 `coverage="full"`：保留原始边缘折射，并增加平滑中心透镜。纵向菜单额外使用 `geometry="panel"` 与均衡 R/G 位移编码，按像素到矩形四边的真实距离计算边缘法线，避免长面板四角形成放射波浪。
 
 缩放与模糊不能施加在 `LiquidGlassSurface` 或其祖先。统一使用 `LiquidGlassMotionContent`：
 
 1. `LiquidGlassSurface` 保持静态并负责真实背景采样。
-2. `liquid-glass-elastic-rim` 作为兄弟层完成 Q 弹轮廓缩放。
-3. 内容兄弟层完成 `scale + blur + opacity` 动画。
+2. `data-liquid-motion-shell` 使用 `top/right/bottom/left` 插值改变整块玻璃边界，完成不会创建变换祖先的 Q 弹。
+3. `liquid-glass-elastic-rim` 与内容兄弟层同步完成轮廓、`scale + blur + opacity` 动画。
 4. 菜单关闭时先反向模糊和缩小，再由调用方卸载。
 
 该结构既保留 iOS 风格的可见形变，也不会让动画层成为新的 Backdrop Root。
@@ -127,6 +128,7 @@ Shuding F 位移默认强调边缘。小圆形按钮几乎全部处于边缘区�
 - [ ] 语义色图标排除自动反相。
 - [ ] 页面不存在为图标适配而添加的 `mix-blend-mode`。
 - [ ] 祖先不存在 `filter` 或第二层 `backdrop-filter`。
+- [ ] 采样根不存在 `will-change: opacity`，位置动画只声明 `left, top`。
 - [ ] 参数从高级设置同步变化。
 - [ ] 与其他 SVG 液态玻璃悬浮层保持经压力测试验证的 `12-15px` 间隔。
 - [ ] 安卓 / 鸿蒙至少能显示毛玻璃兜底。

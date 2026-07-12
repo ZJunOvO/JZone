@@ -13,6 +13,7 @@ import { EditCollectionModal } from '../components/EditCollectionModal';
 import { extractAverageColor } from '../utils/extractAverageColor';
 import { CollectionHeaderSkeleton, SongRowSkeleton } from '../components/Skeletons';
 import { feedback } from '../components/feedback';
+import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from '../components/motion/sharedElementRegistry';
 
 export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () => void }> = ({ collectionId, onClose }) => {
   useModalPresence(true);
@@ -402,12 +403,17 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
             <CollectionHeaderSkeleton />
           ) : collection?.type === 'playlist' ? (
             <div className="relative px-6">
-              <div className="relative h-[46vh] rounded-[28px] overflow-hidden border border-white/10 shadow-2xl">
+              <motion.div
+                className="relative h-[46vh] rounded-[28px] overflow-hidden border border-white/10 shadow-2xl"
+                layoutId={sharedElementIds.collectionCover(collection?.id)}
+                transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+                data-shared-element="collection-cover"
+              >
                 <CollectionBentoWall songs={orderedSongs} />
                 <div className="absolute inset-0 pointer-events-none">
                   <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
                 </div>
-              </div>
+              </motion.div>
 
               <div className="mt-8 text-center" ref={titleRef}>
                 <div className="text-white text-3xl font-extrabold tracking-tight drop-shadow-md">{collection?.title ?? (loading ? '加载中…' : '未找到')}</div>
@@ -422,13 +428,18 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
           ) : (
             <div className="px-6">
               <div className="mt-6 flex flex-col items-center">
-                <div className="w-[70%] max-w-[320px] aspect-square rounded-[24px] overflow-hidden shadow-2xl border border-white/10 bg-zinc-900/50 flex items-center justify-center">
+                <motion.div
+                  className="w-[70%] max-w-[320px] aspect-square rounded-[24px] overflow-hidden shadow-2xl border border-white/10 bg-zinc-900/50 flex items-center justify-center"
+                  layoutId={sharedElementIds.collectionCover(collection?.id)}
+                  transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+                  data-shared-element="collection-cover"
+                >
                   {headerCover ? (
                     <img src={headerCover} className="w-full h-full object-cover" alt="" />
                   ) : (
                     <Icons.Disc size={64} className="text-zinc-700" />
                   )}
-                </div>
+                </motion.div>
                 <div className="mt-8 text-center" ref={collection?.type === 'album' ? titleRef : undefined}>
                   <div className="text-white text-3xl font-extrabold tracking-tight drop-shadow-md">{collection?.title ?? (loading ? '加载中…' : '未找到')}</div>
                   <div className="mt-2 text-base font-semibold text-zinc-200 drop-shadow-sm">{creatorName}</div>

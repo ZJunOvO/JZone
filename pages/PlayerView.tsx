@@ -6,8 +6,9 @@ import { MemoryCardModal } from '../components/MemoryCardModal';
 import { UniversalContextMenu } from '../components/UniversalContextMenu';
 import { useModalPresence } from '../modalPresence';
 import { SkeletonBlock } from '../components/Skeletons';
-import { Reorder, useDragControls } from 'framer-motion';
+import { motion, Reorder, useDragControls } from 'framer-motion';
 import type { Song } from '../types';
+import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from '../components/motion/sharedElementRegistry';
 
 interface PlayerViewProps {
   onClose: () => void;
@@ -156,7 +157,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
       </div>
 
       {/* Top Handle indicator */}
-      <button type="button" className="flex justify-center pt-2 pb-2 cursor-pointer relative z-10" onClick={onClose} aria-label="收起播放页">
+      <button type="button" className="flex justify-center pt-2 pb-2 cursor-pointer relative z-10" onClick={onClose} aria-label="收起播放页" data-testid="player-view-close">
         <div className="w-10 h-1.5 bg-white/20 rounded-full"></div>
       </button>
 
@@ -165,21 +166,31 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose }) => {
         
         {/* Core Cover Area */}
         <div className="flex items-center justify-center flex-grow-[2] py-4">
-          <div className="w-[96%] max-w-[400px] aspect-square relative transition-all duration-500 ease-out">
+          <motion.div
+            className="w-[96%] max-w-[400px] aspect-square relative transition-all duration-500 ease-out"
+            layoutId={sharedElementIds.songCover(song.id)}
+            transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+            data-shared-element="song-cover"
+          >
             <img 
               src={song.coverUrl} 
               alt="Album Cover" 
               className={`w-full h-full object-cover rounded-[14px] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.7)] border border-white/10 transition-transform duration-500 ${playerState.isPlaying ? 'scale-100' : 'scale-[0.88] opacity-80'}`}
             />
-          </div>
+          </motion.div>
         </div>
 
         {/* Song Info & Action Buttons */}
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0 pr-4">
-            <h2 className="text-2xl font-bold text-white truncate tracking-tight mb-0.5">
+            <motion.h2
+              className="text-2xl font-bold text-white truncate tracking-tight mb-0.5"
+              layoutId={sharedElementIds.songTitle(song.id)}
+              transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+              data-shared-element="song-title"
+            >
               {song.title}
-            </h2>
+            </motion.h2>
             <p className="text-lg text-white/60 font-medium truncate">
               {song.artist}
             </p>

@@ -66,9 +66,13 @@
 - `styles/auth.css`：登录页流光背景、登录卡片外层光效。
 - `styles/liquid-navigation.css`：底部导航液态玻璃材质、tab 透镜样式。
 - `styles/profile-glass-preview.css`：个人页设置里的液态玻璃实时预览。
-- `styles/glass-materials.css`：mini player、mini menu、登录卡片等共用毛玻璃材质和菜单入场动画。
+- `styles/glass-materials.css`：Mini 播放器、Mini 菜单等共用 F 材质外壳与 Q 弹动画；菜单采样根禁止 `will-change: opacity`。
 - `utils/liquidGlassSettings.ts`：液态玻璃默认参数、存储、事件同步、CSS 变量。
-- `utils/liquidGlassDisplacement.ts`：SVG displacement map 生成逻辑。
+- `utils/liquidGlassDisplacement.ts`：SVG displacement map 生成逻辑，含宽播放器和纵向菜单 `panel` 几何。
+- `components/LiquidGlassMotionContent.tsx`：保持采样层静态，以 inset 几何驱动整块玻璃 Q 弹，并同步内容模糊。
+- `components/motion/sharedElementRegistry.ts`：头像、歌曲和合集的稳定共享对象 ID 与弹簧参数。
+- `components/motion/SharedElementLayer.tsx`：全局 Framer Motion `LayoutGroup` 与减少动态效果策略。
+- `utils/viewTransition.ts`：头像/页面原生 View Transition 调度，快速导航时中断旧过渡并立即提交新状态。
 - `components/PlayerBar.tsx`：mini player。
 - `components/UniversalContextMenu.tsx`：歌曲 mini 菜单。
 
@@ -85,6 +89,8 @@
 - `npm run check`：执行 `tsc --noEmit` 和 `vite build`。
 - `npm run smoke:auth`：登录并切换四个底部核心 tab。
 - `npm run smoke:collection`：登录后从个人页打开第一个专辑/歌单详情并返回；如果当前账号没有集合，会明确输出 skipped。
+- `npm run smoke:glass`：验证播放器/菜单 SVG 折射、`panel` 几何、Backdrop Root、12px 间距和三视口稳定性。
+- `npm run smoke:shared`：验证头像、播放器、合集共享过渡、焦点恢复及播放器连续往返 10 次无残留。
 
 ## 当前工程任务状态
 
@@ -98,4 +104,4 @@
 - 不要在资料库 bento 视图上做顺手改动。
 - 不要把未执行到远程 Supabase 的 SQL 当成线上已生效。
 - 修改上传链路后必须手动走“选择文件 -> 编辑信息 -> 预览 -> 保存 -> 播放”的完整流程。
-- 修改导航、mini player、mini menu、登录卡片时，要同时检查 `index.css` 里的玻璃材质和 `utils/liquidGlassSettings.ts` 的参数同步。
+- 修改导航、Mini 播放器、Mini 菜单时，要同时检查 `styles/glass-materials.css`、`utils/liquidGlassSettings.ts` 和 `LiquidGlassSurface` 参数同步；禁止在采样根增加 transform、filter 或 `will-change: opacity`。

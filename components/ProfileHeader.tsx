@@ -4,6 +4,7 @@ import { Icons } from './Icons';
 import { useCosUsage } from '../hooks/useCosUsage';
 import { EditProfileModal } from './EditProfileModal';
 import { AvatarWithFrame } from './AvatarWithFrame';
+import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from './motion/sharedElementRegistry';
 
 // TODO Interfaces for future implementation
 export interface AvatarFrameProps {
@@ -154,17 +155,21 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ user, isCurrentUse
                         )}
                     </button>
                     
-                    <button
+                    <motion.button
                         type="button"
                         onClick={onAvatarFrameOpen}
                         className={`w-24 h-24 rounded-full bg-zinc-800 shadow-2xl relative active:scale-95 transition-transform ${user.avatarFrameId ? '' : 'ring-4 ring-white/10'}`}
+                        layoutId={sharedElementIds.profileAvatar(user.id)}
+                        transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+                        data-shared-element="profile-avatar"
+                        style={{ viewTransitionName: 'jzone-profile-avatar' }}
                     >
                         <AvatarWithFrame
                             src={user.avatarUrl || "https://api.dicebear.com/7.x/avataaars/svg?seed=JZone"}
                             frameId={user.avatarFrameId}
                             alt={user.nickname}
                         />
-                    </button>
+                    </motion.button>
                 </div>
                 
                 {/* Basic Info */}

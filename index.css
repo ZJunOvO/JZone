@@ -937,3 +937,26 @@ body {
     inset 0 -1px rgba(0,0,0,0.22),
     0 10px 26px rgba(0,0,0,0.28);
 }
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-group(jzone-profile-avatar) {
+  animation-duration: 460ms;
+  animation-timing-function: cubic-bezier(0.22, 0.74, 0.22, 1);
+}
+
+::view-transition-old(jzone-profile-avatar),
+::view-transition-new(jzone-profile-avatar) {
+  mix-blend-mode: normal;
+  animation-duration: 460ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(jzone-profile-avatar),
+  ::view-transition-old(jzone-profile-avatar),
+  ::view-transition-new(jzone-profile-avatar) {
+    animation-duration: 140ms;
+  }
+}

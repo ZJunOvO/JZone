@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Icons } from '../Icons';
 import type { CollectionRow } from '../../supabaseApi';
 import type { Song } from '../../types';
+import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from '../motion/sharedElementRegistry';
 
 type ProfileTab = 'creation' | 'collection';
 type ProfileSubTab = 'uploads' | 'albums' | 'playlists' | string;
@@ -137,11 +138,16 @@ const CollectionList: React.FC<{
             selectedCollectionId === collection.id ? 'bg-white/12 ring-1 ring-white/18' : 'bg-white/5 hover:bg-white/10'
           }`}
         >
-          <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-800 shrink-0 relative">
+          <motion.div
+            className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-800 shrink-0 relative"
+            layoutId={sharedElementIds.collectionCover(collection.id)}
+            transition={{ layout: SHARED_ELEMENT_TRANSITION }}
+            data-shared-element="collection-cover"
+          >
             {collection.cover_url ? (
               <img src={collection.cover_url} className="w-full h-full object-cover" alt="" loading="lazy" decoding="async" />
             ) : null}
-          </div>
+          </motion.div>
           <div className="flex-1 min-w-0">
             <div className="text-white font-bold truncate flex items-center gap-2">
               {collection.title}
