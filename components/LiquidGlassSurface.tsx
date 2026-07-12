@@ -36,7 +36,7 @@ export const LiquidGlassSurface: React.FC<{
     return () => observer.disconnect();
   }, []);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     const useFullCoverage = material === 'shuding' && coverage === 'full';
     const usePanelGeometry = material === 'shuding' && geometry === 'panel';
     setMap(createLiquidGlassDisplacementMap(size.width, size.height, {
@@ -52,7 +52,7 @@ export const LiquidGlassSurface: React.FC<{
     }));
   }, [coverage, geometry, material, settings.edgeRefraction, size.height, size.width]);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!feImageRef.current || !map.href) return;
     feImageRef.current.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', map.href);
   }, [map.href]);

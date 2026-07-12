@@ -63,11 +63,12 @@ export const PlayerSharedElement: React.FC<PlayerSharedElementProps> = ({
     const target = anchor.getBoundingClientRect();
     if (target.width <= 0 || target.height <= 0) return false;
     const source = sourceRectRef.current;
+    const uniformScale = source.height / target.height;
     sourceTransformRef.current = {
       x: source.left - target.left,
       y: source.top - target.top,
-      scaleX: source.width / target.width,
-      scaleY: source.height / target.height,
+      scaleX: uniformScale,
+      scaleY: uniformScale,
     };
     return true;
   }, []);
@@ -78,7 +79,6 @@ export const PlayerSharedElement: React.FC<PlayerSharedElementProps> = ({
     lastPhaseRef.current = initialPhase;
     if (initialPhase === 'opening' && !reduceMotion) {
       progress.set(0);
-      requestAnimationFrame(() => animateTo(1, PLAYER_SHARED_TRANSITION.duration));
     } else {
       progress.set(initialPhase === 'closing' && !reduceMotion ? 0 : 1);
     }
@@ -89,6 +89,13 @@ export const PlayerSharedElement: React.FC<PlayerSharedElementProps> = ({
     observer.observe(anchor);
     return () => observer.disconnect();
   }, [animateTo, measure, progress, reduceMotion]);
+
+  React.useEffect(() => {
+    if (initialPhaseRef.current === 'opening' && !reduceMotion) {
+      animateTo(1, PLAYER_SHARED_TRANSITION.duration);
+    }
+    return stopAnimation;
+  }, [animateTo, reduceMotion, stopAnimation]);
 
   React.useLayoutEffect(() => {
     if (lastPhaseRef.current === phase) return;

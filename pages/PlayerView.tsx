@@ -138,6 +138,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   const clipRadius = useTransform(clipProgress, (progress) => originInsetsRef.current.radius * (1 - progress));
   const clipPath = useMotionTemplate`inset(${clipTop}px ${clipRight}px ${clipBottom}px ${clipLeft}px round ${clipRadius}px)`;
   const clipAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
+  const landingAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
+  const shellScale = useMotionValue(1);
   const clipPhaseRef = React.useRef<PlayerTransitionPhase | null>(null);
 
   useModalPresence(isMemoryOpen);
@@ -165,6 +167,22 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
     clipAnimationRef.current = null;
   }, []);
 
+  const stopLandingAnimation = React.useCallback(() => {
+    landingAnimationRef.current?.stop();
+    landingAnimationRef.current = null;
+    shellScale.set(1);
+  }, [shellScale]);
+
+  const playLandingAnimation = React.useCallback(() => {
+    stopLandingAnimation();
+    if (reduceMotion) return;
+    landingAnimationRef.current = animate(shellScale, [1, 1.007, 1.001, 1], {
+      duration: 0.26,
+      times: [0, 0.38, 0.72, 1],
+      ease: [0.22, 0.72, 0.18, 1],
+    });
+  }, [reduceMotion, shellScale, stopLandingAnimation]);
+
   const animateClipTo = React.useCallback((target: 0 | 1, duration: number) => {
     stopClipAnimations();
     clipAnimationRef.current = animate(clipProgress, target, {
@@ -179,10 +197,15 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
     clipProgress.set(0);
     if (reduceMotion) {
       clipProgress.set(1);
-      return;
     }
-    requestAnimationFrame(() => animateClipTo(1, PLAYER_SHELL_DURATION));
-  }, [animateClipTo, clipProgress, reduceMotion, transitionPhase]);
+  }, [clipProgress, reduceMotion, transitionPhase]);
+
+  React.useEffect(() => {
+    if (!reduceMotion && clipPhaseRef.current === 'opening') {
+      animateClipTo(1, PLAYER_SHELL_DURATION);
+    }
+    return stopClipAnimations;
+  }, [animateClipTo, reduceMotion, stopClipAnimations]);
 
   React.useLayoutEffect(() => {
     if (clipPhaseRef.current === transitionPhase) return;
@@ -190,17 +213,22 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
     if (transitionPhase === 'open') {
       stopClipAnimations();
       clipProgress.set(1);
+      playLandingAnimation();
       return;
     }
+    stopLandingAnimation();
     if (reduceMotion) {
       stopClipAnimations();
       clipProgress.set(isClosing ? 0 : 1);
       return;
     }
     animateClipTo(isClosing ? 0 : 1, isClosing ? PLAYER_SHELL_EXIT_DURATION : PLAYER_SHELL_DURATION);
-  }, [animateClipTo, clipProgress, isClosing, reduceMotion, stopClipAnimations, transitionPhase]);
+  }, [animateClipTo, clipProgress, isClosing, playLandingAnimation, reduceMotion, stopClipAnimations, stopLandingAnimation, transitionPhase]);
 
-  React.useEffect(() => stopClipAnimations, [stopClipAnimations]);
+  React.useEffect(() => () => {
+    stopClipAnimations();
+    stopLandingAnimation();
+  }, [stopClipAnimations, stopLandingAnimation]);
 
   if (!song) return null;
   const isFav = isFavorite(song.id);
@@ -233,16 +261,21 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
 
   return (
     <motion.div
-      className="fixed inset-0 bg-black z-[200] flex flex-col h-screen justify-between py-8 overflow-hidden"
-      style={{ clipPath, willChange: 'clip-path', transform: 'translateZ(0)', backfaceVisibility: 'hidden', contain: 'paint' }}
+      className="fixed inset-0 z-[200] h-screen overflow-hidden"
+      style={{ clipPath, willChange: 'clip-path', backfaceVisibility: 'hidden', contain: 'paint' }}
       data-testid="player-transition-shell"
       data-player-transition-phase={transitionPhase}
     >
+      <motion.div
+        className="absolute inset-0 flex h-screen flex-col justify-between py-8"
+        style={{ scale: shellScale, transformOrigin: '50% 50%', willChange: 'transform' }}
+        data-testid="player-landing-shell"
+      >
       {/* 1. Immersive Dynamic Background Layer */}
       <motion.div
-        className="absolute inset-0 z-0 scale-125 overflow-hidden pointer-events-none"
-        initial={reduceMotion ? false : { opacity: 0.32 }}
-        animate={{ opacity: isClosing ? 0.28 : 1 }}
+        className="absolute inset-0 z-0 scale-125 overflow-hidden pointer-events-none bg-black"
+        initial={reduceMotion ? false : { opacity: 0 }}
+        animate={{ opacity: isClosing ? 0 : 1 }}
         transition={ambientTransition}
         data-player-transition-part="background"
       >
@@ -546,6 +579,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
           type="song"
           anchorPosition={menuAnchor}
       />
+      </motion.div>
     </motion.div>
   );
 };

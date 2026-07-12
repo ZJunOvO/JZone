@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useState } from 'react';
-import { motion } from 'framer-motion';
+import { animate, motion, useMotionValue, useReducedMotion, type AnimationPlaybackControls } from 'framer-motion';
 import { PlayerBar } from '../PlayerBar';
 import { PwaInstallPrompt } from '../PwaInstallPrompt';
 import { listenModalPresence } from '../../modalPresence';
@@ -59,6 +59,9 @@ export const AppShell: React.FC = () => {
   const [uploadMounted, setUploadMounted] = useState(activeTab === 'upload');
   const sharedSongHandledRef = React.useRef<string | null>(null);
   const miniPlayerLayerRef = React.useRef<HTMLDivElement>(null);
+  const miniLandingScale = useMotionValue(1);
+  const miniLandingAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
+  const reduceMotion = useReducedMotion();
 
   useAutoFullscreen();
   useLiquidGlassAdaptiveForeground();
@@ -83,6 +86,7 @@ export const AppShell: React.FC = () => {
 
   React.useEffect(() => () => {
     if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
+    miniLandingAnimationRef.current?.stop();
   }, []);
 
   React.useEffect(() => {
@@ -114,7 +118,24 @@ export const AppShell: React.FC = () => {
     return { cover: readRect('cover'), title: readRect('title'), artist: readRect('artist') };
   }, []);
 
+  const resetMiniLanding = React.useCallback(() => {
+    miniLandingAnimationRef.current?.stop();
+    miniLandingAnimationRef.current = null;
+    miniLandingScale.set(1);
+  }, [miniLandingScale]);
+
+  const playMiniLanding = React.useCallback(() => {
+    resetMiniLanding();
+    if (reduceMotion) return;
+    miniLandingAnimationRef.current = animate(miniLandingScale, [1, 1.026, 0.994, 1], {
+      duration: 0.28,
+      times: [0, 0.38, 0.7, 1],
+      ease: [0.22, 0.72, 0.18, 1],
+    });
+  }, [miniLandingScale, reduceMotion, resetMiniLanding]);
+
   const openPlayer = React.useCallback(() => {
+    resetMiniLanding();
     if (isPlayerOpen) {
       if (playerTransitionPhase !== 'closing') return;
       if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
@@ -135,7 +156,7 @@ export const AppShell: React.FC = () => {
       () => setPlayerTransitionPhase('open'),
       PLAYER_SHELL_DURATION * 1000 + 80,
     );
-  }, [capturePlayerOrigin, capturePlayerSharedOrigin, isPlayerOpen, playerTransitionPhase]);
+  }, [capturePlayerOrigin, capturePlayerSharedOrigin, isPlayerOpen, playerTransitionPhase, resetMiniLanding]);
 
   const closePlayer = React.useCallback(() => {
     if (!isPlayerOpen || playerTransitionPhase === 'closing') return;
@@ -150,10 +171,11 @@ export const AppShell: React.FC = () => {
       setPlayerTransitionOrigin(null);
       setPlayerSharedOrigin(null);
       window.requestAnimationFrame(() => {
+        playMiniLanding();
         document.querySelector<HTMLElement>('[data-testid="mini-player"]')?.focus();
       });
     }, PLAYER_SHELL_EXIT_DURATION * 1000 + 60);
-  }, [capturePlayerOrigin, capturePlayerSharedOrigin, isPlayerOpen, playerTransitionPhase]);
+  }, [capturePlayerOrigin, capturePlayerSharedOrigin, isPlayerOpen, playMiniLanding, playerTransitionPhase]);
 
   React.useEffect(() => {
     if (collectionId) {
@@ -220,7 +242,9 @@ export const AppShell: React.FC = () => {
 
       <motion.div
           ref={miniPlayerLayerRef}
+          data-testid="mini-player-layer"
           aria-hidden={isPlayerOpen && playerTransitionPhase !== 'closing'}
+          style={{ scale: miniLandingScale, transformOrigin: '50% 50%' }}
           initial={false}
           animate={
             isModalActive

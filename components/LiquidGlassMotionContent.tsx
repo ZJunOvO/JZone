@@ -69,7 +69,7 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
             right: config.horizontalInset,
             bottom: config.verticalInset,
             left: config.horizontalInset,
-            opacity: 0.36,
+            opacity: 0.72,
           },
       shellEnter: reduceMotion
         ? { top: 0, right: 0, bottom: 0, left: 0, opacity: 1 }
@@ -78,7 +78,7 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
             right: [config.horizontalInset, 5, -2, 0],
             bottom: [config.verticalInset, 6, -2, 0],
             left: [config.horizontalInset, 5, -2, 0],
-            opacity: [0.36, 0.82, 1, 1],
+            opacity: [0.72, 0.9, 1, 1],
           },
       shellClose: reduceMotion
         ? { top: 0, right: 0, bottom: 0, left: 0, opacity: 0 }

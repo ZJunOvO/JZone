@@ -100,6 +100,8 @@ try {
     const menu = document.querySelector('.liquid-context-menu-panel');
     const content = document.querySelector('.liquid-context-menu-panel > div.relative.z-10');
     const shell = menu?.querySelector('[data-liquid-motion-shell]');
+    const glass = menu?.querySelector('.liquid-tab-f-glass');
+    const mapImage = menu?.querySelector('feImage');
     const menuRect = menu?.getBoundingClientRect();
     const shellRect = shell?.getBoundingClientRect();
     return content ? {
@@ -107,10 +109,16 @@ try {
       transform: getComputedStyle(content).transform,
       menuWidth: menuRect?.width,
       shellWidth: shellRect?.width,
+      shellOpacity: shell ? Number(getComputedStyle(shell).opacity) : null,
+      glassFilter: glass ? getComputedStyle(glass).backdropFilter : null,
+      mapReady: (mapImage?.getAttribute('href') || mapImage?.getAttribute('xlink:href') || '').startsWith('data:image/'),
     } : null;
   });
   assert(opening && (opening.filter !== 'none' || opening.transform !== 'none'), 'Mini 菜单没有执行缩放模糊入场');
   assert((opening?.shellWidth ?? 0) < (opening?.menuWidth ?? 0), 'Mini 菜单整个玻璃壳没有执行入场形变');
+  assert((opening?.shellOpacity ?? 0) > 0.5, `Mini 菜单首帧材质不可见：${JSON.stringify(opening)}`);
+  assert(opening?.glassFilter?.includes('url('), `Mini 菜单首帧缺少折射滤镜：${JSON.stringify(opening)}`);
+  assert(opening?.mapReady, `Mini 菜单首帧位移图尚未生成：${JSON.stringify(opening)}`);
 
   await page.waitForTimeout(620);
   const state = await page.evaluate(() => {
