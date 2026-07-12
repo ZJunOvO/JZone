@@ -14,10 +14,12 @@ import { SharedElementLayer } from '../motion/SharedElementLayer';
 import { runViewTransition } from '../../utils/viewTransition';
 import {
   getDefaultPlayerOrigin,
+  getDefaultPlayerSharedOrigin,
   PLAYER_SHELL_DURATION,
   PLAYER_SHELL_EXIT_DURATION,
   type PlayerTransitionOrigin,
   type PlayerTransitionPhase,
+  type PlayerSharedOrigin,
 } from '../motion/playerTransition';
 
 const Home = lazy(() => import('../../pages/Home').then((module) => ({ default: module.Home })));
@@ -51,10 +53,12 @@ export const AppShell: React.FC = () => {
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
   const [playerTransitionPhase, setPlayerTransitionPhase] = useState<PlayerTransitionPhase>('open');
   const [playerTransitionOrigin, setPlayerTransitionOrigin] = useState<PlayerTransitionOrigin | null>(null);
+  const [playerSharedOrigin, setPlayerSharedOrigin] = useState<PlayerSharedOrigin | null>(null);
   const playerTransitionTimerRef = React.useRef<number | null>(null);
   const [modalCount, setModalCount] = useState(0);
   const [uploadMounted, setUploadMounted] = useState(activeTab === 'upload');
   const sharedSongHandledRef = React.useRef<string | null>(null);
+  const miniPlayerLayerRef = React.useRef<HTMLDivElement>(null);
 
   useAutoFullscreen();
   useLiquidGlassAdaptiveForeground();
@@ -81,6 +85,11 @@ export const AppShell: React.FC = () => {
     if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
   }, []);
 
+  React.useEffect(() => {
+    if (!miniPlayerLayerRef.current) return;
+    miniPlayerLayerRef.current.inert = isPlayerOpen && playerTransitionPhase !== 'closing';
+  }, [isPlayerOpen, playerTransitionPhase]);
+
   const capturePlayerOrigin = React.useCallback((): PlayerTransitionOrigin => {
     const player = document.querySelector<HTMLElement>('[data-testid="mini-player"]');
     if (!player) return getDefaultPlayerOrigin();
@@ -94,32 +103,57 @@ export const AppShell: React.FC = () => {
     };
   }, []);
 
+  const capturePlayerSharedOrigin = React.useCallback((fallbackOrigin: PlayerTransitionOrigin): PlayerSharedOrigin => {
+    const fallback = getDefaultPlayerSharedOrigin(fallbackOrigin);
+    const readRect = (name: keyof PlayerSharedOrigin) => {
+      const element = document.querySelector<HTMLElement>(`[data-player-shared-source="${name}"]`);
+      if (!element) return fallback[name];
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    };
+    return { cover: readRect('cover'), title: readRect('title'), artist: readRect('artist') };
+  }, []);
+
   const openPlayer = React.useCallback(() => {
-    if (isPlayerOpen) return;
-    setPlayerTransitionOrigin(capturePlayerOrigin());
+    if (isPlayerOpen) {
+      if (playerTransitionPhase !== 'closing') return;
+      if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
+      setPlayerTransitionPhase('opening');
+      playerTransitionTimerRef.current = window.setTimeout(
+        () => setPlayerTransitionPhase('open'),
+        PLAYER_SHELL_DURATION * 1000 + 80,
+      );
+      return;
+    }
+    const origin = capturePlayerOrigin();
+    setPlayerTransitionOrigin(origin);
+    setPlayerSharedOrigin(capturePlayerSharedOrigin(origin));
     setPlayerTransitionPhase('opening');
     setIsPlayerOpen(true);
     if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
     playerTransitionTimerRef.current = window.setTimeout(
       () => setPlayerTransitionPhase('open'),
-      PLAYER_SHELL_DURATION * 1000 + 120,
+      PLAYER_SHELL_DURATION * 1000 + 80,
     );
-  }, [capturePlayerOrigin, isPlayerOpen]);
+  }, [capturePlayerOrigin, capturePlayerSharedOrigin, isPlayerOpen, playerTransitionPhase]);
 
   const closePlayer = React.useCallback(() => {
     if (!isPlayerOpen || playerTransitionPhase === 'closing') return;
     if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
-    setPlayerTransitionOrigin(capturePlayerOrigin());
+    const origin = capturePlayerOrigin();
+    setPlayerTransitionOrigin(origin);
+    setPlayerSharedOrigin(capturePlayerSharedOrigin(origin));
     setPlayerTransitionPhase('closing');
     playerTransitionTimerRef.current = window.setTimeout(() => {
       setIsPlayerOpen(false);
       setPlayerTransitionPhase('open');
       setPlayerTransitionOrigin(null);
+      setPlayerSharedOrigin(null);
       window.requestAnimationFrame(() => {
         document.querySelector<HTMLElement>('[data-testid="mini-player"]')?.focus();
       });
-    }, PLAYER_SHELL_EXIT_DURATION * 1000 + 40);
-  }, [capturePlayerOrigin, isPlayerOpen, playerTransitionPhase]);
+    }, PLAYER_SHELL_EXIT_DURATION * 1000 + 60);
+  }, [capturePlayerOrigin, capturePlayerSharedOrigin, isPlayerOpen, playerTransitionPhase]);
 
   React.useEffect(() => {
     if (collectionId) {
@@ -146,18 +180,19 @@ export const AppShell: React.FC = () => {
       return;
     }
     playContext([song.id], song.id);
-    setPlayerTransitionOrigin(getDefaultPlayerOrigin());
+    const origin = getDefaultPlayerOrigin();
+    setPlayerTransitionOrigin(origin);
+    setPlayerSharedOrigin(getDefaultPlayerSharedOrigin(origin));
     setPlayerTransitionPhase('opening');
     setIsPlayerOpen(true);
     if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
     playerTransitionTimerRef.current = window.setTimeout(
       () => setPlayerTransitionPhase('open'),
-      PLAYER_SHELL_DURATION * 1000 + 120,
+      PLAYER_SHELL_DURATION * 1000 + 80,
     );
   }, [playContext, songs]);
 
   const isModalActive = modalCount > 0;
-  const isPlayerTransitioning = isPlayerOpen && playerTransitionPhase !== 'open';
 
   return (
     <div className="jzone-app-shell max-w-md mx-auto bg-black h-screen overflow-hidden relative shadow-2xl flex flex-col" style={liquidGlassCssVars}>
@@ -183,8 +218,9 @@ export const AppShell: React.FC = () => {
         </Suspense>
       )}
 
-      {(!isPlayerOpen || isPlayerTransitioning) && (
-        <motion.div
+      <motion.div
+          ref={miniPlayerLayerRef}
+          aria-hidden={isPlayerOpen && playerTransitionPhase !== 'closing'}
           initial={false}
           animate={
             isModalActive
@@ -214,13 +250,8 @@ export const AppShell: React.FC = () => {
           }}
           className="fixed z-[160] mx-auto"
         >
-          <PlayerBar
-            onExpand={openPlayer}
-            variant={isModalActive ? 'island' : 'dock'}
-            suppressEntryMotion={playerTransitionPhase === 'closing'}
-          />
-        </motion.div>
-      )}
+        <PlayerBar onExpand={openPlayer} variant={isModalActive ? 'island' : 'dock'} />
+      </motion.div>
 
       <BottomNavigation
         currentTab={activeTab}
@@ -238,6 +269,7 @@ export const AppShell: React.FC = () => {
             onClose={closePlayer}
             transitionPhase={playerTransitionPhase}
             transitionOrigin={playerTransitionOrigin ?? getDefaultPlayerOrigin()}
+            sharedOrigin={playerSharedOrigin ?? getDefaultPlayerSharedOrigin(playerTransitionOrigin ?? getDefaultPlayerOrigin())}
           />
         </Suspense>
       )}

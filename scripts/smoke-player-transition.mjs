@@ -41,9 +41,11 @@ const login = async () => {
   throw new Error('登录后未进入主界面');
 };
 
-const sampleTransition = async (time, direction) => page.evaluate(({ sampleTime, sampleDirection }) => {
+const sampleTransition = async (time, direction, clickSelector = null) => page.evaluate(({ sampleTime, sampleDirection, selector }) => {
   const shell = document.querySelector('[data-testid="player-transition-shell"]');
-  if (!shell) return { time: sampleTime, direction: sampleDirection, exists: false };
+  const miniGlass = document.querySelector('.liquid-mini-player .liquid-tab-f-glass');
+  const miniFilter = miniGlass ? getComputedStyle(miniGlass).backdropFilter : null;
+  if (!shell) return { time: sampleTime, direction: sampleDirection, exists: false, miniFilter };
   const style = getComputedStyle(shell);
   const clipPath = style.clipPath;
   const insetBody = clipPath.match(/^inset\((.*?)(?:\s+round\s+.*?)?\)$/)?.[1] ?? '';
@@ -62,11 +64,12 @@ const sampleTransition = async (time, direction) => page.evaluate(({ sampleTime,
   }));
   const secondary = document.querySelector('[data-player-transition-part="secondary"]');
   const background = document.querySelector('[data-player-transition-part="background"]');
-  return {
+  const sample = {
     time: sampleTime,
     direction: sampleDirection,
     exists: true,
     phase: shell.getAttribute('data-player-transition-phase'),
+    miniFilter,
     clipPath,
     insets: { top: insets[0], right: insets[1], bottom: insets[2], left: insets[3] },
     secondaryOpacity: secondary ? Number(getComputedStyle(secondary).opacity) : null,
@@ -75,7 +78,9 @@ const sampleTransition = async (time, direction) => page.evaluate(({ sampleTime,
     title: shared('song-title'),
     artist: shared('song-artist'),
   };
-}, { sampleTime: time, sampleDirection: direction });
+  if (selector) document.querySelector(selector)?.click();
+  return sample;
+}, { sampleTime: time, sampleDirection: direction, selector: clickSelector });
 
 const captureTimeline = async (direction, offsets) => {
   const samples = [];
@@ -99,6 +104,39 @@ const assertMonotonic = (samples, key, direction) => {
   }
 };
 
+const assertFrameBudget = (frames, label) => {
+  const longFrameRatio = frames.frames > 0 ? frames.over50ms / frames.frames : 1;
+  assert(
+    frames.frames > 0 && frames.max <= 120.1 && longFrameRatio <= 0.15,
+    `${label}存在持续长帧：${JSON.stringify({ ...frames, longFrameRatio })}`,
+  );
+};
+
+const startFrameProbe = async (key, duration) => page.evaluate(({ probeKey, probeDuration }) => {
+  window.__jzoneFrameProbes ??= {};
+  const samples = [];
+  let previous = performance.now();
+  const started = previous;
+  const tick = (now) => {
+    samples.push(now - previous);
+    previous = now;
+    if (now - started < probeDuration) requestAnimationFrame(tick);
+    else window.__jzoneFrameProbes[probeKey] = samples;
+  };
+  requestAnimationFrame(tick);
+}, { probeKey: key, probeDuration: duration });
+
+const readFrameProbe = async (key) => page.evaluate((probeKey) => {
+  const values = [...(window.__jzoneFrameProbes?.[probeKey] ?? [])].sort((a, b) => a - b);
+  if (!values.length) return { frames: 0, p95: 0, max: 0, over50ms: 0 };
+  return {
+    frames: values.length,
+    p95: values[Math.min(values.length - 1, Math.floor(values.length * 0.95))],
+    max: values.at(-1),
+    over50ms: values.filter((value) => value > 50).length,
+  };
+}, key);
+
 try {
   await mkdir('output/playwright', { recursive: true });
   await login();
@@ -119,12 +157,17 @@ try {
   await page.getByTestId('mini-player').waitFor({ state: 'visible', timeout: 15000 });
   await page.waitForTimeout(760);
 
-  await page.getByTestId('mini-player').click({ position: { x: 180, y: 28 } });
-  const opening = await captureTimeline('opening', [20, 100, 220, 380, 780]);
+  await startFrameProbe('opening', 700);
+  await page.getByTestId('mini-player').evaluate((element) => element.click());
+  await page.getByTestId('player-transition-shell').waitFor({ state: 'attached', timeout: 2000 });
+  const opening = await captureTimeline('opening', [20, 80, 160, 280, 620]);
+  await page.waitForTimeout(100);
+  const openingFrames = await readFrameProbe('opening');
   assert(opening[0].exists && opening[0].insets.top > 100, `播放器没有从 Mini 边界开始：${JSON.stringify(opening[0])}`);
   for (const key of ['top', 'right', 'bottom', 'left']) assertMonotonic(opening, key, 'decrease');
   const openingFinal = opening.at(-1);
   assert(Object.values(openingFinal.insets).every((value) => value <= 1), `播放器没有铺满视窗：${JSON.stringify(openingFinal.insets)}`);
+  assert(opening.every((sample) => sample.miniFilter?.includes('url(')), '展开期间 Mini 播放器材质没有持续保活');
   for (const key of ['cover', 'title', 'artist']) {
     assert(opening.slice(0, -1).some((sample) => sample[key].length >= 2), `${key} 缺少共享源/目标双端`);
     assert(
@@ -138,12 +181,67 @@ try {
   );
 
   await page.getByTestId('player-view-close').click();
-  const closing = await captureTimeline('closing', [20, 120, 260, 500]);
+  const closing = await captureTimeline('closing', [20, 80, 180, 430]);
   for (const key of ['top', 'right', 'bottom', 'left']) assertMonotonic(closing.slice(0, -1), key, 'increase');
   assert(closing.slice(0, -1).some((sample) => sample.cover.length >= 2), '关闭时封面缺少反向共享双端');
+  assert(closing.every((sample) => sample.miniFilter?.includes('url(')), '收拢期间 Mini 播放器折射曾中断');
   await page.waitForTimeout(80);
   assert((await page.getByTestId('player-transition-shell').count()) === 0, '关闭完成后全屏播放器仍残留');
   assert(await page.getByTestId('mini-player').evaluate((element) => document.activeElement === element), '关闭后焦点没有回到 Mini 播放器');
+
+  const rapidReversals = [];
+  await startFrameProbe('rapid', 2100);
+  for (let round = 0; round < 5; round += 1) {
+    await page.getByTestId('mini-player').evaluate((element) => element.click());
+    await page.waitForTimeout(110);
+    const beforeClose = await sampleTransition(round, 'rapid-before-close', '[data-testid="player-view-close"]');
+    await page.waitForTimeout(32);
+    const afterClose = await sampleTransition(round, 'rapid-after-close');
+    assert(
+      afterClose.insets.top >= beforeClose.insets.top - 18,
+      `快速关闭时裁剪边界向错误方向闪跳：${JSON.stringify({ beforeClose, afterClose })}`,
+    );
+    await page.waitForTimeout(70);
+    const beforeReopen = await sampleTransition(round, 'rapid-before-reopen', '[data-testid="mini-player"]');
+    await page.waitForTimeout(32);
+    const afterReopen = await sampleTransition(round, 'rapid-after-reopen');
+    assert(
+      afterReopen.insets.top <= beforeReopen.insets.top + 18,
+      `快速重开时裁剪边界向错误方向闪跳：${JSON.stringify({ beforeReopen, afterReopen })}`,
+    );
+    assert(
+      [beforeClose, afterClose, beforeReopen, afterReopen].every((sample) => sample.miniFilter?.includes('url(')),
+      `快速反向第 ${round + 1} 轮 Mini 折射中断`,
+    );
+    rapidReversals.push({ round: round + 1, beforeClose, afterClose, beforeReopen, afterReopen });
+    await page.waitForTimeout(70);
+  }
+  await page.waitForTimeout(560);
+  await page.getByTestId('player-view-close').click();
+  await page.waitForTimeout(450);
+  assert((await page.getByTestId('player-transition-shell').count()) === 0, '快速反向测试结束后全屏播放器仍残留');
+  await page.waitForTimeout(80);
+  const sampledRapidFrames = await readFrameProbe('rapid');
+  assertFrameBudget(openingFrames, '正常展开');
+
+  await startFrameProbe('rapid-performance', 1800);
+  await page.evaluate(async () => {
+    const wait = (duration) => new Promise((resolve) => setTimeout(resolve, duration));
+    for (let round = 0; round < 5; round += 1) {
+      document.querySelector('[data-testid="mini-player"]')?.click();
+      await wait(110);
+      document.querySelector('[data-testid="player-view-close"]')?.click();
+      await wait(102);
+      document.querySelector('[data-testid="mini-player"]')?.click();
+      await wait(102);
+    }
+    await wait(230);
+  });
+  await page.waitForTimeout(80);
+  const rapidFrames = await readFrameProbe('rapid-performance');
+  assertFrameBudget(rapidFrames, '快速反向');
+  await page.getByTestId('player-view-close').click();
+  await page.waitForTimeout(450);
 
   if (process.env.JZONE_CAPTURE_FRAMES === '1') {
     for (const offset of [100, 260, 460]) {
@@ -158,13 +256,19 @@ try {
 
   const relevantErrors = consoleErrors.filter((message) => !/Failed to load resource.*404/i.test(message));
   assert(relevantErrors.length === 0, `播放器转场产生控制台错误：${JSON.stringify(relevantErrors)}`);
-  const result = { ok: true, viewport: `${viewportWidth}x${viewportHeight}`, opening, closing, consoleErrors };
+  const result = { ok: true, viewport: `${viewportWidth}x${viewportHeight}`, opening, closing, rapidReversals, openingFrames, sampledRapidFrames, rapidFrames, consoleErrors };
   console.log(JSON.stringify(process.env.JZONE_COMPACT === '1' ? {
     ok: result.ok,
     viewport: result.viewport,
     openingInsets: opening.map((sample) => ({ time: sample.time, ...sample.insets })),
+    openingSecondaryOpacity: opening.map((sample) => ({ time: sample.time, opacity: sample.secondaryOpacity })),
+    openingBackgroundOpacity: opening.map((sample) => ({ time: sample.time, opacity: sample.backgroundOpacity })),
     closingInsets: closing.map((sample) => ({ time: sample.time, exists: sample.exists, ...(sample.insets ?? {}) })),
     sharedParts: ['cover', 'title', 'artist'],
+    rapidReversalRounds: rapidReversals.length,
+    openingFrames,
+    sampledRapidFrames,
+    rapidFrames,
     consoleErrors,
   } : result, null, 2));
 } finally {

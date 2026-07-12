@@ -92,7 +92,7 @@
 - `npm run smoke:collection`：登录后从个人页打开第一个专辑/歌单详情并返回；如果当前账号没有集合，会明确输出 skipped。
 - `npm run smoke:glass`：验证播放器/菜单 SVG 折射、`panel` 几何、Backdrop Root、12px 间距和三视口稳定性。
 - `npm run smoke:shared`：验证头像、播放器、合集共享过渡、焦点恢复及播放器连续往返 10 次无残留。
-- `npm run smoke:player-transition`：按 20/100/220/380/780ms 采样播放器裁剪边界、背景、控制项及封面/歌名/艺人矩阵，并验证反向收拢。
+- `npm run smoke:player-transition`：按 20/80/160/280/620ms 采样展开、按 20/80/180/430ms 采样收拢，验证裁剪边界、背景、控制项及封面/歌名/艺人矩阵；另连续快速反向 5 轮，检查方向无闪跳、Mini SVG 折射不中断、关闭后焦点恢复，并用不强制读取布局的独立探针记录帧预算。
 
 ## 当前工程任务状态
 

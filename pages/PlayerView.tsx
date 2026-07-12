@@ -6,24 +6,34 @@ import { MemoryCardModal } from '../components/MemoryCardModal';
 import { UniversalContextMenu } from '../components/UniversalContextMenu';
 import { useModalPresence } from '../modalPresence';
 import { SkeletonBlock } from '../components/Skeletons';
-import { motion, Reorder, useDragControls, useReducedMotion } from 'framer-motion';
-import type { Song } from '../types';
-import { sharedElementIds } from '../components/motion/sharedElementRegistry';
 import {
-  getPlayerOriginClipPath,
-  getPlayerMidClipPath,
-  PLAYER_SHARED_TRANSITION,
+  animate,
+  motion,
+  Reorder,
+  useDragControls,
+  useMotionTemplate,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+  type AnimationPlaybackControls,
+} from 'framer-motion';
+import type { Song } from '../types';
+import { PlayerSharedElement } from '../components/motion/PlayerSharedElement';
+import {
+  getPlayerOriginInsets,
   PLAYER_SHELL_DURATION,
   PLAYER_SHELL_EASE,
   PLAYER_SHELL_EXIT_DURATION,
   type PlayerTransitionOrigin,
   type PlayerTransitionPhase,
+  type PlayerSharedOrigin,
 } from '../components/motion/playerTransition';
 
 interface PlayerViewProps {
   onClose: () => void;
   transitionPhase: PlayerTransitionPhase;
   transitionOrigin: PlayerTransitionOrigin;
+  sharedOrigin: PlayerSharedOrigin;
 }
 
 const formatTime = (time: number) => {
@@ -105,7 +115,7 @@ const QueueSongRow: React.FC<{
   );
 };
 
-export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase, transitionOrigin }) => {
+export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase, transitionOrigin, sharedOrigin }) => {
   const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, cyclePlaybackMode, seek, setVolume, playSong, removeFromQueue, reorderQueue, toggleFavorite, isFavorite } = useStore();
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isQueueSorting, setIsQueueSorting] = useState(false);
@@ -117,6 +127,18 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | undefined>(undefined);
   const reduceMotion = useReducedMotion();
+  const initialInsets = getPlayerOriginInsets(transitionOrigin);
+  const originInsetsRef = React.useRef(initialInsets);
+  originInsetsRef.current = initialInsets;
+  const clipProgress = useMotionValue(0);
+  const clipTop = useTransform(clipProgress, (progress) => originInsetsRef.current.top * (1 - progress));
+  const clipRight = useTransform(clipProgress, (progress) => originInsetsRef.current.right * (1 - progress));
+  const clipBottom = useTransform(clipProgress, (progress) => originInsetsRef.current.bottom * (1 - progress));
+  const clipLeft = useTransform(clipProgress, (progress) => originInsetsRef.current.left * (1 - progress));
+  const clipRadius = useTransform(clipProgress, (progress) => originInsetsRef.current.radius * (1 - progress));
+  const clipPath = useMotionTemplate`inset(${clipTop}px ${clipRight}px ${clipBottom}px ${clipLeft}px round ${clipRadius}px)`;
+  const clipAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
+  const clipPhaseRef = React.useRef<PlayerTransitionPhase | null>(null);
 
   useModalPresence(isMemoryOpen);
   useModalPresence(isQueueOpen);
@@ -126,33 +148,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   }, [isQueueOpen]);
   
   const song = getCurrentSong();
-
-  if (!song) return null;
-  const isFav = isFavorite(song.id);
-  const playbackModeMeta = {
-    sequence: { label: '顺序播放', Icon: Icons.List },
-    'repeat-one': { label: '单曲循环', Icon: Icons.Repeat1 },
-    shuffle: { label: '随机播放', Icon: Icons.Shuffle },
-  }[playerState.playbackMode];
-  const PlaybackModeIcon = playbackModeMeta.Icon;
-  const originClipPath = getPlayerOriginClipPath(transitionOrigin);
-  const midClipPath = getPlayerMidClipPath(transitionOrigin);
-  const fullClipPath = 'inset(0px 0px 0px 0px round 0px)';
   const isClosing = transitionPhase === 'closing';
-  const shellTransition = transitionPhase === 'open'
-    ? { duration: 0.01 }
-    : reduceMotion
-    ? { duration: 0.14 }
-    : {
-        duration: isClosing ? PLAYER_SHELL_EXIT_DURATION : PLAYER_SHELL_DURATION,
-        ease: PLAYER_SHELL_EASE,
-        times: [0, isClosing ? 0.54 : 0.44, 1],
-      };
-  const clipPathAnimation = transitionPhase === 'open'
-    ? fullClipPath
-    : isClosing
-      ? [fullClipPath, midClipPath, originClipPath]
-      : [originClipPath, midClipPath, fullClipPath];
   const ambientTransition = reduceMotion
     ? { duration: 0.14 }
     : { duration: isClosing ? PLAYER_SHELL_EXIT_DURATION : PLAYER_SHELL_DURATION, ease: PLAYER_SHELL_EASE };
@@ -162,7 +158,58 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
     ? { duration: 0.12 }
     : isClosing
       ? { duration: 0.16, ease: 'easeIn' as const }
-      : { duration: 0.3, delay: 0.2, ease: PLAYER_SHELL_EASE };
+      : { duration: 0.24, delay: 0.14, ease: PLAYER_SHELL_EASE };
+
+  const stopClipAnimations = React.useCallback(() => {
+    clipAnimationRef.current?.stop();
+    clipAnimationRef.current = null;
+  }, []);
+
+  const animateClipTo = React.useCallback((target: 0 | 1, duration: number) => {
+    stopClipAnimations();
+    clipAnimationRef.current = animate(clipProgress, target, {
+      duration,
+      ease: [...PLAYER_SHELL_EASE] as [number, number, number, number],
+    });
+  }, [clipProgress, stopClipAnimations]);
+
+  React.useLayoutEffect(() => {
+    if (clipPhaseRef.current !== null) return;
+    clipPhaseRef.current = transitionPhase;
+    clipProgress.set(0);
+    if (reduceMotion) {
+      clipProgress.set(1);
+      return;
+    }
+    requestAnimationFrame(() => animateClipTo(1, PLAYER_SHELL_DURATION));
+  }, [animateClipTo, clipProgress, reduceMotion, transitionPhase]);
+
+  React.useLayoutEffect(() => {
+    if (clipPhaseRef.current === transitionPhase) return;
+    clipPhaseRef.current = transitionPhase;
+    if (transitionPhase === 'open') {
+      stopClipAnimations();
+      clipProgress.set(1);
+      return;
+    }
+    if (reduceMotion) {
+      stopClipAnimations();
+      clipProgress.set(isClosing ? 0 : 1);
+      return;
+    }
+    animateClipTo(isClosing ? 0 : 1, isClosing ? PLAYER_SHELL_EXIT_DURATION : PLAYER_SHELL_DURATION);
+  }, [animateClipTo, clipProgress, isClosing, reduceMotion, stopClipAnimations, transitionPhase]);
+
+  React.useEffect(() => stopClipAnimations, [stopClipAnimations]);
+
+  if (!song) return null;
+  const isFav = isFavorite(song.id);
+  const playbackModeMeta = {
+    sequence: { label: '顺序播放', Icon: Icons.List },
+    'repeat-one': { label: '单曲循环', Icon: Icons.Repeat1 },
+    shuffle: { label: '随机播放', Icon: Icons.Shuffle },
+  }[playerState.playbackMode];
+  const PlaybackModeIcon = playbackModeMeta.Icon;
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     seek(Number(e.target.value));
@@ -187,25 +234,23 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   return (
     <motion.div
       className="fixed inset-0 bg-black z-[200] flex flex-col h-screen justify-between py-8 overflow-hidden"
-      initial={reduceMotion ? false : { clipPath: originClipPath }}
-      animate={{ clipPath: clipPathAnimation }}
-      transition={shellTransition}
-      style={{ willChange: 'clip-path' }}
+      style={{ clipPath, willChange: 'clip-path', transform: 'translateZ(0)', backfaceVisibility: 'hidden', contain: 'paint' }}
       data-testid="player-transition-shell"
       data-player-transition-phase={transitionPhase}
     >
       {/* 1. Immersive Dynamic Background Layer */}
       <motion.div
-        className="absolute inset-0 z-0 scale-150 overflow-hidden pointer-events-none"
-        initial={reduceMotion ? false : { opacity: 0.28, scale: 1.34 }}
-        animate={{ opacity: isClosing ? 0.24 : 1, scale: 1.5 }}
+        className="absolute inset-0 z-0 scale-125 overflow-hidden pointer-events-none"
+        initial={reduceMotion ? false : { opacity: 0.32 }}
+        animate={{ opacity: isClosing ? 0.28 : 1 }}
         transition={ambientTransition}
         data-player-transition-part="background"
       >
         <img 
           key={song.coverUrl}
           src={song.coverUrl} 
-          className="w-full h-full object-cover blur-[100px] brightness-[0.55] saturate-[1.6] animate-[fadeIn_0.5s_ease-in-out]" 
+          decoding="async"
+          className="w-full h-full object-cover blur-[72px] brightness-[0.55] saturate-[1.6]"
           alt="immersive background" 
         />
         <div className="absolute inset-0 bg-black/20"></div>
@@ -230,39 +275,29 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
         
         {/* Core Cover Area */}
         <div className="flex items-center justify-center flex-grow-[2] py-4">
-          <motion.div
+          <PlayerSharedElement
             className="w-[96%] max-w-[400px] aspect-square relative transition-all duration-500 ease-out"
-            layoutId={sharedElementIds.songCover(song.id)}
-            transition={{ layout: PLAYER_SHARED_TRANSITION }}
-            data-shared-element="song-cover"
+            sourceRect={sharedOrigin.cover}
+            phase={transitionPhase}
+            name="cover"
           >
             <img 
               src={song.coverUrl} 
               alt="Album Cover" 
               className={`w-full h-full object-cover rounded-[14px] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.7)] border border-white/10 transition-transform duration-500 ${playerState.isPlaying ? 'scale-100' : 'scale-[0.88] opacity-80'}`}
             />
-          </motion.div>
+          </PlayerSharedElement>
         </div>
 
         {/* Song Info & Action Buttons */}
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0 pr-4">
-            <motion.h2
-              className="text-2xl font-bold text-white truncate tracking-tight mb-0.5"
-              layoutId={sharedElementIds.songTitle(song.id)}
-              transition={{ layout: PLAYER_SHARED_TRANSITION }}
-              data-shared-element="song-title"
-            >
-              {song.title}
-            </motion.h2>
-            <motion.p
-              className="text-lg text-white/60 font-medium truncate"
-              layoutId={sharedElementIds.songArtist(song.id)}
-              transition={{ layout: PLAYER_SHARED_TRANSITION }}
-              data-shared-element="song-artist"
-            >
-              {song.artist}
-            </motion.p>
+            <PlayerSharedElement sourceRect={sharedOrigin.title} phase={transitionPhase} name="title">
+              <h2 className="text-2xl font-bold text-white truncate tracking-tight mb-0.5">{song.title}</h2>
+            </PlayerSharedElement>
+            <PlayerSharedElement sourceRect={sharedOrigin.artist} phase={transitionPhase} name="artist">
+              <p className="text-lg text-white/60 font-medium truncate">{song.artist}</p>
+            </PlayerSharedElement>
           </div>
           <motion.div
             className="flex items-center gap-2"

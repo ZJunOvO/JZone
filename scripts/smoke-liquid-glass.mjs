@@ -201,7 +201,7 @@ try {
   await page.screenshot({ path: `output/playwright/liquid-glass-regression-${viewportWidth}x${viewportHeight}.png` });
 
   await page.mouse.click(4, 4);
-  await page.waitForTimeout(100);
+  await page.waitForTimeout(160);
   const closing = await page.evaluate(() => {
     const menu = document.querySelector('.liquid-context-menu-panel');
     const content = menu?.querySelector(':scope > div.relative.z-10');
