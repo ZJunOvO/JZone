@@ -43,12 +43,18 @@ const login = async () => {
 
 const sampleTransition = async (time, direction, clickSelector = null) => page.evaluate(({ sampleTime, sampleDirection, selector }) => {
   const shell = document.querySelector('[data-testid="player-transition-shell"]');
-  const landingShell = document.querySelector('[data-testid="player-landing-shell"]');
-  const miniLayer = document.querySelector('[data-testid="mini-player-layer"]');
   const miniGlass = document.querySelector('.liquid-mini-player .liquid-tab-f-glass');
+  const miniSettleContent = document.querySelector('.liquid-mini-player [data-liquid-settle-content]');
+  const miniSettleRim = document.querySelector('.liquid-mini-player [data-liquid-settle-rim]');
   const miniFilter = miniGlass ? getComputedStyle(miniGlass).backdropFilter : null;
-  const miniLayerTransform = miniLayer ? getComputedStyle(miniLayer).transform : null;
-  if (!shell) return { time: sampleTime, direction: sampleDirection, exists: false, miniFilter, miniLayerTransform };
+  const base = {
+    time: sampleTime,
+    direction: sampleDirection,
+    miniFilter,
+    miniSettleTransform: miniSettleContent ? getComputedStyle(miniSettleContent).transform : null,
+    miniSettleRim: Boolean(miniSettleRim),
+  };
+  if (!shell) return { ...base, exists: false };
   const style = getComputedStyle(shell);
   const clipPath = style.clipPath;
   const insetBody = clipPath.match(/^inset\((.*?)(?:\s+round\s+.*?)?\)$/)?.[1] ?? '';
@@ -68,18 +74,16 @@ const sampleTransition = async (time, direction, clickSelector = null) => page.e
   const secondary = document.querySelector('[data-player-transition-part="secondary"]');
   const background = document.querySelector('[data-player-transition-part="background"]');
   const sample = {
-    time: sampleTime,
-    direction: sampleDirection,
+    ...base,
     exists: true,
     phase: shell.getAttribute('data-player-transition-phase'),
     miniFilter,
-    miniLayerTransform,
-    shellTransform: landingShell ? getComputedStyle(landingShell).transform : null,
-    shellBackgroundColor: style.backgroundColor,
     clipPath,
     insets: { top: insets[0], right: insets[1], bottom: insets[2], left: insets[3] },
     secondaryOpacity: secondary ? Number(getComputedStyle(secondary).opacity) : null,
     backgroundOpacity: background ? Number(getComputedStyle(background).opacity) : null,
+    shellBackgroundColor: style.backgroundColor,
+    coverSettleTransform: getComputedStyle(document.querySelector('[data-player-shared-settle="cover"]')).transform,
     cover: shared('song-cover'),
     title: shared('song-title'),
     artist: shared('song-artist'),
@@ -181,8 +185,8 @@ try {
   assert(Object.values(openingFinal.insets).every((value) => value <= 1), `播放器没有铺满视窗：${JSON.stringify(openingFinal.insets)}`);
   assert(opening.every((sample) => sample.miniFilter?.includes('url(')), '展开期间 Mini 播放器材质没有持续保活');
   assert(
-    opening.slice(4).some((sample) => readMatrixScale(sample.shellTransform).x > 1.002),
-    `全屏播放器落地后缺少微弹性：${JSON.stringify(opening.slice(4).map((sample) => sample.shellTransform))}`,
+    opening.slice(4).some((sample) => readMatrixScale(sample.coverSettleTransform).x > 1.01),
+    `全屏封面落地后缺少微弹性：${JSON.stringify(opening.slice(4).map((sample) => sample.coverSettleTransform))}`,
   );
   for (const key of ['cover', 'title', 'artist']) {
     assert(opening.slice(0, -1).some((sample) => sample[key].length >= 2), `${key} 缺少共享源/目标双端`);
@@ -197,18 +201,21 @@ try {
   );
 
   await page.getByTestId('player-view-close').click();
-  const closing = await captureTimeline('closing', [20, 80, 180, 320, 400, 460, 620]);
+  const closing = await captureTimeline('closing', [20, 80, 180, 320, 400, 460, 620, 760]);
   const closingShellSamples = closing.filter((sample) => sample.exists);
   for (const key of ['top', 'right', 'bottom', 'left']) assertMonotonic(closingShellSamples, key, 'increase');
   assert(closingShellSamples.some((sample) => sample.cover.length >= 2), '关闭时封面缺少反向共享双端');
   assert(closing.every((sample) => sample.miniFilter?.includes('url(')), '收拢期间 Mini 播放器折射曾中断');
-  assert(closingShellSamples.every((sample) => sample.shellBackgroundColor === 'rgba(0, 0, 0, 0)'), '收拢外壳仍有黑色实底');
-  const closingTextTarget = closingShellSamples.at(-1)?.title.find((item) => item.transform !== 'none');
-  const closingTextScale = readMatrixScale(closingTextTarget?.transform);
-  assert(Math.abs(closingTextScale.x - closingTextScale.y) < 0.03, `收拢末段标题发生非等比压缩：${JSON.stringify(closingTextScale)}`);
+  const closingHandoff = closingShellSamples.at(-1);
+  assert(closingHandoff.shellBackgroundColor === 'rgba(0, 0, 0, 0)', '收拢外壳仍有黑色实底');
+  assert(closingHandoff.backgroundOpacity < 0.12, `收拢末段播放器背景没有让出 Mini：${closingHandoff.backgroundOpacity}`);
+  const closingTitleTarget = closingHandoff.title.find((item) => item.transform !== 'none');
+  const closingTitleScale = readMatrixScale(closingTitleTarget?.transform);
+  assert(Math.abs(closingTitleScale.x - closingTitleScale.y) < 0.03, `收拢标题发生非等比压缩：${JSON.stringify(closingTitleScale)}`);
+  assert((closingTitleTarget?.opacity ?? 1) < 0.25, `收拢标题没有在交接区淡出：${closingTitleTarget?.opacity}`);
   assert(
-    closing.filter((sample) => !sample.exists).some((sample) => readMatrixScale(sample.miniLayerTransform).x > 1.01),
-    `Mini 播放器复位后缺少弹性回味：${JSON.stringify(closing.map((sample) => sample.miniLayerTransform))}`,
+    closing.filter((sample) => !sample.exists).some((sample) => sample.miniSettleRim && readMatrixScale(sample.miniSettleTransform).x > 1.01),
+    `Mini 内容与高光缺少回弹：${JSON.stringify(closing.map((sample) => ({ transform: sample.miniSettleTransform, rim: sample.miniSettleRim })))}`,
   );
   await page.waitForTimeout(80);
   assert((await page.getByTestId('player-transition-shell').count()) === 0, '关闭完成后全屏播放器仍残留');
@@ -281,9 +288,9 @@ try {
     await page.waitForTimeout(700);
     await page.getByTestId('player-view-close').click();
     let previousOffset = 0;
-    for (const offset of [280, 350, 430, 500]) {
+    for (const offset of [260, 330, 410, 470, 600]) {
       await page.waitForTimeout(offset - previousOffset);
-      await page.screenshot({ path: `output/playwright/player-closing-${offset}ms.png` });
+      await page.screenshot({ path: `output/playwright/player-handoff-${offset}ms.png` });
       previousOffset = offset;
     }
   }
@@ -297,9 +304,7 @@ try {
     openingInsets: opening.map((sample) => ({ time: sample.time, ...sample.insets })),
     openingSecondaryOpacity: opening.map((sample) => ({ time: sample.time, opacity: sample.secondaryOpacity })),
     openingBackgroundOpacity: opening.map((sample) => ({ time: sample.time, opacity: sample.backgroundOpacity })),
-    openingLandingScale: opening.map((sample) => ({ time: sample.time, scale: readMatrixScale(sample.shellTransform).x })),
     closingInsets: closing.map((sample) => ({ time: sample.time, exists: sample.exists, ...(sample.insets ?? {}) })),
-    closingMiniScale: closing.map((sample) => ({ time: sample.time, scale: readMatrixScale(sample.miniLayerTransform).x })),
     sharedParts: ['cover', 'title', 'artist'],
     rapidReversalRounds: rapidReversals.length,
     openingFrames,

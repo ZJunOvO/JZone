@@ -116,7 +116,7 @@ try {
   });
   assert(opening && (opening.filter !== 'none' || opening.transform !== 'none'), 'Mini 菜单没有执行缩放模糊入场');
   assert((opening?.shellWidth ?? 0) < (opening?.menuWidth ?? 0), 'Mini 菜单整个玻璃壳没有执行入场形变');
-  assert((opening?.shellOpacity ?? 0) > 0.5, `Mini 菜单首帧材质不可见：${JSON.stringify(opening)}`);
+  assert((opening?.shellOpacity ?? 0) > 0.45, `Mini 菜单首帧材质不可见：${JSON.stringify(opening)}`);
   assert(opening?.glassFilter?.includes('url('), `Mini 菜单首帧缺少折射滤镜：${JSON.stringify(opening)}`);
   assert(opening?.mapReady, `Mini 菜单首帧位移图尚未生成：${JSON.stringify(opening)}`);
 

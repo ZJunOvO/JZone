@@ -4,7 +4,22 @@ import {
   getLiquidGlassCssVars,
   useLiquidGlassSettings,
 } from '../utils/liquidGlassSettings';
-import { createLiquidGlassDisplacementMap, type LiquidGlassDisplacementMap } from '../utils/liquidGlassDisplacement';
+import {
+  createLiquidGlassDisplacementMap,
+  type LiquidGlassDisplacementMap,
+  type LiquidGlassDisplacementOptions,
+} from '../utils/liquidGlassDisplacement';
+
+const displacementMapCache = new Map<string, LiquidGlassDisplacementMap>();
+
+const getCachedDisplacementMap = (width: number, height: number, options: LiquidGlassDisplacementOptions) => {
+  const key = JSON.stringify([Math.round(width), Math.round(height), options]);
+  const cached = displacementMapCache.get(key);
+  if (cached) return cached;
+  const generated = createLiquidGlassDisplacementMap(width, height, options);
+  if (generated.href) displacementMapCache.set(key, generated);
+  return generated;
+};
 
 export const LiquidGlassSurface: React.FC<{
   borderRadiusClass?: string;
@@ -13,13 +28,30 @@ export const LiquidGlassSurface: React.FC<{
   material?: 'settings' | 'shuding';
   coverage?: 'edge' | 'full';
   geometry?: 'standard' | 'panel';
-}> = ({ borderRadiusClass = 'rounded-2xl', className = '', style: customStyle, material = 'settings', coverage = 'edge', geometry = 'standard' }) => {
+  eagerMap?: boolean;
+}> = ({ borderRadiusClass = 'rounded-2xl', className = '', style: customStyle, material = 'settings', coverage = 'edge', geometry = 'standard', eagerMap = false }) => {
   const settings = useLiquidGlassSettings();
   const filterId = React.useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const surfaceRef = React.useRef<HTMLDivElement>(null);
-  const feImageRef = React.useRef<SVGFEImageElement>(null);
   const [size, setSize] = React.useState({ width: 236, height: 240 });
-  const [map, setMap] = React.useState<LiquidGlassDisplacementMap>({ href: '', scale: 0 });
+  const mapOptions = React.useMemo<LiquidGlassDisplacementOptions>(() => {
+    const useFullCoverage = material === 'shuding' && coverage === 'full';
+    const usePanelGeometry = material === 'shuding' && geometry === 'panel';
+    return {
+      profile: usePanelGeometry ? 'panel' : material === 'shuding' ? 'shuding' : 'adaptive',
+      edgeScale: settings.edgeRefraction,
+      centerStrength: material === 'shuding' ? 0 : 0.14,
+      centerLensStrength: usePanelGeometry ? 0.46 : useFullCoverage ? 0.58 : undefined,
+      centerWaveStrength: usePanelGeometry ? 0.08 : useFullCoverage ? 0.16 : undefined,
+      sideVerticalDamp: material === 'shuding' ? 1 : 0.34,
+      sideHorizontalBoost: material === 'shuding' ? 1 : 1.12,
+      normalization: usePanelGeometry ? 1 : useFullCoverage ? 0.56 : material === 'shuding' ? 0.5 : 0.74,
+      balancedEncoding: usePanelGeometry,
+    };
+  }, [coverage, geometry, material, settings.edgeRefraction]);
+  const [map, setMap] = React.useState<LiquidGlassDisplacementMap>(() => (
+    eagerMap ? getCachedDisplacementMap(236, 240, mapOptions) : { href: '', scale: 0 }
+  ));
 
   React.useLayoutEffect(() => {
     const element = surfaceRef.current;
@@ -36,26 +68,15 @@ export const LiquidGlassSurface: React.FC<{
     return () => observer.disconnect();
   }, []);
 
-  React.useLayoutEffect(() => {
-    const useFullCoverage = material === 'shuding' && coverage === 'full';
-    const usePanelGeometry = material === 'shuding' && geometry === 'panel';
-    setMap(createLiquidGlassDisplacementMap(size.width, size.height, {
-      profile: usePanelGeometry ? 'panel' : material === 'shuding' ? 'shuding' : 'adaptive',
-      edgeScale: settings.edgeRefraction,
-      centerStrength: material === 'shuding' ? 0 : 0.14,
-      centerLensStrength: usePanelGeometry ? 0.46 : useFullCoverage ? 0.58 : undefined,
-      centerWaveStrength: usePanelGeometry ? 0.08 : useFullCoverage ? 0.16 : undefined,
-      sideVerticalDamp: material === 'shuding' ? 1 : 0.34,
-      sideHorizontalBoost: material === 'shuding' ? 1 : 1.12,
-      normalization: usePanelGeometry ? 1 : useFullCoverage ? 0.56 : material === 'shuding' ? 0.5 : 0.74,
-      balancedEncoding: usePanelGeometry,
-    }));
-  }, [coverage, geometry, material, settings.edgeRefraction, size.height, size.width]);
-
-  React.useLayoutEffect(() => {
-    if (!feImageRef.current || !map.href) return;
-    feImageRef.current.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', map.href);
-  }, [map.href]);
+  React.useEffect(() => {
+    const updateMap = () => setMap(getCachedDisplacementMap(size.width, size.height, mapOptions));
+    if (!eagerMap) {
+      updateMap();
+      return;
+    }
+    const timer = window.setTimeout(updateMap, 120);
+    return () => window.clearTimeout(timer);
+  }, [eagerMap, mapOptions, size.height, size.width]);
 
   const strengthRatio = Math.max(0, settings.strength / DEFAULT_LIQUID_GLASS_SETTINGS.strength);
   const filterScale = Math.round(
@@ -63,7 +84,7 @@ export const LiquidGlassSurface: React.FC<{
   ) / 1000;
   const style = {
     ...getLiquidGlassCssVars(settings),
-    '--liquid-tab-filter': `url(#liquid-shared-${filterId})`,
+    '--liquid-tab-filter': map.href ? `url(#liquid-shared-${filterId})` : 'none',
     ...customStyle,
   } as React.CSSProperties;
 
@@ -88,7 +109,6 @@ export const LiquidGlassSurface: React.FC<{
           colorInterpolationFilters="sRGB"
         >
           <feImage
-            ref={feImageRef}
             href={map.href}
             xlinkHref={map.href}
             preserveAspectRatio="none"

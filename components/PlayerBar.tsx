@@ -7,9 +7,10 @@ import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
 interface PlayerBarProps {
   onExpand: () => void;
   variant?: 'dock' | 'island';
+  settlePulse?: number;
 }
 
-export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock' }) => {
+export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock', settlePulse = 0 }) => {
   const { playerState, getCurrentSong, togglePlay, nextSong } = useStore();
   const song = getCurrentSong();
 
@@ -40,6 +41,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
         profile="player"
         borderRadiusClass={variant === 'island' ? 'rounded-full' : 'rounded-[18px]'}
         className="flex h-full w-full items-center"
+        settlePulse={settlePulse}
       >
       {/* Album Art */}
       <div
