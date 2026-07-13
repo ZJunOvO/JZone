@@ -12,7 +12,7 @@ import { useModalPresence } from '../modalPresence';
 import { useAuth } from '../auth';
 import { CollectionRow, supabaseApi } from '../supabaseApi';
 import { LiquidGlassSurface } from '../components/LiquidGlassSurface';
-import { LiquidGlassMotionContent } from '../components/LiquidGlassMotionContent';
+import { LIQUID_MENU_EXIT_MS, LiquidGlassMotionContent } from '../components/LiquidGlassMotionContent';
 
 type LibraryContentType = 'songs' | 'albums' | 'playlists';
 type LibraryFilter = 'all' | 'mine' | 'collaborations' | 'public' | 'private' | 'favorites';
@@ -198,7 +198,7 @@ export const Library: React.FC = () => {
       setCreateMenuOpen(false);
       setCreateMenuClosing(false);
       afterClose?.();
-    }, 400);
+    }, LIQUID_MENU_EXIT_MS);
   }, [createMenuClosing]);
 
   useEffect(() => () => {
@@ -387,6 +387,7 @@ export const Library: React.FC = () => {
                      setViewMode('list');
                    }}
                    aria-label="切换到列表视图"
+                   data-testid="library-view-list"
                    title="列表视图"
                    className={`liquid-glass-interactive flex h-9 w-9 items-center justify-center rounded-full transition-all ${viewMode === 'list' ? 'bg-white/[0.18] shadow-sm' : ''}`}
                    data-liquid-adaptive="true"
@@ -397,6 +398,7 @@ export const Library: React.FC = () => {
                    type="button"
                    onClick={() => setViewMode('canvas')}
                    aria-label="切换到 Bento 视图"
+                   data-testid="library-view-canvas"
                    title="Bento 视图"
                    className={`liquid-glass-interactive flex h-9 w-9 items-center justify-center rounded-full transition-all ${viewMode === 'canvas' ? 'bg-white/[0.18] shadow-sm' : ''}`}
                    data-liquid-adaptive="true"
@@ -423,8 +425,16 @@ export const Library: React.FC = () => {
            </div>
        </div>
        
+       <AnimatePresence mode="wait" initial={false}>
        {viewMode === 'list' ? (
-           <>
+           <motion.div
+             key="library-list"
+             initial={{ opacity: 0, y: 5, filter: 'blur(5px)' }}
+             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+             exit={{ opacity: 0, y: -3, filter: 'blur(4px)' }}
+             transition={{ duration: 0.22, ease: [0.22, 0.74, 0.22, 1] }}
+             data-library-view="list"
+           >
                <div className="space-y-3 mb-6">
                  <div className="flex items-center gap-3 bg-zinc-900/70 border border-white/5 rounded-2xl px-4 py-3">
                    <Icons.Search size={17} className="text-zinc-500 shrink-0" />
@@ -502,9 +512,18 @@ export const Library: React.FC = () => {
                    </div>
                  )}
                </div>
-           </>
+           </motion.div>
        ) : (
            /* Canvas View */
+           <motion.div
+             key="library-canvas"
+             initial={{ opacity: 0, scale: 0.992, filter: 'blur(7px)' }}
+             animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+             exit={{ opacity: 0, scale: 0.994, filter: 'blur(5px)' }}
+             transition={{ duration: 0.28, ease: [0.22, 0.74, 0.22, 1] }}
+             className="origin-center"
+             data-library-view="canvas"
+           >
            <LibraryCanvas
                items={bentoItems}
                onOpen={openBentoItem}
@@ -516,9 +535,13 @@ export const Library: React.FC = () => {
                isEditing={bentoEditing}
                onEditingChange={setBentoEditing}
            />
+           </motion.div>
        )}
+       </AnimatePresence>
 
-       {showUpload && <UploadModal onClose={() => setShowUpload(false)} />}
+       <AnimatePresence initial={false}>
+         {showUpload && <UploadModal onClose={() => setShowUpload(false)} />}
+       </AnimatePresence>
        <MemoryCardModal song={memorySong} openNonce={memoryOpenNonce} onClose={() => setMemorySong(null)} />
        
        {contextMenu && (

@@ -4,7 +4,9 @@ import { useStore } from '../store';
 import { Icons } from './Icons';
 import { SkeletonBlock } from './Skeletons';
 import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
-import { PLAYER_SETTLE_SPRING, PLAYER_SETTLE_VELOCITY } from './motion/playerTransition';
+import { createPlayerSettleCurve, PLAYER_SETTLE_DURATION } from './motion/playerTransition';
+
+const MINI_SETTLE_CURVE = createPlayerSettleCurve(1.0072);
 
 interface PlayerBarProps {
   onExpand: () => void;
@@ -21,11 +23,12 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
 
   React.useEffect(() => {
     settleAnimationRef.current?.stop();
-    settleScale.set(settlePulse > 0 && !reduceMotion ? 0.9985 : 1);
+    settleScale.set(1);
     if (settlePulse <= 0 || reduceMotion) return;
-    settleAnimationRef.current = animate(settleScale, 1, {
-      ...PLAYER_SETTLE_SPRING,
-      velocity: PLAYER_SETTLE_VELOCITY * 1.15,
+    settleAnimationRef.current = animate(settleScale, MINI_SETTLE_CURVE.values, {
+      duration: PLAYER_SETTLE_DURATION,
+      times: MINI_SETTLE_CURVE.times,
+      ease: 'linear',
     });
   }, [reduceMotion, settlePulse, settleScale]);
 

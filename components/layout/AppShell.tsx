@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useState } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
 import { PlayerBar } from '../PlayerBar';
 import { PwaInstallPrompt } from '../PwaInstallPrompt';
 import { listenModalPresence } from '../../modalPresence';
@@ -63,6 +63,9 @@ export const AppShell: React.FC = () => {
   const [miniSettlePulse, setMiniSettlePulse] = useState(0);
   const miniSettleTimerRef = React.useRef<number | null>(null);
   const miniSettleResetTimerRef = React.useRef<number | null>(null);
+  const routeFallbackControls = useAnimationControls();
+  const previousRouteRef = React.useRef(activeTab);
+  const supportsViewTransition = typeof document !== 'undefined' && 'startViewTransition' in document;
 
   useAutoFullscreen();
   useLiquidGlassAdaptiveForeground();
@@ -76,6 +79,21 @@ export const AppShell: React.FC = () => {
   React.useEffect(() => {
     if (activeTab === 'upload') setUploadMounted(true);
   }, [activeTab]);
+
+  React.useLayoutEffect(() => {
+    if (supportsViewTransition || previousRouteRef.current === activeTab) return;
+    previousRouteRef.current = activeTab;
+    routeFallbackControls.set({ opacity: 0.76, y: 6, filter: 'blur(5px)' });
+    const frame = window.requestAnimationFrame(() => {
+      void routeFallbackControls.start({
+        opacity: 1,
+        y: 0,
+        filter: 'blur(0px)',
+        transition: { duration: 0.26, ease: [0.22, 0.74, 0.22, 1] },
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, routeFallbackControls, supportsViewTransition]);
 
   React.useEffect(() => {
     if (songs.length > 0) void loadPlayerView();
@@ -211,6 +229,12 @@ export const AppShell: React.FC = () => {
     <div className="jzone-app-shell max-w-md mx-auto bg-black h-screen overflow-hidden relative shadow-2xl flex flex-col" style={liquidGlassCssVars}>
       <SharedElementLayer>
       <div className="jzone-glass-source flex-1 overflow-y-auto no-scrollbar scroll-smooth bg-black">
+        <motion.div
+          className="jzone-route-stage min-h-full"
+          data-route={activeTab}
+          initial={false}
+          animate={supportsViewTransition ? undefined : routeFallbackControls}
+        >
         <Suspense fallback={<PageFallback />}>
           {activeTab === 'home' && <Home />}
           {activeTab === 'library' && <Library />}
@@ -220,16 +244,22 @@ export const AppShell: React.FC = () => {
             </div>
           )}
           {activeTab === 'profile' && (
-            <Profile userId={profileUserId} onBack={profileUserId ? () => setProfileUserId(undefined) : undefined} />
+            <Profile
+              userId={profileUserId}
+              onBack={profileUserId ? () => runViewTransition(() => setProfileUserId(undefined)) : undefined}
+            />
           )}
         </Suspense>
+        </motion.div>
       </div>
 
+      <AnimatePresence initial={false}>
       {collectionId && (
         <Suspense fallback={null}>
-          <CollectionDetailPage collectionId={collectionId} onClose={closeCollection} />
+          <CollectionDetailPage key={collectionId} collectionId={collectionId} onClose={closeCollection} />
         </Suspense>
       )}
+      </AnimatePresence>
 
       <motion.div
           ref={miniPlayerLayerRef}

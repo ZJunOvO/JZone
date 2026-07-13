@@ -942,6 +942,46 @@ body {
   animation: none;
 }
 
+.jzone-route-stage {
+  view-transition-name: jzone-route-content;
+}
+
+::view-transition-group(jzone-route-content) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.22, 0.74, 0.22, 1);
+}
+
+::view-transition-old(jzone-route-content) {
+  animation: 170ms cubic-bezier(0.4, 0, 1, 1) both jzone-route-out;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(jzone-route-content) {
+  animation: 280ms cubic-bezier(0.22, 0.74, 0.22, 1) both jzone-route-in;
+  mix-blend-mode: normal;
+}
+
+@keyframes jzone-route-out {
+  to {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.997);
+    filter: blur(3px);
+  }
+}
+
+@keyframes jzone-route-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.996);
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
 ::view-transition-group(jzone-profile-avatar) {
   animation-duration: 460ms;
   animation-timing-function: cubic-bezier(0.22, 0.74, 0.22, 1);
@@ -954,6 +994,14 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(jzone-route-content),
+  ::view-transition-old(jzone-route-content),
+  ::view-transition-new(jzone-route-content) {
+    animation-duration: 120ms;
+    transform: none;
+    filter: none;
+  }
+
   ::view-transition-group(jzone-profile-avatar),
   ::view-transition-old(jzone-profile-avatar),
   ::view-transition-new(jzone-profile-avatar) {

@@ -118,6 +118,7 @@ const QueueSongRow: React.FC<{
 export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase, transitionOrigin, sharedOrigin }) => {
   const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, cyclePlaybackMode, seek, setVolume, playSong, removeFromQueue, reorderQueue, toggleFavorite, isFavorite } = useStore();
   const [isQueueOpen, setIsQueueOpen] = useState(false);
+  const [isQueueClosing, setIsQueueClosing] = useState(false);
   const [isQueueSorting, setIsQueueSorting] = useState(false);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
@@ -125,6 +126,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   const [isSeeking, setIsSeeking] = useState(false);
   const [isChangingVolume, setIsChangingVolume] = useState(false);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const [contextMenuOpenNonce, setContextMenuOpenNonce] = useState(0);
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | undefined>(undefined);
   const reduceMotion = useReducedMotion();
   const initialInsets = getPlayerOriginInsets(transitionOrigin);
@@ -140,6 +142,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   const surfaceOpacity = useTransform(clipProgress, [0, 0.18, 0.55, 1], [0, 1, 1, 1]);
   const clipAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
   const clipPhaseRef = React.useRef<PlayerTransitionPhase | null>(null);
+  const queueCloseTimerRef = React.useRef<number | null>(null);
 
   useModalPresence(isMemoryOpen);
   useModalPresence(isQueueOpen);
@@ -147,16 +150,43 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   React.useEffect(() => {
     if (!isQueueOpen) setIsQueueSorting(false);
   }, [isQueueOpen]);
+
+  const openQueue = React.useCallback(() => {
+    if (queueCloseTimerRef.current) window.clearTimeout(queueCloseTimerRef.current);
+    queueCloseTimerRef.current = null;
+    setIsQueueClosing(false);
+    setIsQueueOpen(true);
+  }, []);
+
+  const closeQueue = React.useCallback(() => {
+    if (isQueueClosing) return;
+    if (reduceMotion) {
+      setIsQueueOpen(false);
+      return;
+    }
+    setIsQueueClosing(true);
+    queueCloseTimerRef.current = window.setTimeout(() => {
+      setIsQueueOpen(false);
+      setIsQueueClosing(false);
+      queueCloseTimerRef.current = null;
+    }, 300);
+  }, [isQueueClosing, reduceMotion]);
+
+  React.useEffect(() => () => {
+    if (queueCloseTimerRef.current) window.clearTimeout(queueCloseTimerRef.current);
+  }, []);
   
   const song = getCurrentSong();
   const isClosing = transitionPhase === 'closing';
-  const secondaryInitial = reduceMotion ? false : { opacity: 0, y: 12 };
-  const secondaryAnimate = isClosing ? { opacity: 0, y: 8 } : { opacity: 1, y: 0 };
-  const secondaryTransition = reduceMotion
+  const secondaryInitial = reduceMotion ? false : { opacity: 0, y: 14, filter: 'blur(7px)' };
+  const secondaryAnimate = isClosing
+    ? { opacity: 0, y: 8, filter: 'blur(5px)' }
+    : { opacity: 1, y: 0, filter: 'blur(0px)' };
+  const secondaryTransition = (order = 0) => reduceMotion
     ? { duration: 0.12 }
     : isClosing
-      ? { duration: 0.16, ease: 'easeIn' as const }
-      : { duration: 0.24, delay: 0.14, ease: PLAYER_SHELL_EASE };
+      ? { duration: 0.14, ease: 'easeIn' as const }
+      : { duration: 0.28, delay: 0.1 + order * 0.038, ease: PLAYER_SHELL_EASE };
 
   const stopClipAnimations = React.useCallback(() => {
     clipAnimationRef.current?.stop();
@@ -266,7 +296,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
         data-testid="player-view-close"
         initial={secondaryInitial}
         animate={secondaryAnimate}
-        transition={secondaryTransition}
+        transition={secondaryTransition(0)}
       >
         <div className="w-10 h-1.5 bg-white/20 rounded-full"></div>
       </motion.button>
@@ -304,7 +334,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
             className="flex items-center gap-2"
             initial={secondaryInitial}
             animate={secondaryAnimate}
-            transition={secondaryTransition}
+            transition={secondaryTransition(1)}
           >
             <button
               onClick={() => toggleFavorite(song.id)}
@@ -317,10 +347,12 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   setMenuAnchor({ x: rect.left, y: rect.top });
+                  setContextMenuOpenNonce((value) => value + 1);
                   setContextMenuOpen(true);
                 }}
                 className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/90 active:scale-90 transition"
                 aria-label={`打开 ${song.title} 的更多操作`}
+                data-testid="player-more-menu"
             >
               <Icons.MoreHorizontal size={18} strokeWidth={1.5} />
             </button>
@@ -332,7 +364,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
           className="mt-8"
           initial={secondaryInitial}
           animate={secondaryAnimate}
-          transition={secondaryTransition}
+          transition={secondaryTransition(2)}
           data-player-transition-part="secondary"
         >
           {playerState.isAudioLoading ? (
@@ -368,7 +400,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
         </motion.div>
 
         {/* Main Playback Controls */}
-        <motion.div className="flex items-center justify-around px-4 mt-2" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition}>
+        <motion.div className="flex items-center justify-around px-4 mt-2" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition(3)}>
           <button onClick={prevSong} className="w-11 h-11 flex items-center justify-center text-white opacity-80 hover:opacity-100 transition active:scale-90" aria-label="上一首">
             <Icons.SkipBack size={26} fill="currentColor" />
           </button>
@@ -388,7 +420,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
         </motion.div>
 
         {/* 7. Volume Control Slider - Functional with Thickening Animation */}
-        <motion.div className="flex items-center gap-4 px-2 my-6 group" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition}>
+        <motion.div className="flex items-center gap-4 px-2 my-6 group" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition(4)}>
           <div className="w-4 flex justify-center">
             {playerState.volume === 0 ? (
               <Icons.VolumeX size={14} strokeWidth={1.5} className="text-white/40" />
@@ -428,12 +460,13 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
         </motion.div>
 
         {/* Footer Function Bar */}
-        <motion.div className="flex justify-center pb-[calc(env(safe-area-inset-bottom)+12px)]" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition}>
+        <motion.div className="flex justify-center pb-[calc(env(safe-area-inset-bottom)+12px)]" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition(5)}>
           <div className="flex items-center justify-between w-full max-w-[280px]">
             <button 
               onClick={() => setIsCommentsOpen(true)}
               className={`w-11 h-11 flex items-center justify-center transition active:opacity-60 ${isCommentsOpen ? 'text-white' : 'text-white/40 hover:text-white'}`}
               aria-label="打开评论"
+              data-testid="player-open-comments"
             >
               <Icons.MessageSquareQuote size={20} strokeWidth={1.5} />
             </button>
@@ -448,9 +481,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
               <Icons.Sparkles size={20} strokeWidth={1.5} />
             </button>
             <button 
-              onClick={() => setIsQueueOpen(true)}
+              onClick={openQueue}
               className={`w-11 h-11 flex items-center justify-center transition active:opacity-60 ${isQueueOpen ? 'text-white' : 'text-white/40 hover:text-white'}`}
               aria-label="打开待播放"
+              data-testid="player-open-queue"
             >
               <Icons.List size={20} strokeWidth={1.5} />
             </button>
@@ -463,13 +497,29 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
 
       {/* Queue/List Overlay */}
       {isQueueOpen && (
-        <div className="absolute inset-0 z-50 animate-[fadeIn_0.3s_ease-out]">
-          <div 
+        <motion.div
+          className="absolute inset-0 z-50"
+          data-testid="player-queue-sheet"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: isQueueClosing ? 0 : 1 }}
+          transition={{ duration: reduceMotion ? 0.1 : 0.2, ease: 'easeOut' }}
+        >
+          <motion.div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
-            onClick={() => setIsQueueOpen(false)}
-          ></div>
-          <div className="absolute inset-x-0 bottom-0 top-1/3 bg-zinc-900/60 backdrop-blur-3xl rounded-t-[32px] border-t border-white/10 flex flex-col shadow-[0_-20px_50px_rgba(0,0,0,0.5)] animate-[slideUp_0.4s_cubic-bezier(0.33,1,0.68,1)]">
-            <button type="button" className="flex justify-center py-4 cursor-pointer" onClick={() => setIsQueueOpen(false)} aria-label="收起待播放">
+            onClick={closeQueue}
+          />
+          <motion.div
+            className="absolute inset-x-0 bottom-0 top-1/3 bg-zinc-900/60 backdrop-blur-3xl rounded-t-[32px] border-t border-white/10 flex flex-col shadow-[0_-20px_50px_rgba(0,0,0,0.5)]"
+            data-testid="player-queue-panel"
+            initial={reduceMotion ? { opacity: 0 } : { y: '100%', opacity: 0.86 }}
+            animate={isQueueClosing ? { y: '100%', opacity: 0.82 } : { y: 0, opacity: 1 }}
+            transition={reduceMotion
+              ? { duration: 0.1 }
+              : isQueueClosing
+                ? { duration: 0.3, ease: [0.32, 0, 0.24, 1] }
+                : { type: 'spring', stiffness: 330, damping: 32, mass: 0.9 }}
+          >
+            <button type="button" data-testid="player-queue-close" className="flex justify-center py-4 cursor-pointer" onClick={closeQueue} aria-label="收起待播放">
               <div className="w-10 h-1.5 bg-white/20 rounded-full"></div>
             </button>
             
@@ -532,8 +582,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
                   </div>
                 )}
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
 
       {/* Comments Sheet Overlay */}
@@ -546,6 +596,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
           item={song} 
           type="song"
           anchorPosition={menuAnchor}
+          openNonce={contextMenuOpenNonce}
       />
     </motion.div>
   );

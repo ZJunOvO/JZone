@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useStore } from '../store';
 import { Icons } from './Icons';
 import { Comment } from '../types';
@@ -33,6 +34,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
   const [isFocused, setIsFocused] = useState(false);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const reduceMotion = useReducedMotion();
   
   const currentSong = getCurrentSong();
   const filteredComments = comments.filter(c => c.songId === currentSong?.id).sort((a, b) => b.timestamp - a.timestamp);
@@ -117,18 +119,32 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="absolute inset-0 z-[60] flex flex-col justify-end">
+    <AnimatePresence initial={false}>
+    {isOpen && (
+    <motion.div
+      className="absolute inset-0 z-[60] flex flex-col justify-end"
+      data-testid="comments-sheet"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: reduceMotion ? 0.1 : 0.2, ease: 'easeOut' }}
+    >
       {/* Backdrop */}
-      <div 
+      <motion.div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" 
         onClick={onClose}
-      ></div>
+      />
 
       {/* Sheet Content */}
-      <div className="relative bg-zinc-900/85 backdrop-blur-3xl h-[85vh] w-full rounded-t-[32px] border-t border-white/10 flex flex-col shadow-[0_-20px_60px_-10px_rgba(0,0,0,0.8)] animate-[slideUp_0.35s_cubic-bezier(0.2,0.9,0.3,1)] overflow-hidden">
+      <motion.div
+        className="relative bg-zinc-900/85 backdrop-blur-3xl h-[85vh] w-full rounded-t-[32px] border-t border-white/10 flex flex-col shadow-[0_-20px_60px_-10px_rgba(0,0,0,0.8)] overflow-hidden"
+        data-testid="comments-sheet-panel"
+        initial={reduceMotion ? { opacity: 0 } : { y: '100%', opacity: 0.88 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={reduceMotion ? { opacity: 0 } : { y: '100%', opacity: 0.84 }}
+        transition={reduceMotion ? { duration: 0.1 } : { type: 'spring', stiffness: 320, damping: 32, mass: 0.92 }}
+      >
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 shrink-0 border-b border-white/5">
@@ -139,7 +155,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
               className="w-10 h-1.5 bg-white/20 rounded-full absolute top-3 left-1/2 -translate-x-1/2 cursor-pointer"
               onClick={onClose}
            ></div>
-           <button onClick={onClose} className="p-2 -mr-2 text-white/40 hover:text-white rounded-full transition-colors">
+           <button onClick={onClose} data-testid="comments-sheet-close" className="p-2 -mr-2 text-white/40 hover:text-white rounded-full transition-colors">
               <Icons.X size={20} strokeWidth={2.5} />
            </button>
         </div>
@@ -280,7 +296,9 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
               </button>
            </form>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 };

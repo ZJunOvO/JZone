@@ -10,12 +10,16 @@ const browser = await chromium.launch({ headless: process.env.JZONE_HEADFUL !== 
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 const consoleErrors = [];
 const failedResponses = [];
+const failedRequests = [];
 
 page.on('console', (message) => {
   if (message.type() === 'error') consoleErrors.push(message.text());
 });
 page.on('response', (response) => {
   if (response.status() >= 400) failedResponses.push({ status: response.status(), url: response.url() });
+});
+page.on('requestfailed', (request) => {
+  failedRequests.push({ url: request.url(), error: request.failure()?.errorText ?? 'unknown' });
 });
 
 await page.addInitScript(() => {
@@ -139,7 +143,7 @@ try {
   }
 
   const relevantErrors = consoleErrors.filter((message) => !/Failed to load resource.*404/i.test(message));
-  assert(relevantErrors.length === 0, `共享过渡产生控制台错误：${JSON.stringify(relevantErrors)}`);
+  assert(relevantErrors.length === 0, `共享过渡产生控制台错误：${JSON.stringify({ relevantErrors, failedRequests })}`);
 
   console.log(JSON.stringify({
     ok: true,
@@ -150,6 +154,7 @@ try {
     collectionChecked,
     consoleErrors,
     failedResponses,
+    failedRequests,
   }, null, 2));
 } finally {
   await browser.close();

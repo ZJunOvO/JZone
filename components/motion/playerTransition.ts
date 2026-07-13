@@ -29,21 +29,36 @@ export interface PlayerClipInsets {
   radius: number;
 }
 
-export const PLAYER_SHELL_DURATION = 0.5;
-export const PLAYER_SHELL_EXIT_DURATION = 0.34;
+export const PLAYER_SHELL_DURATION = 0.56;
+export const PLAYER_SHELL_EXIT_DURATION = 0.38;
 export const PLAYER_MINI_SETTLE_LEAD = 0.12;
 export const PLAYER_SHELL_EASE = [0.22, 0.72, 0.18, 1] as const;
 
-// 接近临界阻尼，只保留一次轻微越界；由转场末速度驱动，不额外播放缩放关键帧。
-export const PLAYER_SETTLE_SPRING = {
-  type: 'spring' as const,
-  stiffness: 190,
-  damping: 22,
-  mass: 0.9,
-  restSpeed: 0.001,
-  restDelta: 0.0005,
+export const PLAYER_SETTLE_DURATION = 0.48;
+
+// 临界阻尼的冲量响应：从终点连续带出一次低幅惯性，既不预压缩，也不持续振荡。
+export const createPlayerSettleCurve = (peakScale: number, sampleCount = 24) => {
+  const angularFrequency = 9.5;
+  const response = (time: number) => {
+    const phase = angularFrequency * time;
+    return Math.E * phase * Math.exp(-phase);
+  };
+  const endResponse = response(PLAYER_SETTLE_DURATION);
+  const raw = Array.from({ length: sampleCount + 1 }, (_, index) => {
+    const progress = index / sampleCount;
+    const time = PLAYER_SETTLE_DURATION * progress;
+    return Math.max(0, response(time) - progress * endResponse);
+  });
+  const normalization = Math.max(...raw, 1);
+  const amplitude = Math.max(0, peakScale - 1);
+  return {
+    values: raw.map((value, index) => {
+      if (index === 0 || index === sampleCount) return 1;
+      return 1 + (value / normalization) * amplitude;
+    }),
+    times: raw.map((_, index) => index / sampleCount),
+  };
 };
-export const PLAYER_SETTLE_VELOCITY = 0.2;
 
 export const PLAYER_SHARED_TRANSITION = {
   duration: PLAYER_SHELL_DURATION,

@@ -31,11 +31,10 @@ export const StatusSelector: React.FC<StatusSelectorProps> = ({
   currentStatus,
   onSelect,
 }) => {
-  if (!isOpen) return null;
-
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-[200] flex items-end justify-center sm:items-center">
+    <AnimatePresence initial={false}>
+      {isOpen && (
+      <motion.div className="fixed inset-0 z-[200] flex items-end justify-center sm:items-center">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -88,7 +87,8 @@ export const StatusSelector: React.FC<StatusSelectorProps> = ({
             })}
           </div>
         </motion.div>
-      </div>
+      </motion.div>
+      )}
     </AnimatePresence>
   );
 };

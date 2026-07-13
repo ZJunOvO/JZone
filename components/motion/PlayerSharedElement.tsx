@@ -8,9 +8,9 @@ import {
   type AnimationPlaybackControls,
 } from 'framer-motion';
 import {
+  createPlayerSettleCurve,
   PLAYER_SHARED_TRANSITION,
-  PLAYER_SETTLE_SPRING,
-  PLAYER_SETTLE_VELOCITY,
+  PLAYER_SETTLE_DURATION,
   PLAYER_SHELL_EXIT_DURATION,
   type PlayerElementRect,
   type PlayerTransitionPhase,
@@ -26,6 +26,7 @@ interface PlayerSharedElementProps {
 
 const IDENTITY = { x: 0, y: 0, scaleX: 1, scaleY: 1 };
 const SHARED_EASE = [...PLAYER_SHARED_TRANSITION.ease] as [number, number, number, number];
+const COVER_SETTLE_CURVE = createPlayerSettleCurve(1.0055);
 
 export const PlayerSharedElement: React.FC<PlayerSharedElementProps> = ({
   children,
@@ -72,10 +73,11 @@ export const PlayerSharedElement: React.FC<PlayerSharedElementProps> = ({
     if (settleStartedRef.current) return;
     settleStartedRef.current = true;
     settleAnimationRef.current?.stop();
-    settleScale.set(0.998);
-    settleAnimationRef.current = animate(settleScale, 1, {
-      ...PLAYER_SETTLE_SPRING,
-      velocity: PLAYER_SETTLE_VELOCITY,
+    settleScale.set(1);
+    settleAnimationRef.current = animate(settleScale, COVER_SETTLE_CURVE.values, {
+      duration: PLAYER_SETTLE_DURATION,
+      times: COVER_SETTLE_CURVE.times,
+      ease: 'linear',
     });
   }, [name, reduceMotion, settleScale]);
 

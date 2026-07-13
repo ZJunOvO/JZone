@@ -215,15 +215,21 @@ try {
     const menu = document.querySelector('.liquid-context-menu-panel');
     const content = menu?.querySelector(':scope > div.relative.z-10');
     const shell = menu?.querySelector('[data-liquid-motion-shell]');
+    const glass = menu?.querySelector('.liquid-tab-f-glass');
+    const rim = menu?.querySelector('[data-liquid-motion-rim]');
     return content ? {
       exists: true,
       filter: getComputedStyle(content).filter,
       transform: getComputedStyle(content).transform,
       shellOpacity: shell ? Number(getComputedStyle(shell).opacity) : null,
+      glassFilter: glass ? getComputedStyle(glass).backdropFilter : null,
+      rimOpacity: rim ? Number(getComputedStyle(rim).opacity) : null,
     } : { exists: false };
   });
   assert(closing.exists && (closing.filter !== 'none' || closing.transform !== 'none'), 'Mini 菜单关闭时没有反向缩放模糊');
   assert(closing.shellOpacity !== null && closing.shellOpacity > 0.99, `Mini 菜单退出时材质采样被透明度动画截断：${JSON.stringify(closing)}`);
+  assert(Number(closing.glassFilter?.match(/blur\(([\d.]+)px\)/)?.[1] ?? 0) > 3.5, `Mini 菜单退出时整层玻璃没有同步模糊：${JSON.stringify(closing)}`);
+  assert((closing.rimOpacity ?? 1) < 0.7, `Mini 菜单内容消失时高光层仍然滞留：${JSON.stringify(closing)}`);
   await page.waitForTimeout(350);
   assert((await page.locator('.liquid-context-menu-panel').count()) === 0, 'Mini 菜单退出动画后仍残留');
 

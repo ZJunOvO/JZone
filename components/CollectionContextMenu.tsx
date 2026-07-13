@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Icons } from './Icons';
 import { CollectionRow, CollectionVisibility } from '../supabaseApi';
 import { getAnchoredMenuPlacement } from '../utils/menuPlacement';
-import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
+import { LIQUID_MENU_EXIT_MS, LiquidGlassMotionContent } from './LiquidGlassMotionContent';
 
 export const CollectionContextMenu: React.FC<{
   isOpen: boolean;
@@ -25,12 +25,14 @@ export const CollectionContextMenu: React.FC<{
     if (isClosing) return;
     setIsClosing(true);
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = window.setTimeout(onClose, 400);
+    closeTimerRef.current = window.setTimeout(onClose, LIQUID_MENU_EXIT_MS);
   }, [isClosing, onClose]);
 
-  useEffect(() => {
-    if (isOpen) setIsClosing(false);
-  }, [isOpen]);
+  React.useLayoutEffect(() => {
+    if (!isOpen) return;
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    setIsClosing(false);
+  }, [collection.id, isOpen]);
 
   useEffect(() => () => {
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
@@ -40,7 +42,7 @@ export const CollectionContextMenu: React.FC<{
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) requestClose();
     };
-    if (isOpen && !isClosing) setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
+    if (isOpen && !isClosing) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isClosing, isOpen, requestClose]);
 

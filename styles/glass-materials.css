@@ -61,15 +61,13 @@
 }
 
 .liquid-glass-motion-shell {
-  box-shadow:
-    0 18px 42px rgba(0,0,0,0.34),
-    inset 0 1px rgba(255,255,255, calc(var(--lg-f-edge-alpha, 0.14) * 0.52));
   will-change: top, right, bottom, left;
 }
 
 .liquid-glass-elastic-rim {
   border: 1px solid rgba(255, 255, 255, calc(var(--lg-f-edge-alpha, 0.5) * 0.68));
   box-shadow:
+    0 18px 42px rgba(0,0,0,0.34),
     inset 0 1px 0 rgba(255, 255, 255, calc(var(--lg-f-specular-alpha, 0.5) * 0.72)),
     inset 1px 0 0 rgba(255, 255, 255, calc(var(--lg-f-edge-alpha, 0.5) * 0.32)),
     inset -1px 0 0 rgba(255, 255, 255, calc(var(--lg-f-edge-alpha, 0.5) * 0.2));

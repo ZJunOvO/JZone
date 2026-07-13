@@ -8,7 +8,7 @@ import { EditSongModal } from './EditSongModal';
 import { AddSongToCollectionDialog } from './AddSongToCollectionDialog';
 import { getAnchoredMenuPlacement } from '../utils/menuPlacement';
 import { feedback } from './feedback';
-import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
+import { LIQUID_MENU_EXIT_MS, LiquidGlassMotionContent } from './LiquidGlassMotionContent';
 
 interface UniversalContextMenuProps {
   isOpen: boolean;
@@ -16,9 +16,10 @@ interface UniversalContextMenuProps {
   anchorPosition?: { x: number; y: number };
   item: Song;
   type: 'song';
+  openNonce?: number;
 }
 
-export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOpen, onClose, anchorPosition, item, type }) => {
+export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOpen, onClose, anchorPosition, item, type, openNonce = 0 }) => {
   const { user } = useAuth();
   const { updateSong, deleteSong, isFavorite, toggleFavorite, playNext, playLater } = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -36,12 +37,14 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
     if (isClosing) return;
     setIsClosing(true);
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = window.setTimeout(onClose, 400);
+    closeTimerRef.current = window.setTimeout(onClose, LIQUID_MENU_EXIT_MS);
   }, [isClosing, onClose]);
 
-  useEffect(() => {
-    if (isOpen) setIsClosing(false);
-  }, [isOpen]);
+  React.useLayoutEffect(() => {
+    if (!isOpen) return;
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    setIsClosing(false);
+  }, [isOpen, item.id, openNonce]);
 
   useEffect(() => () => {
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
@@ -57,8 +60,7 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
       }
     };
     if (isOpen && !isClosing) {
-        // Use timeout to prevent immediate close if triggered by click
-        setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
+      document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);

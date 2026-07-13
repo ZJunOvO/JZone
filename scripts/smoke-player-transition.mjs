@@ -120,6 +120,25 @@ const assertFrameBudget = (frames, label) => {
   );
 };
 
+const clickAndCaptureOpeningFrame = async () => page.evaluate(async () => {
+  document.querySelector('[data-testid="mini-player"]')?.click();
+  for (let frame = 0; frame < 12; frame += 1) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const shell = document.querySelector('[data-testid="player-transition-shell"]');
+    if (!shell) continue;
+    const clipPath = getComputedStyle(shell).clipPath;
+    const insetBody = clipPath.match(/^inset\((.*?)(?:\s+round\s+.*?)?\)$/)?.[1] ?? '';
+    const raw = [...insetBody.matchAll(/-?[\d.]+/g)].map((match) => Number(match[0]));
+    const top = raw[0] ?? 0;
+    const sharedTransforms = Object.fromEntries(['cover', 'title', 'artist'].map((name) => {
+      const target = shell.querySelector(`[data-shared-element="song-${name}"]`);
+      return [name, target ? getComputedStyle(target).transform : null];
+    }));
+    return { clipPath, top, sharedTransforms };
+  }
+  return null;
+});
+
 const readMatrixScale = (transform) => {
   if (!transform || transform === 'none') return { x: 1, y: 1 };
   const values = transform.match(/-?[\d.]+/g)?.map(Number) ?? [];
@@ -129,7 +148,9 @@ const readMatrixScale = (transform) => {
 const assertSoftSettle = (transforms, label, { minPeak = 1.003, maxPeak = 1.012, finalDelta = 0.002 } = {}) => {
   const scales = transforms.filter(Boolean).map((transform) => readMatrixScale(transform).x);
   const peak = Math.max(...scales);
+  const minimum = Math.min(...scales);
   const final = scales.at(-1) ?? 1;
+  assert(minimum >= 0.9998, `${label}出现了与惯性方向相反的预压缩跳变：${JSON.stringify(scales)}`);
   assert(peak >= minPeak, `${label}缺少可感知的惯性越界：${JSON.stringify(scales)}`);
   assert(peak <= maxPeak, `${label}回弹幅度过大：${JSON.stringify(scales)}`);
   assert(Math.abs(final - 1) <= finalDelta, `${label}没有平滑收敛：${JSON.stringify(scales)}`);
@@ -181,12 +202,12 @@ try {
   await page.waitForTimeout(760);
 
   await startFrameProbe('opening', 700);
-  await page.getByTestId('mini-player').evaluate((element) => element.click());
+  const openingFirstFrame = await clickAndCaptureOpeningFrame();
   await page.getByTestId('player-transition-shell').waitFor({ state: 'attached', timeout: 2000 });
-  const opening = await captureTimeline('opening', [20, 80, 160, 280, 560, 620, 760]);
+  const opening = await captureTimeline('opening', [20, 80, 160, 280, 560, 620, 760, 900]);
   await page.waitForTimeout(100);
   const openingFrames = await readFrameProbe('opening');
-  assert(opening[0].exists && opening[0].insets.top > 100, `播放器没有从 Mini 边界开始：${JSON.stringify(opening[0])}`);
+  assert(openingFirstFrame && openingFirstFrame.top > 100, `播放器没有从 Mini 边界开始：${JSON.stringify(openingFirstFrame)}`);
   for (const key of ['top', 'right', 'bottom', 'left']) assertMonotonic(opening, key, 'decrease');
   const openingFinal = opening.at(-1);
   assert(Object.values(openingFinal.insets).every((value) => value <= 1), `播放器没有铺满视窗：${JSON.stringify(openingFinal.insets)}`);
@@ -198,7 +219,8 @@ try {
   for (const key of ['cover', 'title', 'artist']) {
     assert(opening.slice(0, -1).some((sample) => sample[key].length >= 2), `${key} 缺少共享源/目标双端`);
     assert(
-      opening.slice(0, -1).some((sample) => sample[key].some((item) => item.transform !== 'none')),
+      openingFirstFrame?.sharedTransforms[key] !== 'none'
+        || opening.slice(0, -1).some((sample) => sample[key].some((item) => item.transform !== 'none')),
       `${key} 没有执行共享几何插值：${JSON.stringify(opening.map((sample) => sample[key]))}`,
     );
   }
@@ -206,6 +228,70 @@ try {
     opening[0].secondaryOpacity < opening[3].secondaryOpacity,
     `控制项没有随容器展开分阶段显现：${opening.map((sample) => sample.secondaryOpacity)}`,
   );
+
+  const readPlayerMenu = async () => page.evaluate(() => {
+    const menu = document.querySelector('.liquid-context-menu-panel');
+    const content = menu?.querySelector(':scope > div.relative.z-10');
+    const glass = menu?.querySelector('.liquid-tab-f-glass');
+    return {
+      exists: Boolean(menu),
+      buttonCount: menu?.querySelectorAll('button').length ?? 0,
+      contentOpacity: content ? Number(getComputedStyle(content).opacity) : 0,
+      contentFilter: content ? getComputedStyle(content).filter : null,
+      glassFilter: glass ? getComputedStyle(glass).backdropFilter : null,
+    };
+  });
+  const requestPlayerMenuClose = async () => page.evaluate(() => {
+    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  });
+
+  await page.getByTestId('player-more-menu').click();
+  await page.waitForTimeout(90);
+  const playerMenuFirstOpen = await readPlayerMenu();
+  assert(playerMenuFirstOpen.buttonCount >= 5 && playerMenuFirstOpen.contentOpacity > 0.2, `播放页 Mini 菜单首次打开缺少内容：${JSON.stringify(playerMenuFirstOpen)}`);
+  assert(playerMenuFirstOpen.glassFilter?.includes('url('), `播放页 Mini 菜单首次打开缺少材质：${JSON.stringify(playerMenuFirstOpen)}`);
+  await requestPlayerMenuClose();
+  await page.locator('.liquid-context-menu-panel').waitFor({ state: 'detached', timeout: 900 });
+
+  await page.getByTestId('player-more-menu').click();
+  await page.waitForTimeout(90);
+  const playerMenuSlowReopen = await readPlayerMenu();
+  assert(playerMenuSlowReopen.buttonCount >= 5 && playerMenuSlowReopen.contentOpacity > 0.2, `播放页 Mini 菜单慢速重开后内容为空：${JSON.stringify(playerMenuSlowReopen)}`);
+  await requestPlayerMenuClose();
+  await page.waitForTimeout(80);
+  await page.getByTestId('player-more-menu').click();
+  await page.waitForTimeout(100);
+  const playerMenuRapidReopen = await readPlayerMenu();
+  assert(playerMenuRapidReopen.buttonCount >= 5 && playerMenuRapidReopen.contentOpacity > 0.2, `播放页 Mini 菜单快速重开后内容为空：${JSON.stringify(playerMenuRapidReopen)}`);
+  assert(playerMenuRapidReopen.glassFilter?.includes('url('), `播放页 Mini 菜单快速重开后材质丢失：${JSON.stringify(playerMenuRapidReopen)}`);
+  await requestPlayerMenuClose();
+  await page.locator('.liquid-context-menu-panel').waitFor({ state: 'detached', timeout: 900 });
+
+  await page.getByTestId('player-open-comments').click();
+  await page.getByTestId('comments-sheet').waitFor({ state: 'visible', timeout: 2000 });
+  await page.waitForTimeout(70);
+  const commentsEnterTransform = await page.getByTestId('comments-sheet-panel').evaluate((element) => getComputedStyle(element).transform);
+  assert(commentsEnterTransform !== 'none', `评论区没有执行二级页面进场：${commentsEnterTransform}`);
+  await page.getByTestId('comments-sheet-close').click();
+  await page.waitForTimeout(40);
+  assert((await page.getByTestId('comments-sheet').count()) === 1, '评论区关闭时没有保留退出动画生命周期');
+  const commentsExitTransform = await page.getByTestId('comments-sheet-panel').evaluate((element) => getComputedStyle(element).transform);
+  assert(commentsExitTransform !== 'none', `评论区没有执行返回动画：${commentsExitTransform}`);
+  await page.waitForTimeout(520);
+  assert((await page.getByTestId('comments-sheet').count()) === 0, '评论区退出动画结束后仍残留');
+
+  await page.getByTestId('player-open-queue').click();
+  await page.getByTestId('player-queue-sheet').waitFor({ state: 'visible', timeout: 2000 });
+  await page.waitForTimeout(70);
+  const queueEnterTransform = await page.getByTestId('player-queue-panel').evaluate((element) => getComputedStyle(element).transform);
+  assert(queueEnterTransform !== 'none', `待播清单没有执行二级页面进场：${queueEnterTransform}`);
+  await page.getByTestId('player-queue-close').click();
+  await page.waitForTimeout(40);
+  assert((await page.getByTestId('player-queue-sheet').count()) === 1, '待播清单关闭时没有保留退出动画生命周期');
+  const queueExitTransform = await page.getByTestId('player-queue-panel').evaluate((element) => getComputedStyle(element).transform);
+  assert(queueExitTransform !== 'none', `待播清单没有执行返回动画：${queueExitTransform}`);
+  await page.waitForTimeout(520);
+  assert((await page.getByTestId('player-queue-sheet').count()) === 0, '待播清单退出动画结束后仍残留');
 
   await page.getByTestId('player-view-close').click();
   const closing = await captureTimeline('closing', [20, 80, 160, 240, 300, 340, 400, 520, 760]);
@@ -309,7 +395,8 @@ try {
 
   const relevantErrors = consoleErrors.filter((message) => !/Failed to load resource.*404/i.test(message));
   assert(relevantErrors.length === 0, `播放器转场产生控制台错误：${JSON.stringify(relevantErrors)}`);
-  const result = { ok: true, viewport: `${viewportWidth}x${viewportHeight}`, opening, closing, rapidReversals, openingFrames, sampledRapidFrames, rapidFrames, consoleErrors };
+  const secondarySheets = { commentsEnterTransform, commentsExitTransform, queueEnterTransform, queueExitTransform };
+  const result = { ok: true, viewport: `${viewportWidth}x${viewportHeight}`, opening, closing, playerMenuFirstOpen, playerMenuSlowReopen, playerMenuRapidReopen, secondarySheets, rapidReversals, openingFrames, sampledRapidFrames, rapidFrames, consoleErrors };
   console.log(JSON.stringify(process.env.JZONE_COMPACT === '1' ? {
     ok: result.ok,
     viewport: result.viewport,
@@ -318,6 +405,12 @@ try {
     openingBackgroundOpacity: opening.map((sample) => ({ time: sample.time, opacity: sample.backgroundOpacity })),
     closingInsets: closing.map((sample) => ({ time: sample.time, exists: sample.exists, ...(sample.insets ?? {}) })),
     sharedParts: ['cover', 'title', 'artist'],
+    playerMenuReopen: {
+      first: playerMenuFirstOpen,
+      slow: playerMenuSlowReopen,
+      rapid: playerMenuRapidReopen,
+    },
+    secondarySheets,
     rapidReversalRounds: rapidReversals.length,
     openingFrames,
     sampledRapidFrames,

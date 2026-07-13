@@ -12,6 +12,12 @@ if (sampleCanvas) {
 const getBitmap = (source: string) => {
   const cached = bitmapCache.get(source);
   if (cached) return cached;
+  const sourceUrl = new URL(source, window.location.href);
+  if (sourceUrl.hostname === 'q1.qlogo.cn') {
+    const skipped = Promise.resolve(null);
+    bitmapCache.set(source, skipped);
+    return skipped;
+  }
   const request = fetch(source, { cache: 'force-cache', mode: 'cors' })
     .then((response) => response.ok ? response.blob() : Promise.reject(new Error('image fetch failed')))
     .then((blob) => createImageBitmap(blob))

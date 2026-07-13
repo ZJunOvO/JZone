@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Song } from '../types';
 import { CollectionCreatableSelect, type CollectionSelectValue } from './CollectionCreatableSelect';
 import { Icons } from './Icons';
@@ -16,14 +17,23 @@ export const AddSongToCollectionDialog: React.FC<{
   const [selection, setSelection] = useState<CollectionSelectValue>({ kind: 'none' });
   const [isAttaching, setIsAttaching] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
+  const closeTimerRef = React.useRef<number | null>(null);
+  const reduceMotion = useReducedMotion();
+
+  React.useEffect(() => () => {
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+  }, []);
 
   if (!isOpen || !song) return null;
 
   const close = () => {
+    if (isClosing) return;
+    setIsClosing(true);
     setSelection({ kind: 'none' });
     setIsAttaching(false);
     setFeedback(null);
-    onClose();
+    closeTimerRef.current = window.setTimeout(onClose, reduceMotion ? 100 : 240);
   };
 
   const attach = async () => {
@@ -52,10 +62,22 @@ export const AddSongToCollectionDialog: React.FC<{
     }
   };
   return (
-    <div className="fixed inset-0 z-[190]">
-      <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={close} />
-      <div
+    <AnimatePresence initial={false}>
+    {!isClosing && (
+    <motion.div
+      className="fixed inset-0 z-[190]"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: reduceMotion ? 0.1 : 0.2 }}
+    >
+      <motion.div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={close} />
+      <motion.div
         className="frosted-glass-panel absolute left-1/2 top-1/2 w-[min(420px,calc(100%-48px))] -translate-x-1/2 -translate-y-1/2 rounded-[24px] shadow-2xl overflow-hidden"
+        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 10, filter: 'blur(5px)' }}
+        animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+        exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8, filter: 'blur(5px)' }}
+        transition={{ duration: reduceMotion ? 0.1 : 0.24, ease: [0.22, 0.74, 0.22, 1] }}
       >
         <div className="relative z-10 p-5 border-b border-white/10 flex items-center justify-between gap-4">
           <div className="min-w-0">
@@ -104,7 +126,9 @@ export const AddSongToCollectionDialog: React.FC<{
             {isAttaching ? '加入中...' : '确认加入'}
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 };

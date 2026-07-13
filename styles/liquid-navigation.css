@@ -82,13 +82,13 @@ svg.liquid-glass-semantic {
     rgba(255, 255, 255, var(--lg-f-tint-alpha, 0.035));
   backdrop-filter:
     var(--liquid-tab-filter)
-    blur(var(--lg-f-blur, 3px))
+    blur(calc(var(--lg-f-blur, 3px) + var(--lg-motion-blur-boost, 0px)))
     contrast(var(--lg-f-contrast, 1))
     brightness(var(--lg-f-brightness, 1.05))
     saturate(var(--lg-f-saturation, 1.6));
   -webkit-backdrop-filter:
     var(--liquid-tab-filter)
-    blur(var(--lg-f-blur, 3px))
+    blur(calc(var(--lg-f-blur, 3px) + var(--lg-motion-blur-boost, 0px)))
     contrast(var(--lg-f-contrast, 1))
     brightness(var(--lg-f-brightness, 1.05))
     saturate(var(--lg-f-saturation, 1.6));
