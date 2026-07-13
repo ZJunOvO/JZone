@@ -66,16 +66,24 @@ try {
     const content = player?.querySelector(':scope > div.relative.z-10');
     const playerRect = player?.getBoundingClientRect();
     const shellRect = shell?.getBoundingClientRect();
+    const filter = player?.querySelector('filter');
+    const mapImage = player?.querySelector('feImage');
     return {
       playerWidth: playerRect?.width,
+      playerHeight: playerRect?.height,
       shellWidth: shellRect?.width,
       contentFilter: content ? getComputedStyle(content).filter : null,
+      filterWidth: Number(filter?.getAttribute('width')),
+      filterHeight: Number(filter?.getAttribute('height')),
+      mapReady: (mapImage?.getAttribute('href') || mapImage?.getAttribute('xlink:href') || '').startsWith('data:image/'),
     };
   });
   assert(
     (playerOpening.shellWidth ?? 0) < (playerOpening.playerWidth ?? 0) || playerOpening.contentFilter !== 'none',
     'Mini 播放器整个玻璃壳没有执行入场形变',
   );
+  assert(playerOpening.mapReady, `Mini 播放器首帧位移图未就绪：${JSON.stringify(playerOpening)}`);
+  assert(Math.abs(playerOpening.filterWidth - playerOpening.playerWidth) <= 1 && Math.abs(playerOpening.filterHeight - playerOpening.playerHeight) <= 1, `Mini 播放器首帧滤镜尺寸错误：${JSON.stringify(playerOpening)}`);
 
   for (let round = 0; round < 3; round += 1) {
     for (const tab of ['upload', 'profile', 'home', 'library']) {

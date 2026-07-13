@@ -15,6 +15,7 @@ interface LiquidGlassMotionContentProps {
   profile?: LiquidGlassMotionProfile;
   closing?: boolean;
   animateOnMount?: boolean;
+  initialMapSize?: { width: number; height: number };
 }
 
 export const LIQUID_MENU_EXIT_MS = 380;
@@ -51,6 +52,7 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
   profile = 'menu',
   closing = false,
   animateOnMount = true,
+  initialMapSize,
 }) => {
   const reduceMotion = useReducedMotion();
   const contentControls = useAnimationControls();
@@ -189,6 +191,8 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
           coverage="full"
           geometry={profile === 'menu' ? 'panel' : 'standard'}
           eagerMap
+          initialSize={initialMapSize}
+          lockInitialSize={Boolean(initialMapSize)}
           borderRadiusClass={borderRadiusClass}
         />
         <div

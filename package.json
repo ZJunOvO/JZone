@@ -13,10 +13,11 @@
     "smoke:collection": "node scripts/smoke-collection-detail.mjs",
     "smoke:glass": "node scripts/smoke-liquid-glass.mjs",
     "smoke:shared": "node scripts/smoke-shared-elements.mjs",
-    "smoke:player-transition": "node scripts/smoke-player-transition.mjs"
+    "smoke:player-transition": "node scripts/smoke-player-transition.mjs",
+    "smoke:comments": "node scripts/smoke-comments.mjs",
+    "smoke:upload-metadata": "node scripts/smoke-upload-metadata.mjs"
   },
   "dependencies": {
-    "@ffmpeg/core": "^0.12.10",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@supabase/supabase-js": "^2.49.1",

@@ -229,6 +229,43 @@ try {
     `控制项没有随容器展开分阶段显现：${opening.map((sample) => sample.secondaryOpacity)}`,
   );
 
+  const artworkBefore = await page.locator('[data-testid="player-artwork-layer"] img').last().getAttribute('src');
+  await page.getByTestId('player-next-song').click();
+  await page.waitForTimeout(45);
+  const artworkDuring = await page.locator('[data-testid="player-artwork-layer"]').count();
+  await page.waitForTimeout(470);
+  const artworkAfterLayers = await page.locator('[data-testid="player-artwork-layer"]').count();
+  const artworkAfter = await page.locator('[data-testid="player-artwork-layer"] img').last().getAttribute('src');
+  assert(artworkAfterLayers === 1, `换曲结束后唱片层未收敛：${artworkAfterLayers}`);
+  if (artworkBefore !== artworkAfter) {
+    assert(artworkDuring >= 2, `换曲时没有保留新旧唱片交接层：${artworkDuring}`);
+  }
+
+  const playerToggle = page.getByTestId('player-toggle-play');
+  if ((await playerToggle.getAttribute('aria-label')) === '暂停') await playerToggle.click();
+  await page.waitForFunction(() => {
+    const shadow = document.querySelector('[data-testid="player-cover-soft-shadow"]');
+    if (!shadow) return false;
+    const style = getComputedStyle(shadow);
+    const blur = Number.parseFloat(style.filter.match(/blur\(([-\d.]+)px\)/)?.[1] ?? '0');
+    return blur >= 35 && Number(style.opacity) <= 0.45;
+  }, null, { timeout: 1500 });
+  const pausedCover = await page.evaluate(() => {
+    const visual = document.querySelector('[data-testid="player-cover-visual"]');
+    const image = document.querySelector('[data-testid="player-cover-image"]');
+    const shadow = document.querySelector('[data-testid="player-cover-soft-shadow"]');
+    return {
+      visualTransform: visual ? getComputedStyle(visual).transform : null,
+      imageShadow: image ? getComputedStyle(image).boxShadow : null,
+      shadowFilter: shadow ? getComputedStyle(shadow).filter : null,
+      shadowOpacity: shadow ? Number(getComputedStyle(shadow).opacity) : null,
+    };
+  });
+  assert(pausedCover.visualTransform !== 'none', `暂停时封面没有缩小：${JSON.stringify(pausedCover)}`);
+  assert(Number.parseFloat(pausedCover.shadowFilter?.match(/blur\(([-\d.]+)px\)/)?.[1] ?? '0') >= 35, `暂停封面缺少独立柔化阴影：${JSON.stringify(pausedCover)}`);
+  assert((pausedCover.shadowOpacity ?? 1) <= 0.45, `暂停封面阴影仍然过硬：${JSON.stringify(pausedCover)}`);
+  await page.screenshot({ path: `output/playwright/player-paused-soft-shadow-${viewportWidth}x${viewportHeight}.png` });
+
   const readPlayerMenu = async () => page.evaluate(() => {
     const menu = document.querySelector('.liquid-context-menu-panel');
     const content = menu?.querySelector(':scope > div.relative.z-10');
@@ -348,8 +385,8 @@ try {
   assert(Math.abs(closingTitleScale.x - closingTitleScale.y) < 0.03, `收拢标题发生非等比压缩：${JSON.stringify(closingTitleScale)}`);
   assert((closingTitleTarget?.opacity ?? 1) < 0.25, `收拢标题没有在交接区淡出：${closingTitleTarget?.opacity}`);
   const miniSettleSamples = closing.filter((sample) => sample.time >= 240);
-  const overlappingSettle = miniSettleSamples.find((sample) => sample.exists && readMatrixScale(sample.miniSettleTransform).x > 1.003);
-  assert(overlappingSettle, `Mini 整体回弹没有提前叠入收拢末段：${JSON.stringify(miniSettleSamples.map((sample) => ({ time: sample.time, exists: sample.exists, transform: sample.miniSettleTransform })))}`);
+  const visibleSettle = miniSettleSamples.find((sample) => readMatrixScale(sample.miniSettleTransform).x > 1.003);
+  assert(visibleSettle, `Mini 整体回弹没有在收拢交接阶段启动：${JSON.stringify(miniSettleSamples.map((sample) => ({ time: sample.time, exists: sample.exists, transform: sample.miniSettleTransform })))}`);
   assert(miniSettleSamples.every((sample) => sample.miniFilter?.includes('url(')), 'Mini 整体回弹期间背景折射中断');
   assertSoftSettle(
     miniSettleSamples.map((sample) => sample.miniSettleTransform),

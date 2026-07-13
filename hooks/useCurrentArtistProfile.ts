@@ -4,7 +4,7 @@ import { hasSupabaseConfig } from '../supabaseClient';
 import { supabaseApi, type ProfileRow } from '../supabaseApi';
 import { getFallbackAvatarUrl, getQQAvatarUrl } from '../utils/avatar';
 
-export type CurrentArtistProfile = Pick<ProfileRow, 'id' | 'nickname' | 'avatar_url'>;
+export type CurrentArtistProfile = Pick<ProfileRow, 'id' | 'nickname' | 'avatar_url' | 'avatar_frame_id'>;
 
 type CachedProfile = {
   profile: CurrentArtistProfile | null;
@@ -73,7 +73,12 @@ export const useCurrentArtistProfile = () => {
       try {
         const row = await supabaseApi.fetchProfile(user.id);
         if (cancelled) return;
-        const nextProfile = row ? { id: row.id, nickname: row.nickname, avatar_url: row.avatar_url } : null;
+        const nextProfile = row ? {
+          id: row.id,
+          nickname: row.nickname,
+          avatar_url: row.avatar_url,
+          avatar_frame_id: row.avatar_frame_id ?? null,
+        } : null;
         setProfile(nextProfile);
         setIsProfileResolved(true);
         const previous = readCache(user.id);

@@ -18,6 +18,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
   const { playerState, getCurrentSong, togglePlay, nextSong } = useStore();
   const song = getCurrentSong();
   const reduceMotion = useReducedMotion();
+  const initialMapSize = React.useMemo(() => ({
+    width: Math.min(variant === 'island' ? 320 : 400, Math.max(280, (typeof window === 'undefined' ? 390 : window.innerWidth) - 24)),
+    height: variant === 'island' ? 48 : 56,
+  }), [variant]);
   const settleScale = useMotionValue(1);
   const settleAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
 
@@ -63,6 +67,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
         profile="player"
         borderRadiusClass={variant === 'island' ? 'rounded-full' : 'rounded-[18px]'}
         className="flex h-full w-full items-center"
+        initialMapSize={initialMapSize}
       >
       {/* Album Art */}
       <div
@@ -93,6 +98,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
           data-shared-element="song-artist"
           data-player-shared-source="artist"
           data-liquid-adaptive="true"
+          data-liquid-tone="secondary"
         >
           <span className="text-[12px] truncate">{song.artist}</span>
         </div>

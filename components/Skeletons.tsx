@@ -6,7 +6,7 @@ export const SkeletonBlock: React.FC<{ className?: string }> = ({ className = ''
   </div>
 );
 
-export const CoverSkeleton: React.FC<{ className?: string }> = ({ className = 'rounded-[24px]' }) => (
+const CoverSkeleton: React.FC<{ className?: string }> = ({ className = 'rounded-[24px]' }) => (
   <SkeletonBlock className={`aspect-square ${className}`} />
 );
 
@@ -55,4 +55,3 @@ export const CommentRowSkeleton: React.FC = () => (
     </div>
   </div>
 );
-

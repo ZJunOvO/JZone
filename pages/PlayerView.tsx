@@ -7,6 +7,7 @@ import { UniversalContextMenu } from '../components/UniversalContextMenu';
 import { useModalPresence } from '../modalPresence';
 import { SkeletonBlock } from '../components/Skeletons';
 import {
+  AnimatePresence,
   animate,
   motion,
   Reorder,
@@ -19,6 +20,7 @@ import {
 } from 'framer-motion';
 import type { Song } from '../types';
 import { PlayerSharedElement } from '../components/motion/PlayerSharedElement';
+import { PlayerArtworkTransition } from '../components/motion/PlayerArtworkTransition';
 import {
   getPlayerOriginInsets,
   PLAYER_SHELL_DURATION,
@@ -135,16 +137,18 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   const originInsetsRef = React.useRef(initialInsets);
   originInsetsRef.current = initialInsets;
   const clipProgress = useMotionValue(0);
-  const clipTop = useTransform(clipProgress, (progress) => originInsetsRef.current.top * (1 - progress));
-  const clipRight = useTransform(clipProgress, (progress) => originInsetsRef.current.right * (1 - progress));
-  const clipBottom = useTransform(clipProgress, (progress) => originInsetsRef.current.bottom * (1 - progress));
-  const clipLeft = useTransform(clipProgress, (progress) => originInsetsRef.current.left * (1 - progress));
-  const clipRadius = useTransform(clipProgress, (progress) => originInsetsRef.current.radius * (1 - progress));
+  const remainingClip = (progress: number) => 1 - Math.max(0, Math.min(1, progress));
+  const clipTop = useTransform(clipProgress, (progress) => originInsetsRef.current.top * remainingClip(progress));
+  const clipRight = useTransform(clipProgress, (progress) => originInsetsRef.current.right * remainingClip(progress));
+  const clipBottom = useTransform(clipProgress, (progress) => originInsetsRef.current.bottom * remainingClip(progress));
+  const clipLeft = useTransform(clipProgress, (progress) => originInsetsRef.current.left * remainingClip(progress));
+  const clipRadius = useTransform(clipProgress, (progress) => originInsetsRef.current.radius * remainingClip(progress));
   const clipPath = useMotionTemplate`inset(${clipTop}px ${clipRight}px ${clipBottom}px ${clipLeft}px round ${clipRadius}px)`;
   const surfaceOpacity = useTransform(clipProgress, [0, 0.18, 0.55, 1], [0, 1, 1, 1]);
   const clipAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
   const clipPhaseRef = React.useRef<PlayerTransitionPhase | null>(null);
   const queueCloseTimerRef = React.useRef<number | null>(null);
+  const previousArtworkSongIdRef = React.useRef<string | null>(null);
 
   useModalPresence(isMemoryOpen);
   useModalPresence(isQueueOpen);
@@ -179,11 +183,24 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   }, []);
   
   const song = getCurrentSong();
+  const previousArtworkSongId = previousArtworkSongIdRef.current;
+  const previousArtworkIndex = previousArtworkSongId ? playerState.queue.indexOf(previousArtworkSongId) : -1;
+  const currentArtworkIndex = song ? playerState.queue.indexOf(song.id) : -1;
+  const artworkDirection: -1 | 1 = previousArtworkIndex === 0 && currentArtworkIndex === playerState.queue.length - 1
+    ? -1
+    : previousArtworkIndex === playerState.queue.length - 1 && currentArtworkIndex === 0
+      ? 1
+      : previousArtworkIndex >= 0 && currentArtworkIndex >= 0 && currentArtworkIndex < previousArtworkIndex
+        ? -1
+        : 1;
+  React.useEffect(() => {
+    if (song?.id) previousArtworkSongIdRef.current = song.id;
+  }, [song?.id]);
   const isClosing = transitionPhase === 'closing';
-  const secondaryInitial = reduceMotion ? false : { opacity: 0, y: 14, filter: 'blur(7px)' };
+  const secondaryInitial = reduceMotion ? false : { opacity: 0, y: 14 };
   const secondaryAnimate = isClosing
-    ? { opacity: 0, y: 8, filter: 'blur(5px)' }
-    : { opacity: 1, y: 0, filter: 'blur(0px)' };
+    ? { opacity: 0, y: 8 }
+    : { opacity: 1, y: 0 };
   const secondaryTransition = (order = 0) => reduceMotion
     ? { duration: 0.12 }
     : isClosing
@@ -279,13 +296,19 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
         style={{ opacity: surfaceOpacity }}
         data-player-transition-part="background"
       >
-        <img 
-          key={song.coverUrl}
-          src={song.coverUrl} 
-          decoding="async"
-          className="w-full h-full object-cover blur-[72px] brightness-[0.55] saturate-[1.6]"
-          alt="immersive background" 
-        />
+        <AnimatePresence initial={false}>
+          <motion.img
+            key={song.id}
+            src={song.coverUrl}
+            decoding="async"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0.12 : 0.5, ease: 'easeOut' }}
+            className="absolute inset-0 w-full h-full object-cover blur-[72px] brightness-[0.55] saturate-[1.6]"
+            alt="immersive background"
+          />
+        </AnimatePresence>
         <div className="absolute inset-0 bg-black/20"></div>
       </motion.div>
 
@@ -314,11 +337,26 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
             phase={transitionPhase}
             name="cover"
           >
-            <img 
-              src={song.coverUrl} 
-              alt="Album Cover" 
-              className={`w-full h-full object-cover rounded-[14px] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.7)] border border-white/10 transition-transform duration-500 ${playerState.isPlaying ? 'scale-100' : 'scale-[0.88] opacity-80'}`}
+            <div
+              className={`pointer-events-none absolute inset-[7%] translate-y-[8%] rounded-[24px] bg-black/65 transition-[transform,opacity,filter] duration-500 ease-out ${
+                playerState.isPlaying ? 'scale-100 opacity-[0.55] blur-[32px]' : 'scale-[0.84] opacity-[0.42] blur-[36px]'
+              }`}
+              data-testid="player-cover-soft-shadow"
+              aria-hidden
             />
+            <PlayerArtworkTransition artworkKey={song.id} direction={artworkDirection}>
+              <div
+                className={`relative h-full w-full transition-[transform,opacity] duration-500 ease-out ${playerState.isPlaying ? 'scale-100 opacity-100' : 'scale-[0.88] opacity-80'}`}
+                data-testid="player-cover-visual"
+              >
+                <img
+                  src={song.coverUrl}
+                  alt="Album Cover"
+                  className="h-full w-full rounded-[14px] border border-white/10 object-cover shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)]"
+                  data-testid="player-cover-image"
+                />
+              </div>
+            </PlayerArtworkTransition>
           </PlayerSharedElement>
         </div>
 
@@ -403,11 +441,12 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
 
         {/* Main Playback Controls */}
         <motion.div className="flex items-center justify-around px-4 mt-2" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition(3)}>
-          <button onClick={prevSong} className="w-11 h-11 flex items-center justify-center text-white opacity-80 hover:opacity-100 transition active:scale-90" aria-label="上一首">
+          <button onClick={prevSong} data-testid="player-previous-song" className="w-11 h-11 flex items-center justify-center text-white opacity-80 hover:opacity-100 transition active:scale-90" aria-label="上一首">
             <Icons.SkipBack size={26} fill="currentColor" />
           </button>
           <button 
             onClick={togglePlay} 
+            data-testid="player-toggle-play"
             className="w-16 h-16 flex items-center justify-center text-white active:scale-95 transition"
             aria-label={playerState.isPlaying ? '暂停' : '播放'}
           >
@@ -416,7 +455,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
               <Icons.Play size={56} fill="currentColor" className="ml-1.5" />
             }
           </button>
-          <button onClick={nextSong} className="w-11 h-11 flex items-center justify-center text-white opacity-80 hover:opacity-100 transition active:scale-90" aria-label="下一首">
+          <button onClick={nextSong} data-testid="player-next-song" className="w-11 h-11 flex items-center justify-center text-white opacity-80 hover:opacity-100 transition active:scale-90" aria-label="下一首">
             <Icons.SkipForward size={26} fill="currentColor" />
           </button>
         </motion.div>

@@ -56,6 +56,7 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
     variant === 'page'
       ? 'space-y-8 animate-[fadeIn_0.3s_ease-out]'
       : 'space-y-8 animate-in slide-in-from-bottom-4 duration-300 bg-zinc-900/50 p-6 rounded-[28px] border border-white/5 shadow-2xl';
+  const genreTags = draft.genre.split(/[,，]/).map((value) => value.trim()).filter(Boolean);
 
   useEffect(() => {
     onDraftStatusChange?.(status);
@@ -341,6 +342,23 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
                 />
                 <div className="space-y-1.5">
                   <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">标签</label>
+                  {genreTags.length ? (
+                    <div className="flex flex-wrap gap-2 px-1 pb-1">
+                      {genreTags.map((tag, index) => (
+                        <span key={`${tag}-${index}`} className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.055] pl-3 pr-1 text-[11px] font-semibold text-zinc-300">
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => actions.setGenre(genreTags.filter((_, itemIndex) => itemIndex !== index).join(', '))}
+                            className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-500 transition-colors hover:text-white"
+                            aria-label={`删除标签 ${tag}`}
+                          >
+                            <Icons.X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   <input
                     type="text"
                     value={draft.genre}

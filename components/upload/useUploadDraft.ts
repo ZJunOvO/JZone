@@ -392,7 +392,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       const nextPreviewUrl = URL.createObjectURL(makePreviewBlob(selectedFile));
       await persistDraftAudio(selectedFile).catch(() => {});
-      const embeddedTags: { title?: string; artist?: string } = await readEmbeddedAudioTags(selectedFile).catch(() => ({}));
+      const embeddedTags: { title?: string; artist?: string; recordedAt?: string } = await readEmbeddedAudioTags(selectedFile).catch(() => ({}));
       if (fileSelectionSeqRef.current !== selectionSeq) {
         URL.revokeObjectURL(nextPreviewUrl);
         return;
@@ -408,6 +408,13 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
             : prev.artist;
         const shouldReplaceCredits = !prev.artistCredits.length
           || (!prev.artistCredits[0]?.profileId && looksLikeAuthFallbackArtist(prev.artistCredits[0]?.displayName || ''));
+        const recordingDateTag = embeddedTags.recordedAt?.replace(/-/g, '/');
+        const previousTags = prev.genre
+          .split(/[,，]/)
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .filter((value) => !/^\d{4}\/\d{2}\/\d{2}$/.test(value));
+        const nextGenre = recordingDateTag ? [recordingDateTag, ...previousTags].join(', ') : prev.genre;
 
         return {
           ...prev,
@@ -423,6 +430,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
           step: 2,
           title: fileTitle,
           artist: nextArtist,
+          genre: nextGenre,
           artistCredits: shouldReplaceCredits ? createDefaultCredits(nextArtist, currentProfile) : prev.artistCredits,
           sourceWarning:
             embeddedTags.title && fileTitle && embeddedTags.title !== fileTitle

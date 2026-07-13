@@ -142,6 +142,36 @@ const extractMp4Duration = (bytes: Uint8Array) => {
   return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 };
 
+const normalizeRecordingDate = (value: string) => {
+  const match = value.match(/(19\d{2}|20\d{2})[-/:.]?(0[1-9]|1[0-2])[-/:.]?(0[1-9]|[12]\d|3[01])/);
+  if (!match) return undefined;
+  const [, year, month, day] = match;
+  const date = new Date(`${year}-${month}-${day}T00:00:00Z`);
+  if (
+    !Number.isFinite(date.getTime())
+    || date.getUTCFullYear() !== Number(year)
+    || date.getUTCMonth() + 1 !== Number(month)
+    || date.getUTCDate() !== Number(day)
+  ) return undefined;
+  return `${year}-${month}-${day}`;
+};
+
+const extractMp4CreationDate = (bytes: Uint8Array) => {
+  const markerIndex = findBytes(bytes, [0x6d, 0x76, 0x68, 0x64]);
+  if (markerIndex < 0 || markerIndex + 20 > bytes.length) return undefined;
+  const version = bytes[markerIndex + 4];
+  const secondsSince1904 = version === 1
+    ? readUint64(bytes, markerIndex + 8)
+    : readUint32(bytes, markerIndex + 8);
+  if (!Number.isFinite(secondsSince1904) || secondsSince1904 <= 0) return undefined;
+  const unixMilliseconds = (secondsSince1904 - 2_082_844_800) * 1000;
+  const date = new Date(unixMilliseconds);
+  const earliest = Date.UTC(1980, 0, 1);
+  const latest = Date.now() + 24 * 60 * 60 * 1000;
+  if (!Number.isFinite(date.getTime()) || date.getTime() < earliest || date.getTime() > latest) return undefined;
+  return date.toISOString().slice(0, 10);
+};
+
 const extractMp4TextTag = (bytes: Uint8Array, marker: number[]) => {
   let markerIndex = findBytes(bytes, marker);
   while (markerIndex >= 0) {
@@ -171,6 +201,9 @@ const extractMp4Tags = (bytes: Uint8Array) => ({
     extractMp4TextTag(bytes, [0xa9, 0x41, 0x52, 0x54])
     || extractMp4TextTag(bytes, [0x61, 0x41, 0x52, 0x54])
     || undefined,
+  recordedAt:
+    normalizeRecordingDate(extractMp4TextTag(bytes, [0xa9, 0x64, 0x61, 0x79]))
+    || extractMp4CreationDate(bytes),
 });
 
 const formatRecordingName = (lastModified: number, ext: string) => {
@@ -251,7 +284,7 @@ const readSynchsafe = (bytes: Uint8Array, offset: number) => {
   return (bytes[offset] << 21) | (bytes[offset + 1] << 14) | (bytes[offset + 2] << 7) | bytes[offset + 3];
 };
 
-export const readEmbeddedAudioTags = async (audioFile: File): Promise<{ title?: string; artist?: string }> => {
+export const readEmbeddedAudioTags = async (audioFile: File): Promise<{ title?: string; artist?: string; recordedAt?: string }> => {
   const head = new Uint8Array(await audioFile.slice(0, Math.min(audioFile.size, 512 * 1024)).arrayBuffer());
   if (sniffAudioMime(head.slice(0, 64)) === 'audio/mp4') {
     const tailStart = Math.max(head.byteLength, audioFile.size - 2 * 1024 * 1024);
@@ -267,7 +300,7 @@ export const readEmbeddedAudioTags = async (audioFile: File): Promise<{ title?: 
 
   const tagEnd = Math.min(head.length, 10 + readSynchsafe(head, 6));
   let offset = 10;
-  const tags: { title?: string; artist?: string } = {};
+  const tags: { title?: string; artist?: string; recordedAt?: string } = {};
 
   while (offset + 10 <= tagEnd) {
     const id = String.fromCharCode(...head.slice(offset, offset + 4));
@@ -278,7 +311,10 @@ export const readEmbeddedAudioTags = async (audioFile: File): Promise<{ title?: 
     const payload = head.slice(frameStart, frameEnd);
     if (id === 'TIT2') tags.title = decodeId3Text(payload);
     if (id === 'TPE1') tags.artist = decodeId3Text(payload);
-    if (tags.title && tags.artist) break;
+    if (id === 'TDRC' || id === 'TDOR' || id === 'TYER') {
+      tags.recordedAt = normalizeRecordingDate(decodeId3Text(payload)) || tags.recordedAt;
+    }
+    if (tags.title && tags.artist && tags.recordedAt) break;
     offset = frameEnd;
   }
 

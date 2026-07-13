@@ -18,7 +18,7 @@ const bucket = import.meta.env.VITE_COS_BUCKET;
 const region = import.meta.env.VITE_COS_REGION;
 
 // 检查是否已配置 COS
-export const isCosEnabled = !!(secretId && secretKey && bucket && region);
+const isCosEnabled = !!(secretId && secretKey && bucket && region);
 
 let cosInstance: COS | null = null;
 

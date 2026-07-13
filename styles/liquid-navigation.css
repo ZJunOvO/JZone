@@ -15,6 +15,14 @@
   color: rgba(18, 18, 20, 0.92) !important;
 }
 
+[data-liquid-adaptive="true"][data-liquid-tone="secondary"] {
+  color: rgba(255, 255, 255, 0.58) !important;
+}
+
+[data-liquid-adaptive="true"][data-liquid-tone="secondary"][data-liquid-foreground="dark"] {
+  color: rgba(18, 18, 20, 0.62) !important;
+}
+
 [data-liquid-adaptive="true"] svg,
 svg[data-liquid-adaptive="true"] {
   color: inherit !important;

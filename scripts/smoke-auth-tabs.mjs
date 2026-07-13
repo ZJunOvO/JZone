@@ -153,7 +153,10 @@ try {
   assert(routeTransitionSamples.every((sample) => sample.miniLayerCount === 1 && sample.bottomNavCount === 1), `一级路由切换生成了重复 Mini/Tab 实例：${JSON.stringify(routeTransitionSamples)}`);
   assert(routeTransitionSamples.every((sample) => sample.mini?.opacity === 1 && sample.mini?.visibility === 'visible' && sample.mini?.display !== 'none'), `路由切换期间 Mini 播放器容器被隐藏：${JSON.stringify(routeTransitionSamples)}`);
   assert(routeTransitionSamples.every((sample) => sample.bottomNav?.opacity === 1 && sample.bottomNav?.visibility === 'visible' && sample.bottomNav?.display !== 'none'), `路由切换期间底部 Tab 被隐藏：${JSON.stringify(routeTransitionSamples)}`);
-  assert(routeTransitionSamples.filter((sample) => (sample.routeOpacity ?? 1) < 0.99 || sample.routeTransform !== 'none').length >= 3, `一级路由内容层动画没有运行：${JSON.stringify(routeTransitionSamples)}`);
+  const standardRouteSamples = routeTransitionSamples.filter((sample) => sample.route === 'library' || sample.route === 'upload');
+  assert(standardRouteSamples.every((sample) => (sample.routeOpacity ?? 1) < 0.99 || sample.routeTransform !== 'none'), `普通一级路由内容层动画没有运行：${JSON.stringify(routeTransitionSamples)}`);
+  const profileRouteSample = routeTransitionSamples.find((sample) => sample.route === 'profile');
+  assert(profileRouteSample?.routeTransform === 'none', `个人页整页动画干扰头像共享转场：${JSON.stringify(routeTransitionSamples)}`);
 
   await page.getByTestId('bottom-nav-library').click();
   await page.getByText('资料库').first().waitFor({ timeout: 15000 });

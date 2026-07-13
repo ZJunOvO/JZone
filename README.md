@@ -4,10 +4,10 @@ A modern, feature-rich web-based music player built with React, TypeScript, and 
 
 ## Features
 
-- **Music Playback**: Multiple player skins including CoverFlow, Minimal, and Vinyl.
+- **Music Playback**: Persistent Mini player, full-screen playback, queue controls, and shared-element transitions.
 - **Library Management**: Manage songs, albums, and playlists (Collections).
 - **User System**: Authentication, profiles, and avatar customization.
-- **Social Features**: Comments on collections.
+- **Social Features**: Threaded song comments, likes, moderation, and share images.
 - **Content Management**: Upload songs and images, edit metadata.
 - **Responsive Design**: Optimized for various screen sizes.
 

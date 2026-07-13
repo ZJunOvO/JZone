@@ -6,11 +6,20 @@ import { useCurrentArtistProfile } from '../hooks/useCurrentArtistProfile';
 import { supabaseApi } from '../supabaseApi';
 import { useStore } from '../store';
 import type { Song } from '../types';
-import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from '../components/motion/sharedElementRegistry';
 
 const RECENT_KEY = 'jzone_recent_song_ids_v1';
 const PLAY_STATS_CACHE_PREFIX = 'jzone_home_play_stats_v1:';
 const PLAY_STATS_REFRESH_MS = 30 * 60 * 1000;
+
+const formatReleaseDate = (timestamp: number) => {
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return '日期未知';
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+};
 
 type PlayStat = {
   song_id: string;
@@ -109,7 +118,7 @@ const FocusRail = ({
           <FocusCard
             key={song.id}
             song={song}
-            label={currentSongId === song.id && isPlaying ? '播放中' : '最新发行'}
+            label={formatReleaseDate(song.addedAt)}
             active={currentSongId === song.id && isPlaying}
             onPlay={onPlay}
           />
@@ -364,13 +373,22 @@ export const Home: React.FC = () => {
         <h1 className="text-3xl font-extrabold text-white tracking-tight">现在就听</h1>
         <motion.button
           type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent('jzone:navigate-profile'))}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            window.dispatchEvent(new CustomEvent('jzone:profile-avatar-transition', {
+              detail: {
+                rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+                src: resolvedAvatarUrl,
+              },
+            }));
+            // 先让共享头像覆盖层提交一帧，再切换较重的个人页内容。
+            window.requestAnimationFrame(() => {
+              window.dispatchEvent(new CustomEvent('jzone:navigate-profile'));
+            });
+          }}
           className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center text-white shadow-lg overflow-hidden border border-white/10 active:scale-95 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
           aria-label="进入我的页面"
-          layoutId={sharedElementIds.profileAvatar(user?.id)}
-          transition={{ layout: SHARED_ELEMENT_TRANSITION }}
           data-shared-element="profile-avatar"
-          style={{ viewTransitionName: 'jzone-profile-avatar' }}
         >
           {resolvedAvatarUrl ? (
             <img src={resolvedAvatarUrl} alt="" className="w-full h-full object-cover" />

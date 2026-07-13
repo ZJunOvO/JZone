@@ -2,7 +2,7 @@
 import { Song, Comment } from './types';
 
 // Using a sample MP3 for demo purposes
-export const DEMO_AUDIO_URL = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+const DEMO_AUDIO_URL = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
 
 export const MOCK_SONGS: Song[] = [
   {

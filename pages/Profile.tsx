@@ -10,6 +10,7 @@ import { AvatarFrameModal } from '../components/AvatarFrameModal';
 import { ProfileContent } from '../components/profile/ProfileContent';
 import { ProfileBackgroundSheet } from '../components/profile/ProfileBackgroundSheet';
 import { ProfileSettingsSheet } from '../components/profile/ProfileSettingsSheet';
+import { useCurrentArtistProfile } from '../hooks/useCurrentArtistProfile';
 
 import { StatusSelector } from '../components/StatusSelector';
 import { ImageCropperModal } from '../components/ImageCropperModal';
@@ -25,10 +26,42 @@ interface ProfileProps {
   onBack?: () => void;
 }
 
+const PROFILE_CACHE_PREFIX = 'jzone_profile_cache_v1:';
+const PROFILE_FETCHED_AT_PREFIX = 'jzone_profile_fetched_at_v1:';
+const PROFILE_MEDIA_CACHE_PREFIX = 'jzone_profile_media_cache_v1:';
+const PROFILE_REFRESH_MS = 30 * 60 * 1000;
+const PROFILE_MEDIA_CACHE_MS = 50 * 60 * 1000;
+
+type ProfileMediaCache = {
+  avatarRaw?: string;
+  avatarUrl?: string;
+  coverRaw?: string;
+  coverUrl?: string;
+  expiresAt: number;
+};
+
+const readProfileMediaCache = (userId?: string): ProfileMediaCache | null => {
+  if (!userId) return null;
+  try {
+    const value = JSON.parse(localStorage.getItem(`${PROFILE_MEDIA_CACHE_PREFIX}${userId}`) || 'null') as ProfileMediaCache | null;
+    return value && value.expiresAt > Date.now() ? value : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeProfileMediaCache = (userId: string, value: ProfileMediaCache) => {
+  try {
+    localStorage.setItem(`${PROFILE_MEDIA_CACHE_PREFIX}${userId}`, JSON.stringify(value));
+  } catch {}
+};
+
 export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
   const { user, signOut } = useAuth();
   const { songs, playContext, favoriteSongIds } = useStore();
-  const PROFILE_CACHE_PREFIX = 'jzone_profile_cache_v1:';
+  const currentArtistProfile = useCurrentArtistProfile();
+  const targetUserId = userId || user?.id;
+  const isCurrentUser = !userId || (user && user.id === userId);
   const [activeTab, setActiveTab] = useState<'creation' | 'collection'>('creation');
   const [activeSubTab, setActiveSubTab] = useState<string>('uploads');
   const [profileData, setProfileData] = useState<ProfileRow | null>(() => {
@@ -50,45 +83,59 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
   const [editCollectionTarget, setEditCollectionTarget] = useState<CollectionRow | null>(null);
   const [createType, setCreateType] = useState<'album' | 'playlist'>('album');
 
-  // Determine if we are viewing the current user
-  const isCurrentUser = !userId || (user && user.id === userId);
-  const targetUserId = userId || user?.id;
-
   // Fetch profile data on mount or userId change
-  useEffect(() => {
-    async function loadProfile() {
-      if (!targetUserId) return;
-
-      let hadCache = false;
-      try {
-        const cachedRaw = localStorage.getItem(`${PROFILE_CACHE_PREFIX}${targetUserId}`);
-        if (cachedRaw) {
-          const cached = JSON.parse(cachedRaw) as ProfileRow;
-          hadCache = true;
-          setProfileData(cached);
-          if (typeof cached.background_blur === 'number') {
-            setBackgroundBlur(cached.background_blur * 100);
-          }
+  React.useLayoutEffect(() => {
+    if (!targetUserId) return;
+    let cancelled = false;
+    let timer: number | undefined;
+    let hadCache = false;
+    try {
+      const cachedRaw = localStorage.getItem(`${PROFILE_CACHE_PREFIX}${targetUserId}`);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw) as ProfileRow;
+        hadCache = true;
+        setProfileData(cached);
+        if (typeof cached.background_blur === 'number') {
+          setBackgroundBlur(cached.background_blur * 100);
         }
-      } catch {}
+      }
+    } catch {}
 
-      setIsLoading(!hadCache);
+    setIsLoading(!hadCache);
+    const refresh = async () => {
       try {
         const data = await supabaseApi.fetchProfile(targetUserId);
+        if (cancelled) return;
         setProfileData(data);
         if (typeof data?.background_blur === 'number') {
           setBackgroundBlur(data.background_blur * 100);
         }
         try {
-          if (data) localStorage.setItem(`${PROFILE_CACHE_PREFIX}${targetUserId}`, JSON.stringify(data));
+          if (data) {
+            localStorage.setItem(`${PROFILE_CACHE_PREFIX}${targetUserId}`, JSON.stringify(data));
+            localStorage.setItem(`${PROFILE_FETCHED_AT_PREFIX}${targetUserId}`, String(Date.now()));
+          }
         } catch {}
       } catch (error) {
         console.error('Error loading profile:', error);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
-    }
-    loadProfile();
+    };
+
+    let fetchedAt = 0;
+    try {
+      fetchedAt = Number(localStorage.getItem(`${PROFILE_FETCHED_AT_PREFIX}${targetUserId}`) || 0);
+    } catch {}
+    if (!hadCache || Date.now() - fetchedAt >= PROFILE_REFRESH_MS) void refresh();
+    else setIsLoading(false);
+    timer = window.setInterval(refresh, PROFILE_REFRESH_MS);
+    window.addEventListener('jzone:profile-changed', refresh);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearInterval(timer);
+      window.removeEventListener('jzone:profile-changed', refresh);
+    };
   }, [targetUserId]);
 
   useEffect(() => {
@@ -147,8 +194,8 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
   const [isBackgroundManagerOpen, setIsBackgroundManagerOpen] = useState(false);
   const [isAvatarFrameOpen, setIsAvatarFrameOpen] = useState(false);
   const [isStatusSelectorOpen, setIsStatusSelectorOpen] = useState(false);
-  const [resolvedAvatarUrl, setResolvedAvatarUrl] = useState<string | undefined>(undefined);
-  const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(undefined);
+  const [resolvedAvatarUrl, setResolvedAvatarUrl] = useState<string | undefined>(() => readProfileMediaCache(targetUserId)?.avatarUrl);
+  const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(() => readProfileMediaCache(targetUserId)?.coverUrl);
   const [contextMenu, setContextMenu] = useState<{ isOpen: boolean; anchor?: { x: number; y: number }; item: Song } | null>(null);
   const [collectionMenu, setCollectionMenu] = useState<{ isOpen: boolean; anchor?: { x: number; y: number }; item: CollectionRow } | null>(null);
   
@@ -188,6 +235,14 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
 
       // 2. Update DB
       await supabaseApi.updateProfile(targetUserId, { cover_url: publicUrl });
+      const signedCoverUrl = await supabaseApi.createSignedCoverUrl(publicUrl, 3600).catch(() => publicUrl);
+      setResolvedCoverUrl(signedCoverUrl);
+      writeProfileMediaCache(targetUserId, {
+        ...readProfileMediaCache(targetUserId),
+        coverRaw: publicUrl,
+        coverUrl: signedCoverUrl,
+        expiresAt: Date.now() + PROFILE_MEDIA_CACHE_MS,
+      });
       
       // 3. Update Local State
       setProfileData((prev) => {
@@ -198,6 +253,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
         } catch {}
         return next;
       });
+      window.dispatchEvent(new CustomEvent('jzone:profile-changed'));
     } catch (e) {
       const msg = typeof (e as any)?.message === 'string' ? (e as any).message : '';
       console.error('Upload failed', e);
@@ -221,6 +277,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
         } catch {}
         return next;
       });
+      window.dispatchEvent(new CustomEvent('jzone:profile-changed'));
     } catch (e) {
       console.error(e);
       feedback.error('更新状态失败，请重试');
@@ -252,6 +309,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
         } catch {}
         return next;
       });
+      window.dispatchEvent(new CustomEvent('jzone:profile-changed'));
     } catch (e) {
       console.error(e);
       feedback.error('保存失败，请重试');
@@ -296,6 +354,17 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
           } catch {}
           return next;
         });
+        if (avatarUrl) {
+          const signedAvatarUrl = await supabaseApi.createSignedAvatarUrl(avatarUrl, 3600).catch(() => avatarUrl);
+          setResolvedAvatarUrl(signedAvatarUrl);
+          writeProfileMediaCache(targetUserId, {
+            ...readProfileMediaCache(targetUserId),
+            avatarRaw: avatarUrl,
+            avatarUrl: signedAvatarUrl,
+            expiresAt: Date.now() + PROFILE_MEDIA_CACHE_MS,
+          });
+        }
+        window.dispatchEvent(new CustomEvent('jzone:profile-changed'));
         
         // Refresh global user metadata if it's the current user (optional, if AuthProvider relies on it)
         // For now, local state update is sufficient for visual feedback
@@ -358,28 +427,53 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
     };
 
     (async () => {
-      const rawAvatar = profileData?.avatar_url ?? (isCurrentUser ? (user?.user_metadata?.avatar_url as string | undefined) : undefined);
+      const rawAvatar = profileData?.avatar_url
+        ?? (isCurrentUser ? currentArtistProfile.profile?.avatar_url : undefined)
+        ?? (isCurrentUser ? (user?.user_metadata?.avatar_url as string | undefined) : undefined);
       const rawCover = profileData?.cover_url ?? (isCurrentUser ? (user?.user_metadata?.cover_url as string | undefined) : undefined);
+      const cached = readProfileMediaCache(targetUserId);
 
-      const [avatar, cover] = await Promise.all([resolve(rawAvatar, 'avatar'), resolve(rawCover, 'cover')]);
+      if (cached?.avatarRaw === rawAvatar && cached.avatarUrl) setResolvedAvatarUrl(cached.avatarUrl);
+      else if (!rawAvatar && isCurrentUser && currentArtistProfile.resolvedAvatarUrl) {
+        setResolvedAvatarUrl(currentArtistProfile.resolvedAvatarUrl);
+      }
+      if (cached?.coverRaw === rawCover && cached.coverUrl) setResolvedCoverUrl(cached.coverUrl);
+
+      const avatarPromise = cached?.avatarRaw === rawAvatar && cached.avatarUrl
+        ? Promise.resolve(cached.avatarUrl)
+        : resolve(rawAvatar, 'avatar');
+      const coverPromise = cached?.coverRaw === rawCover && cached.coverUrl
+        ? Promise.resolve(cached.coverUrl)
+        : resolve(rawCover, 'cover');
+
+      const [avatar, cover] = await Promise.all([avatarPromise, coverPromise]);
       if (cancelled) return;
-      setResolvedAvatarUrl(avatar);
+      setResolvedAvatarUrl(avatar || (isCurrentUser ? currentArtistProfile.resolvedAvatarUrl : undefined));
       setResolvedCoverUrl(cover);
+      if (targetUserId) {
+        writeProfileMediaCache(targetUserId, {
+          avatarRaw: rawAvatar,
+          avatarUrl: avatar || (isCurrentUser ? currentArtistProfile.resolvedAvatarUrl : undefined),
+          coverRaw: rawCover,
+          coverUrl: cover,
+          expiresAt: Date.now() + PROFILE_MEDIA_CACHE_MS,
+        });
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [profileData?.avatar_url, profileData?.cover_url, user?.user_metadata?.avatar_url, user?.user_metadata?.cover_url, isCurrentUser, user?.email]);
+  }, [currentArtistProfile.profile?.avatar_url, currentArtistProfile.resolvedAvatarUrl, profileData?.avatar_url, profileData?.cover_url, user?.user_metadata?.avatar_url, user?.user_metadata?.cover_url, isCurrentUser, targetUserId, user?.email]);
 
   // Construct display user object from DB profile or Fallback
   const displayUser = {
     id: targetUserId || 'guest',
-    nickname: profileData?.nickname || user?.user_metadata?.nickname || 'JZone 用户',
-    avatarUrl: resolvedAvatarUrl, // Already resolved including fallback
+    nickname: profileData?.nickname || (isCurrentUser ? currentArtistProfile.displayName : undefined) || user?.user_metadata?.nickname || 'JZone 用户',
+    avatarUrl: resolvedAvatarUrl || (isCurrentUser ? currentArtistProfile.resolvedAvatarUrl : undefined),
     coverUrl: resolvedCoverUrl || (isCurrentUser ? user?.user_metadata?.cover_url : undefined),
     signature: profileData?.signature || user?.user_metadata?.signature,
-    backgroundStyle: profileData?.background_style || 'half',
+    backgroundStyle: profileData?.background_style || (isCurrentUser ? user?.user_metadata?.background_style : undefined) || 'half',
     backgroundBlur: backgroundBlur / 100,
     avatarFrameId: profileData?.avatar_frame_id ?? null,
     followersCount: profileData?.followers_count || 0,
@@ -407,7 +501,10 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
   const myPlaylists = collections.filter((c) => c.type === 'playlist');
 
   return (
-    <div className={`min-h-screen relative transition-colors duration-500 ${displayUser.backgroundStyle === 'full' ? 'bg-black/30' : 'bg-black'}`}>
+    <div
+      className={`min-h-screen relative transition-colors duration-500 ${displayUser.backgroundStyle === 'full' ? 'bg-black/30' : 'bg-black'}`}
+      data-profile-page="true"
+    >
       
       {/* Full Screen Background Layer */}
       {displayUser.backgroundStyle === 'full' && (
@@ -418,7 +515,14 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
               <img 
                   src={displayUser.coverUrl || displayUser.avatarUrl || "https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?q=80&w=2670&auto=format&fit=crop"} 
                   className="w-full h-full object-cover scale-125"
-                  style={{ filter: `blur(${blurPx}px)`, opacity: hasCustomCover ? 0.75 : 0.6 }}
+                  data-testid="profile-immersive-background"
+                  data-profile-background-visual="true"
+                  style={{
+                    filter: `blur(${blurPx}px)`,
+                    opacity: hasCustomCover ? 0.75 : 0.6,
+                    willChange: 'filter, opacity',
+                    backfaceVisibility: 'hidden',
+                  }}
                   alt="Immersive Background"
               />
             )}
@@ -526,6 +630,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
         isOpen={isAvatarFrameOpen}
         onClose={() => setIsAvatarFrameOpen(false)}
         currentUser={{
+          id: displayUser.id,
           nickname: displayUser.nickname,
           avatarUrl: displayUser.avatarUrl,
           avatarFrameId: displayUser.avatarFrameId ?? null,

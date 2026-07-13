@@ -11,6 +11,7 @@ import { useStore } from '../../store';
 import { feedback } from '../feedback';
 import { useLiquidGlassAdaptiveForeground } from '../../hooks/useLiquidGlassAdaptiveForeground';
 import { SharedElementLayer } from '../motion/SharedElementLayer';
+import { ProfileAvatarRouteTransition } from '../motion/ProfileAvatarRouteTransition';
 import {
   getDefaultPlayerOrigin,
   getDefaultPlayerSharedOrigin,
@@ -25,7 +26,8 @@ import {
 const Home = lazy(() => import('../../pages/Home').then((module) => ({ default: module.Home })));
 const Library = lazy(() => import('../../pages/Library').then((module) => ({ default: module.Library })));
 const Upload = lazy(() => import('../../pages/Upload').then((module) => ({ default: module.Upload })));
-const Profile = lazy(() => import('../../pages/Profile').then((module) => ({ default: module.Profile })));
+const loadProfile = () => import('../../pages/Profile').then((module) => ({ default: module.Profile }));
+const Profile = React.memo(lazy(loadProfile));
 const loadCollectionDetail = () => import('../../pages/CollectionDetailPage').then((module) => ({ default: module.CollectionDetailPage }));
 const CollectionDetailPage = lazy(loadCollectionDetail);
 const loadPlayerView = () => import('../../pages/PlayerView').then((module) => ({ default: module.PlayerView }));
@@ -57,8 +59,10 @@ export const AppShell: React.FC = () => {
   const playerTransitionTimerRef = React.useRef<number | null>(null);
   const [modalCount, setModalCount] = useState(0);
   const [uploadMounted, setUploadMounted] = useState(activeTab === 'upload');
+  const [profileMounted, setProfileMounted] = useState(activeTab === 'profile');
   const sharedSongHandledRef = React.useRef<string | null>(null);
   const miniPlayerLayerRef = React.useRef<HTMLDivElement>(null);
+  const profileRouteRef = React.useRef<HTMLDivElement>(null);
   const [miniSettlePulse, setMiniSettlePulse] = useState(0);
   const miniSettleTimerRef = React.useRef<number | null>(null);
   const miniSettleResetTimerRef = React.useRef<number | null>(null);
@@ -76,12 +80,17 @@ export const AppShell: React.FC = () => {
 
   React.useEffect(() => {
     if (activeTab === 'upload') setUploadMounted(true);
+    if (activeTab === 'profile') setProfileMounted(true);
   }, [activeTab]);
 
   React.useLayoutEffect(() => {
     if (previousRouteRef.current === activeTab) return;
     previousRouteRef.current = activeTab;
     routeFallbackControls.stop();
+    if (activeTab === 'profile') {
+      routeFallbackControls.set({ opacity: 1, x: 0, scale: 1 });
+      return;
+    }
     routeFallbackControls.set({ opacity: 0.82, x: 8, scale: 0.998 });
     const frame = window.requestAnimationFrame(() => {
       void routeFallbackControls.start({
@@ -102,6 +111,19 @@ export const AppShell: React.FC = () => {
     if (activeTab === 'profile') void loadCollectionDetail();
   }, [activeTab]);
 
+  React.useEffect(() => {
+    if (activeTab !== 'home') return;
+    let cancelled = false;
+    // 后台完成组件挂载和缓存读取；display:none 会阻止高成本滤镜提前栅格化。
+    void loadProfile().then(() => {
+      if (cancelled) return;
+      React.startTransition(() => setProfileMounted(true));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
   React.useEffect(() => () => {
     if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
     if (miniSettleTimerRef.current) window.clearTimeout(miniSettleTimerRef.current);
@@ -112,6 +134,11 @@ export const AppShell: React.FC = () => {
     if (!miniPlayerLayerRef.current) return;
     miniPlayerLayerRef.current.inert = isPlayerOpen && playerTransitionPhase !== 'closing';
   }, [isPlayerOpen, playerTransitionPhase]);
+
+  React.useEffect(() => {
+    if (!profileRouteRef.current) return;
+    profileRouteRef.current.inert = activeTab !== 'profile';
+  }, [activeTab, profileMounted]);
 
   const capturePlayerOrigin = React.useCallback((): PlayerTransitionOrigin => {
     const player = document.querySelector<HTMLElement>('[data-testid="mini-player"]');
@@ -229,7 +256,7 @@ export const AppShell: React.FC = () => {
       <SharedElementLayer>
       <div className="jzone-glass-source flex-1 overflow-y-auto no-scrollbar scroll-smooth bg-black">
         <motion.div
-          className="jzone-route-stage min-h-full"
+          className="jzone-route-stage relative min-h-full"
           data-route={activeTab}
           initial={false}
           animate={routeFallbackControls}
@@ -242,11 +269,21 @@ export const AppShell: React.FC = () => {
               <Upload />
             </div>
           )}
-          {activeTab === 'profile' && (
-            <Profile
-              userId={profileUserId}
-              onBack={profileUserId ? () => setProfileUserId(undefined) : undefined}
-            />
+          {(profileMounted || activeTab === 'profile') && (
+            <div
+              ref={profileRouteRef}
+              className={activeTab === 'profile'
+                ? 'absolute inset-x-0 top-0 min-h-full'
+                : activeTab === 'home'
+                  ? 'invisible pointer-events-none absolute inset-x-0 top-0 h-full overflow-hidden'
+                  : 'hidden'}
+              aria-hidden={activeTab !== 'profile'}
+            >
+              <Profile
+                userId={profileUserId}
+                onBack={profileUserId ? () => setProfileUserId(undefined) : undefined}
+              />
+            </div>
           )}
         </Suspense>
         </motion.div>
@@ -315,6 +352,7 @@ export const AppShell: React.FC = () => {
         </Suspense>
       )}
       <PwaInstallPrompt />
+      <ProfileAvatarRouteTransition activeTab={activeTab} />
       </SharedElementLayer>
     </div>
   );

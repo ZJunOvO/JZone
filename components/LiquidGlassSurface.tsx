@@ -11,13 +11,23 @@ import {
 } from '../utils/liquidGlassDisplacement';
 
 const displacementMapCache = new Map<string, LiquidGlassDisplacementMap>();
+const MAX_DISPLACEMENT_MAP_CACHE_SIZE = 32;
 
 const getCachedDisplacementMap = (width: number, height: number, options: LiquidGlassDisplacementOptions) => {
   const key = JSON.stringify([Math.round(width), Math.round(height), options]);
   const cached = displacementMapCache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    displacementMapCache.delete(key);
+    displacementMapCache.set(key, cached);
+    return cached;
+  }
   const generated = createLiquidGlassDisplacementMap(width, height, options);
-  if (generated.href) displacementMapCache.set(key, generated);
+  if (generated.href) {
+    if (displacementMapCache.size >= MAX_DISPLACEMENT_MAP_CACHE_SIZE) {
+      displacementMapCache.delete(displacementMapCache.keys().next().value as string);
+    }
+    displacementMapCache.set(key, generated);
+  }
   return generated;
 };
 
@@ -29,11 +39,15 @@ export const LiquidGlassSurface: React.FC<{
   coverage?: 'edge' | 'full';
   geometry?: 'standard' | 'panel';
   eagerMap?: boolean;
-}> = ({ borderRadiusClass = 'rounded-2xl', className = '', style: customStyle, material = 'settings', coverage = 'edge', geometry = 'standard', eagerMap = false }) => {
+  initialSize?: { width: number; height: number };
+  lockInitialSize?: boolean;
+}> = ({ borderRadiusClass = 'rounded-2xl', className = '', style: customStyle, material = 'settings', coverage = 'edge', geometry = 'standard', eagerMap = false, initialSize, lockInitialSize = false }) => {
   const settings = useLiquidGlassSettings();
   const filterId = React.useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const surfaceRef = React.useRef<HTMLDivElement>(null);
-  const [size, setSize] = React.useState({ width: 236, height: 240 });
+  const initialWidth = Math.max(1, Math.round(initialSize?.width ?? 236));
+  const initialHeight = Math.max(1, Math.round(initialSize?.height ?? 240));
+  const [size, setSize] = React.useState({ width: initialWidth, height: initialHeight });
   const mapOptions = React.useMemo<LiquidGlassDisplacementOptions>(() => {
     const useFullCoverage = material === 'shuding' && coverage === 'full';
     const usePanelGeometry = material === 'shuding' && geometry === 'panel';
@@ -50,23 +64,33 @@ export const LiquidGlassSurface: React.FC<{
     };
   }, [coverage, geometry, material, settings.edgeRefraction]);
   const [map, setMap] = React.useState<LiquidGlassDisplacementMap>(() => (
-    eagerMap ? getCachedDisplacementMap(236, 240, mapOptions) : { href: '', scale: 0 }
+    eagerMap ? getCachedDisplacementMap(initialWidth, initialHeight, mapOptions) : { href: '', scale: 0 }
   ));
 
   React.useLayoutEffect(() => {
+    if (!lockInitialSize) return;
+    setSize((previous) => previous.width === initialWidth && previous.height === initialHeight
+      ? previous
+      : { width: initialWidth, height: initialHeight });
+  }, [initialHeight, initialWidth, lockInitialSize]);
+
+  React.useLayoutEffect(() => {
+    if (lockInitialSize) return;
     const element = surfaceRef.current;
     if (!element) return;
     const update = () => {
       const rect = element.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
-        setSize({ width: Math.round(rect.width), height: Math.round(rect.height) });
+        const width = Math.round(rect.width);
+        const height = Math.round(rect.height);
+        setSize((previous) => previous.width === width && previous.height === height ? previous : { width, height });
       }
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [lockInitialSize]);
 
   React.useEffect(() => {
     const updateMap = () => setMap(getCachedDisplacementMap(size.width, size.height, mapOptions));
@@ -74,8 +98,7 @@ export const LiquidGlassSurface: React.FC<{
       updateMap();
       return;
     }
-    const timer = window.setTimeout(updateMap, 120);
-    return () => window.clearTimeout(timer);
+    updateMap();
   }, [eagerMap, mapOptions, size.height, size.width]);
 
   const strengthRatio = Math.max(0, settings.strength / DEFAULT_LIQUID_GLASS_SETTINGS.strength);

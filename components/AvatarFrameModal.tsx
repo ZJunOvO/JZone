@@ -9,6 +9,7 @@ interface AvatarFrameModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: {
+    id?: string;
     avatarUrl?: string;
     nickname?: string;
     avatarFrameId?: string | null;
@@ -25,6 +26,16 @@ export const AvatarFrameModal: React.FC<AvatarFrameModalProps> = ({
   useModalPresence(isOpen);
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(currentUser.avatarFrameId || null);
   const [isSaving, setIsSaving] = useState(false);
+  const wornStorageKey = `jzone_avatar_frame_worn_v1:${currentUser.id || 'current'}`;
+  const [wornFrameIds, setWornFrameIds] = useState<Set<string>>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(wornStorageKey) || '[]') as string[];
+      if (currentUser.avatarFrameId) stored.push(currentUser.avatarFrameId);
+      return new Set(stored);
+    } catch {
+      return new Set(currentUser.avatarFrameId ? [currentUser.avatarFrameId] : []);
+    }
+  });
 
   const framesList = Object.values(AVATAR_FRAMES);
   const selectedFrame = selectedFrameId ? AVATAR_FRAMES[selectedFrameId] : null;
@@ -33,6 +44,15 @@ export const AvatarFrameModal: React.FC<AvatarFrameModalProps> = ({
     setIsSaving(true);
     try {
       await onSave(selectedFrameId);
+      if (selectedFrameId) {
+        setWornFrameIds((previous) => {
+          const next = new Set(previous).add(selectedFrameId);
+          try {
+            localStorage.setItem(wornStorageKey, JSON.stringify([...next]));
+          } catch {}
+          return next;
+        });
+      }
       onClose();
     } catch (e) {
       console.error(e);
@@ -44,27 +64,42 @@ export const AvatarFrameModal: React.FC<AvatarFrameModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setSelectedFrameId(currentUser.avatarFrameId ?? null);
-  }, [currentUser.avatarFrameId, isOpen]);
-
-  if (!isOpen) return null;
+    try {
+      const stored = JSON.parse(localStorage.getItem(wornStorageKey) || '[]') as string[];
+      if (currentUser.avatarFrameId) stored.push(currentUser.avatarFrameId);
+      setWornFrameIds(new Set(stored));
+    } catch {
+      setWornFrameIds(new Set(currentUser.avatarFrameId ? [currentUser.avatarFrameId] : []));
+    }
+  }, [currentUser.avatarFrameId, isOpen, wornStorageKey]);
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-[200] flex items-end justify-center sm:items-center">
+    <AnimatePresence initial={false}>
+      {isOpen ? (
+      <motion.div
+        className="fixed inset-0 z-[150] flex items-end justify-center sm:items-center"
+        data-testid="avatar-frame-modal"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.28, ease: [0.22, 0.74, 0.22, 1] }}
+      >
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
           onClick={onClose}
           className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         />
 
         <motion.div 
-          initial={{ y: '100%' }}
-          animate={{ y: 0 }}
-          exit={{ y: '100%' }}
-          transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-md bg-zinc-900 border-t border-white/10 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[85vh]"
+          initial={{ y: 48, scale: 0.97, opacity: 0, filter: 'blur(10px)' }}
+          animate={{ y: 0, scale: 1, opacity: 1, filter: 'blur(0px)' }}
+          exit={{ y: 36, scale: 0.975, opacity: 0, filter: 'blur(8px)' }}
+          transition={{ type: 'spring', damping: 28, stiffness: 270, mass: 0.86 }}
+          className="relative w-full max-w-md bg-zinc-900 border-t border-white/10 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[min(74dvh,640px)]"
+          data-testid="avatar-frame-panel"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-center pt-3 pb-1">
@@ -126,7 +161,7 @@ export const AvatarFrameModal: React.FC<AvatarFrameModalProps> = ({
                             <img src={frame.imageUrl} loading="lazy" decoding="async" className="w-full h-full object-contain scale-110" alt={frame.name} />
                         </div>
                         <span className="text-xs font-medium text-zinc-300">{frame.name}</span>
-                        {frame.tags?.includes('限定') && (
+                        {!wornFrameIds.has(frame.id) && (
                             <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-red-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div>
                         )}
                     </button>
@@ -134,7 +169,7 @@ export const AvatarFrameModal: React.FC<AvatarFrameModalProps> = ({
             </div>
           </div>
 
-          <div className="p-6 bg-gradient-to-t from-zinc-900 via-zinc-900 to-transparent pt-10 pb-[calc(env(safe-area-inset-bottom)+96px)]">
+          <div className="p-6 bg-gradient-to-t from-zinc-900 via-zinc-900 to-transparent pt-8 pb-[calc(env(safe-area-inset-bottom)+18px)]">
             <button 
                 onClick={handleSave}
                 disabled={isSaving || (selectedFrameId === currentUser.avatarFrameId && !currentUser.nickname?.includes('用户'))}
@@ -148,7 +183,8 @@ export const AvatarFrameModal: React.FC<AvatarFrameModalProps> = ({
           </div>
 
         </motion.div>
-      </div>
+      </motion.div>
+      ) : null}
     </AnimatePresence>
   );
 };

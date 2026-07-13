@@ -50,6 +50,9 @@ export interface CommentRow {
   text: string;
   playback_time: number;
   created_at: string;
+  parent_comment_id?: string | null;
+  deleted_at?: string | null;
+  avatar_frame_id?: string | null;
   likes_count?: number;
   user_liked?: boolean;
 }

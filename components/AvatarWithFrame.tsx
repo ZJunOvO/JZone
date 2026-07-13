@@ -27,6 +27,7 @@ export const AvatarWithFrame: React.FC<AvatarWithFrameProps> = ({
       className={`relative select-none ${className}`} 
       style={sizeStyle}
       onClick={onClick}
+      data-avatar-frame-id={frameId || undefined}
     >
       {/* 
         Level 1: Avatar Layer (Bottom)

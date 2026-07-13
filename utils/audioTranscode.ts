@@ -55,7 +55,6 @@ const fetchAsBlobUrl = async (
   onProgress?.({ progress: endProgress, message });
   return URL.createObjectURL(new Blob(chunks, { type: mime }));
 };
-
 const loadCoreFrom = async (
   ffmpeg: any,
   baseUrl: string,
@@ -163,22 +162,4 @@ export const transcodeAudioToMp3 = async (
   } finally {
     activeProgressCallback = undefined;
   }
-};
-
-export const preloadAudioTranscoder = () => {
-  const start = () => {
-    loadFfmpeg().catch(() => {});
-  };
-
-  if ('connection' in navigator) {
-    const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
-    if (connection?.saveData) return;
-  }
-
-  if (typeof window.requestIdleCallback === 'function') {
-    window.requestIdleCallback(start, { timeout: 5000 });
-    return;
-  }
-
-  window.setTimeout(start, 2500);
 };

@@ -1,17 +1,13 @@
-import React, { createContext, useContext, useSyncExternalStore } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence } from 'framer-motion';
 import {
-  feedback,
   getFeedbackServerSnapshot,
   getFeedbackSnapshot,
   subscribeToFeedback,
-  type FeedbackApi,
 } from './feedback';
 import { FeedbackToast } from './FeedbackToast';
 import './feedback.css';
-
-const FeedbackContext = createContext<FeedbackApi | null>(null);
 
 export interface FeedbackProviderProps {
   children: React.ReactNode;
@@ -38,15 +34,9 @@ export const FeedbackProvider: React.FC<FeedbackProviderProps> = ({ children }) 
       );
 
   return (
-    <FeedbackContext.Provider value={feedback}>
+    <>
       {children}
       {viewport}
-    </FeedbackContext.Provider>
+    </>
   );
-};
-
-export const useFeedback = () => {
-  const api = useContext(FeedbackContext);
-  if (!api) throw new Error('useFeedback 必须在 FeedbackProvider 内使用');
-  return api;
 };

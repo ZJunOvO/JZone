@@ -70,10 +70,11 @@
 - `utils/liquidGlassSettings.ts`：液态玻璃默认参数、存储、事件同步、CSS 变量。
 - `utils/liquidGlassDisplacement.ts`：SVG displacement map 生成逻辑，含宽播放器和纵向菜单 `panel` 几何。
 - `components/LiquidGlassMotionContent.tsx`：保持采样层静态，以 inset 几何驱动整块玻璃 Q 弹，并同步内容模糊。
-- `components/motion/sharedElementRegistry.ts`：头像、歌曲和合集的稳定共享对象 ID 与弹簧参数。
+- `components/motion/sharedElementRegistry.ts`：合集封面的稳定共享对象 ID 与弹簧参数。
 - `components/motion/SharedElementLayer.tsx`：全局 Framer Motion `LayoutGroup` 与减少动态效果策略。
 - `components/motion/playerTransition.ts`：播放器容器三段展开/收拢曲线、来源边界和封面/文字共享时间轴。
-- `utils/viewTransition.ts`：头像/页面原生 View Transition 调度，快速导航时中断旧过渡并立即提交新状态。
+- `components/motion/ProfileAvatarRouteTransition.tsx`：现在就听头像到个人页头像的单覆盖层 FLIP 转场；目标页激活前先冻结源头像，避免懒加载空档。
+- `components/motion/PlayerArtworkTransition.tsx`：全屏播放器切歌时的新旧封面交接层，连续切歌后主动清理旧节点。
 - `components/PlayerBar.tsx`：mini player。
 - `components/UniversalContextMenu.tsx`：歌曲 mini 菜单。
 

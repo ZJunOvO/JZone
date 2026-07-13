@@ -1,6 +1,16 @@
 import { ensureSupabase } from './client';
 import { createSignedAvatarUrl } from './storageApi';
 import type { CommentRow, FavoriteRow, ProfileRow } from './types';
+import type { CommentSort } from '../../types';
+
+export interface CommentPage {
+  rows: CommentRow[];
+  hasMore: boolean;
+  nextOffset: number;
+  schemaVersion: 'legacy' | 'threaded';
+}
+
+let commentSchemaVersion: 'legacy' | 'threaded' | null = null;
 
 export const createInteractionsApi = () => ({
   async fetchMySongPlayStats(userId: string): Promise<Array<{ song_id: string; plays_count: number; updated_at: string }>> {
@@ -19,40 +29,113 @@ export const createInteractionsApi = () => ({
     }));
   },
 
-  async fetchComments(songId: string, currentUserId?: string): Promise<CommentRow[]> {
+  async fetchCommentsPage(input: {
+    songId: string;
+    currentUserId?: string;
+    offset: number;
+    limit: number;
+    sort: CommentSort;
+  }): Promise<CommentPage> {
     const client = ensureSupabase();
-    const { data, error } = await client
-      .from('comments')
-      .select('*')
-      .eq('song_id', songId)
-      .order('created_at', { ascending: false });
+    let upgradedSchema = commentSchemaVersion === 'threaded';
+    let data: any[] | null = null;
+    let error: any = null;
+
+    if (!upgradedSchema) {
+      const compatibleResult = await client
+        .from('comments')
+        .select('*')
+        .eq('song_id', input.songId)
+        .order('created_at', { ascending: false })
+        .range(input.offset, input.offset + input.limit);
+      data = compatibleResult.data;
+      error = compatibleResult.error;
+      const sample = compatibleResult.data?.[0] as Record<string, unknown> | undefined;
+      if (sample && 'parent_comment_id' in sample && 'likes_count' in sample) {
+        commentSchemaVersion = 'threaded';
+        upgradedSchema = true;
+      } else if (sample) {
+        commentSchemaVersion = 'legacy';
+      }
+    }
+
+    if (upgradedSchema) {
+      let query = client
+        .from('comments')
+        .select('*')
+        .eq('song_id', input.songId)
+        .is('parent_comment_id', null);
+      query = input.sort === 'popular'
+        ? query.order('likes_count', { ascending: false }).order('created_at', { ascending: false })
+        : query.order('created_at', { ascending: false });
+      const threadedResult = await query.range(input.offset, input.offset + input.limit);
+      data = threadedResult.data;
+      error = threadedResult.error;
+    }
     if (error) throw error;
-    const rows = (data ?? []) as CommentRow[];
-    if (!rows.length) return rows;
+    const fetchedRoots = (data ?? []) as CommentRow[];
+    const hasMore = fetchedRoots.length > input.limit;
+    const roots = fetchedRoots.slice(0, input.limit);
+    if (!roots.length) return {
+      rows: [],
+      hasMore: false,
+      nextOffset: input.offset,
+      schemaVersion: upgradedSchema ? 'threaded' : 'legacy',
+    };
+
+    const rootIds = roots.map((row) => row.id);
+    let replies: CommentRow[] = [];
+    if (upgradedSchema) {
+      const { data: replyData, error: replyError } = await client
+        .from('comments')
+        .select('*')
+        .in('parent_comment_id', rootIds)
+        .order('created_at', { ascending: true });
+      if (replyError) throw replyError;
+      replies = (replyData ?? []) as CommentRow[];
+    }
+    const rows = [...roots, ...replies];
 
     const commentIds = rows.map((row) => row.id);
     const userIds = Array.from(new Set(rows.map((row) => row.user_id)));
-    const [{ data: likeRows, error: likeError }, { data: profiles, error: profileError }] = await Promise.all([
-      client.from('comment_likes').select('comment_id, user_id').in('comment_id', commentIds),
-      client.from('profiles').select('id, nickname, avatar_url').in('id', userIds),
-    ]);
-    if (likeError) throw likeError;
+    const { data: profiles, error: profileError } = await client
+      .from('profiles')
+      .select('id, nickname, avatar_url, avatar_frame_id')
+      .in('id', userIds);
     if (profileError) throw profileError;
 
-    const likesByComment = new Map<string, number>();
-    const likedByCurrentUser = new Set<string>();
-    for (const like of likeRows ?? []) {
-      const commentId = (like as any).comment_id as string;
-      likesByComment.set(commentId, (likesByComment.get(commentId) ?? 0) + 1);
-      if (currentUserId && (like as any).user_id === currentUserId) likedByCurrentUser.add(commentId);
+    let likedByCurrentUser = new Set<string>();
+    const legacyLikesByComment = new Map<string, number>();
+    if (!upgradedSchema) {
+      const { data: likeRows, error: likeError } = await client
+        .from('comment_likes')
+        .select('comment_id, user_id')
+        .in('comment_id', commentIds);
+      if (likeError) throw likeError;
+      for (const like of likeRows ?? []) {
+        const commentId = (like as any).comment_id as string;
+        legacyLikesByComment.set(commentId, (legacyLikesByComment.get(commentId) ?? 0) + 1);
+        if (input.currentUserId && (like as any).user_id === input.currentUserId) likedByCurrentUser.add(commentId);
+      }
+    } else if (input.currentUserId) {
+      const { data: likeRows, error: likeError } = await client
+        .from('comment_likes')
+        .select('comment_id')
+        .eq('user_id', input.currentUserId)
+        .in('comment_id', commentIds);
+      if (likeError) throw likeError;
+      likedByCurrentUser = new Set((likeRows ?? []).map((like: any) => like.comment_id as string));
     }
 
-    const profilesById = new Map<string, Pick<ProfileRow, 'id' | 'nickname' | 'avatar_url'>>();
+    const profilesById = new Map<string, Pick<ProfileRow, 'id' | 'nickname' | 'avatar_url' | 'avatar_frame_id'>>();
     for (const profile of profiles ?? []) {
-      profilesById.set((profile as any).id, profile as Pick<ProfileRow, 'id' | 'nickname' | 'avatar_url'>);
+      profilesById.set(
+        (profile as any).id,
+        profile as Pick<ProfileRow, 'id' | 'nickname' | 'avatar_url' | 'avatar_frame_id'>,
+      );
     }
 
-    return Promise.all(
+    const enrichedRows = await Promise.all(
       rows.map(async (row) => {
         const profile = profilesById.get(row.user_id);
         let avatarUrl = row.avatar_url;
@@ -67,11 +150,19 @@ export const createInteractionsApi = () => ({
           ...row,
           username: profile?.nickname?.trim() || row.username,
           avatar_url: avatarUrl,
-          likes_count: likesByComment.get(row.id) ?? 0,
+          avatar_frame_id: profile?.avatar_frame_id ?? null,
+          likes_count: upgradedSchema ? Number(row.likes_count) || 0 : legacyLikesByComment.get(row.id) ?? 0,
           user_liked: likedByCurrentUser.has(row.id),
         };
       })
     );
+
+    return {
+      rows: enrichedRows,
+      hasMore,
+      nextOffset: input.offset + roots.length,
+      schemaVersion: upgradedSchema ? 'threaded' : 'legacy',
+    };
   },
 
   async addCommentLike(commentId: string, userId: string) {
@@ -129,21 +220,31 @@ export const createInteractionsApi = () => ({
     avatarUrl: string;
     text: string;
     playbackTime: number;
+    parentCommentId?: string | null;
   }): Promise<CommentRow> {
     const client = ensureSupabase();
+    const payload: Record<string, unknown> = {
+      song_id: input.songId,
+      user_id: input.userId,
+      username: input.username,
+      avatar_url: input.avatarUrl,
+      text: input.text,
+      playback_time: input.playbackTime,
+    };
+    if (input.parentCommentId) payload.parent_comment_id = input.parentCommentId;
     const { data, error } = await client
       .from('comments')
-      .insert({
-        song_id: input.songId,
-        user_id: input.userId,
-        username: input.username,
-        avatar_url: input.avatarUrl,
-        text: input.text,
-        playback_time: input.playbackTime,
-      })
+      .insert(payload)
       .select('*')
       .single();
     if (error) throw error;
     return data as CommentRow;
+  },
+
+  async deleteComment(commentId: string): Promise<'deleted' | 'soft_deleted' | 'missing'> {
+    const client = ensureSupabase();
+    const { data, error } = await client.rpc('delete_comment', { p_comment_id: commentId });
+    if (error) throw error;
+    return (data ?? 'missing') as 'deleted' | 'soft_deleted' | 'missing';
   },
 });

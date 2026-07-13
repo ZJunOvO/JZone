@@ -1,6 +1,7 @@
 import React from 'react';
 
 const bitmapCache = new Map<string, Promise<ImageBitmap | null>>();
+const MAX_BITMAP_CACHE_SIZE = 48;
 const sampleCanvas = typeof document === 'undefined' ? null : document.createElement('canvas');
 const sampleContext = sampleCanvas?.getContext('2d', { willReadFrequently: true }) ?? null;
 
@@ -11,10 +12,15 @@ if (sampleCanvas) {
 
 const getBitmap = (source: string) => {
   const cached = bitmapCache.get(source);
-  if (cached) return cached;
+  if (cached) {
+    bitmapCache.delete(source);
+    bitmapCache.set(source, cached);
+    return cached;
+  }
   const sourceUrl = new URL(source, window.location.href);
   if (sourceUrl.hostname === 'q1.qlogo.cn') {
     const skipped = Promise.resolve(null);
+    if (bitmapCache.size >= MAX_BITMAP_CACHE_SIZE) bitmapCache.delete(bitmapCache.keys().next().value as string);
     bitmapCache.set(source, skipped);
     return skipped;
   }
@@ -22,6 +28,7 @@ const getBitmap = (source: string) => {
     .then((response) => response.ok ? response.blob() : Promise.reject(new Error('image fetch failed')))
     .then((blob) => createImageBitmap(blob))
     .catch(() => null);
+  if (bitmapCache.size >= MAX_BITMAP_CACHE_SIZE) bitmapCache.delete(bitmapCache.keys().next().value as string);
   bitmapCache.set(source, request);
   return request;
 };
@@ -84,8 +91,7 @@ const parseBackgroundLuminance = (element: Element) => {
   return relativeLuminance(values[0], values[1], values[2]);
 };
 
-const findImageAtPoint = (root: Element | null, clientX: number, clientY: number) => {
-  const images = Array.from(document.images);
+const findImageAtPoint = (images: HTMLImageElement[], root: Element | null, clientX: number, clientY: number) => {
   for (let index = images.length - 1; index >= 0; index -= 1) {
     const image = images[index];
     if (root?.contains(image) || !image.complete || !image.naturalWidth) continue;
@@ -95,10 +101,10 @@ const findImageAtPoint = (root: Element | null, clientX: number, clientY: number
   return null;
 };
 
-const samplePoint = async (root: Element | null, clientX: number, clientY: number) => {
+const samplePoint = async (images: HTMLImageElement[], root: Element | null, clientX: number, clientY: number) => {
   const stack = document.elementsFromPoint(clientX, clientY).filter((element) => !root?.contains(element));
   const image = stack.find((element): element is HTMLImageElement => element instanceof HTMLImageElement)
-    ?? findImageAtPoint(root, clientX, clientY);
+    ?? findImageAtPoint(images, root, clientX, clientY);
   let luminance = image ? await sampleImageLuminance(image, clientX, clientY) : null;
   if (luminance === null) {
     for (const element of stack) {
@@ -110,7 +116,7 @@ const samplePoint = async (root: Element | null, clientX: number, clientY: numbe
   return luminance;
 };
 
-const sampleTarget = async (target: HTMLElement | SVGElement) => {
+const sampleTarget = async (target: HTMLElement | SVGElement, images: HTMLImageElement[]) => {
   const rect = target.getBoundingClientRect();
   if (!rect.width || !rect.height || rect.bottom < 0 || rect.top > window.innerHeight) return;
   const clientX = rect.left + rect.width / 2;
@@ -119,11 +125,11 @@ const sampleTarget = async (target: HTMLElement | SVGElement) => {
   const offsetX = Math.min(20, rect.width * 0.34);
   const offsetY = Math.min(18, rect.height * 0.3);
   const samples = await Promise.all([
-    samplePoint(root, clientX, clientY),
-    samplePoint(root, clientX - offsetX, clientY),
-    samplePoint(root, clientX + offsetX, clientY),
-    samplePoint(root, clientX, clientY - offsetY),
-    samplePoint(root, clientX, clientY + offsetY),
+    samplePoint(images, root, clientX, clientY),
+    samplePoint(images, root, clientX - offsetX, clientY),
+    samplePoint(images, root, clientX + offsetX, clientY),
+    samplePoint(images, root, clientX, clientY - offsetY),
+    samplePoint(images, root, clientX, clientY + offsetY),
   ]);
   const average = samples.reduce((sum, value) => sum + value, 0) / samples.length;
   const luminance = Math.max(average, Math.max(...samples) * 0.72);
@@ -139,38 +145,67 @@ export const useLiquidGlassAdaptiveForeground = () => {
     let disposed = false;
     let timer = 0;
     let frame = 0;
-    const update = () => {
-      if (disposed) return;
+    let updateInFlight = false;
+    let rerunRequested = false;
+    const update = async () => {
+      if (disposed || document.visibilityState === 'hidden') return;
+      if (updateInFlight) {
+        rerunRequested = true;
+        return;
+      }
+      updateInFlight = true;
       const targets = Array.from(document.querySelectorAll<HTMLElement | SVGElement>('[data-liquid-adaptive="true"]'));
-      void Promise.all(targets.map(sampleTarget));
+      const images = Array.from(document.images).filter((image) => image.complete && image.naturalWidth > 0);
+      try {
+        await Promise.all(targets.map((target) => sampleTarget(target, images)));
+      } finally {
+        updateInFlight = false;
+        if (rerunRequested) {
+          rerunRequested = false;
+          schedule();
+        }
+      }
     };
-    const schedule = () => {
-      if (timer) return;
+    function schedule() {
+      if (disposed || timer) return;
       timer = window.setTimeout(() => {
         timer = 0;
-        frame = window.requestAnimationFrame(update);
+        frame = window.requestAnimationFrame(() => { void update(); });
       }, 90);
+    }
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.buttons > 0) schedule();
+    };
+    const handleImageLoad = (event: Event) => {
+      if (event.target instanceof HTMLImageElement) schedule();
     };
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
-    window.addEventListener('scroll', schedule, true);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src', 'data-liquid-adaptive'],
+    });
+    window.addEventListener('scroll', schedule, { capture: true, passive: true });
     window.addEventListener('resize', schedule);
-    window.addEventListener('pointermove', schedule, { passive: true });
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
     window.addEventListener('pointerup', schedule, { passive: true });
     window.addEventListener('touchend', schedule, { passive: true });
-    const interval = window.setInterval(schedule, 900);
+    document.addEventListener('load', handleImageLoad, true);
+    document.addEventListener('visibilitychange', schedule);
     schedule();
     return () => {
       disposed = true;
       observer.disconnect();
-      window.clearInterval(interval);
       if (timer) window.clearTimeout(timer);
       if (frame) window.cancelAnimationFrame(frame);
       window.removeEventListener('scroll', schedule, true);
       window.removeEventListener('resize', schedule);
-      window.removeEventListener('pointermove', schedule);
+      window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', schedule);
       window.removeEventListener('touchend', schedule);
+      document.removeEventListener('load', handleImageLoad, true);
+      document.removeEventListener('visibilitychange', schedule);
     };
   }, []);
 };

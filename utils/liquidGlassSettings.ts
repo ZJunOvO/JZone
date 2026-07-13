@@ -45,7 +45,7 @@ const clamp = (value: unknown, min: number, max: number, fallback: number) => {
   return Math.min(max, Math.max(min, num));
 };
 
-export const normalizeLiquidGlassSettings = (value: unknown): LiquidGlassSettings => {
+const normalizeLiquidGlassSettings = (value: unknown): LiquidGlassSettings => {
   const raw = value && typeof value === 'object' ? (value as Partial<LiquidGlassSettings>) : {};
   return {
     strength: clamp(raw.strength, 0, 0.12, DEFAULT_LIQUID_GLASS_SETTINGS.strength),
@@ -87,7 +87,7 @@ export const getLiquidGlassCssVars = (settings: LiquidGlassSettings): CSSPropert
   } as CSSProperties;
 };
 
-export const loadLiquidGlassSettings = (): LiquidGlassSettings => {
+const loadLiquidGlassSettings = (): LiquidGlassSettings => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_LIQUID_GLASS_SETTINGS;

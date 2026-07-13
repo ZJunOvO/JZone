@@ -1,4 +1,4 @@
-export { FeedbackProvider, useFeedback } from './FeedbackProvider';
+export { FeedbackProvider } from './FeedbackProvider';
 export { feedback } from './feedback';
 export type {
   FeedbackAction,

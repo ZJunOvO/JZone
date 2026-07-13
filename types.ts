@@ -47,10 +47,17 @@ export interface Comment {
   timestamp: number; // The actual time the comment was posted
   playbackTime: number; // The time in the song the comment refers to
   likes: number;
+  parentCommentId?: string | null;
+  avatarFrameId?: string | null;
+  isDeleted?: boolean;
+  isPending?: boolean;
   isLiked?: boolean;
   isVerified?: boolean; // For admins or artists
   role?: 'admin' | 'artist' | 'user';
 }
+
+export type CommentSort = 'latest' | 'popular';
+export type CommentLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface PlayerState {
   currentSongId: string | null;

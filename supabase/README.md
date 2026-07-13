@@ -14,8 +14,12 @@
 
 - `supabase/sql/001_init.sql`
 - `supabase/sql/003_plays.sql`（播放次数统计）
+- `supabase/sql/019_comment_reliability_and_threads.sql`（评论分页排序、单层回复、头像挂件资料映射和删除权限）
+
+SQL 文件按编号顺序执行。`019` 依赖 `015_comment_likes.sql` 已经存在。
+
+> JZone 远程项目已于 2026-07-13 应用 `019_comment_reliability_and_threads.sql`，迁移版本：`20260713120746_comment_reliability_and_threads`；删除 RPC 权限加固版本：`20260713121022_restrict_delete_comment_to_authenticated`。
 
 ## 3) Storage
 
 本项目媒体存储统一使用腾讯云 COS，不再使用 Supabase Storage（Supabase 仅用于 Auth + Database）。
-

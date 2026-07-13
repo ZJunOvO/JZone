@@ -4,10 +4,6 @@ const normalizeSharedId = (value: string | null | undefined, fallback: string) =
 };
 
 export const sharedElementIds = {
-  profileAvatar: (userId?: string | null) => `profile-avatar-${normalizeSharedId(userId, 'current')}`,
-  songCover: (songId?: string | null) => `song-cover-${normalizeSharedId(songId, 'current')}`,
-  songTitle: (songId?: string | null) => `song-title-${normalizeSharedId(songId, 'current')}`,
-  songArtist: (songId?: string | null) => `song-artist-${normalizeSharedId(songId, 'current')}`,
   collectionCover: (collectionId?: string | null) => `collection-cover-${normalizeSharedId(collectionId, 'current')}`,
 };
 
