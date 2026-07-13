@@ -30,7 +30,8 @@ export interface PlayerClipInsets {
 }
 
 export const PLAYER_SHELL_DURATION = 0.5;
-export const PLAYER_SHELL_EXIT_DURATION = 0.4;
+export const PLAYER_SHELL_EXIT_DURATION = 0.34;
+export const PLAYER_MINI_SETTLE_LEAD = 0.12;
 export const PLAYER_SHELL_EASE = [0.22, 0.72, 0.18, 1] as const;
 
 // 接近临界阻尼，只保留一次轻微越界；由转场末速度驱动，不额外播放缩放关键帧。

@@ -15,6 +15,7 @@ import { runViewTransition } from '../../utils/viewTransition';
 import {
   getDefaultPlayerOrigin,
   getDefaultPlayerSharedOrigin,
+  PLAYER_MINI_SETTLE_LEAD,
   PLAYER_SHELL_DURATION,
   PLAYER_SHELL_EXIT_DURATION,
   type PlayerTransitionOrigin,
@@ -61,6 +62,7 @@ export const AppShell: React.FC = () => {
   const miniPlayerLayerRef = React.useRef<HTMLDivElement>(null);
   const [miniSettlePulse, setMiniSettlePulse] = useState(0);
   const miniSettleTimerRef = React.useRef<number | null>(null);
+  const miniSettleResetTimerRef = React.useRef<number | null>(null);
 
   useAutoFullscreen();
   useLiquidGlassAdaptiveForeground();
@@ -86,6 +88,7 @@ export const AppShell: React.FC = () => {
   React.useEffect(() => () => {
     if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
     if (miniSettleTimerRef.current) window.clearTimeout(miniSettleTimerRef.current);
+    if (miniSettleResetTimerRef.current) window.clearTimeout(miniSettleResetTimerRef.current);
   }, []);
 
   React.useEffect(() => {
@@ -119,6 +122,7 @@ export const AppShell: React.FC = () => {
 
   const openPlayer = React.useCallback(() => {
     if (miniSettleTimerRef.current) window.clearTimeout(miniSettleTimerRef.current);
+    if (miniSettleResetTimerRef.current) window.clearTimeout(miniSettleResetTimerRef.current);
     setMiniSettlePulse(0);
     if (isPlayerOpen) {
       if (playerTransitionPhase !== 'closing') return;
@@ -149,17 +153,19 @@ export const AppShell: React.FC = () => {
     setPlayerTransitionOrigin(origin);
     setPlayerSharedOrigin(capturePlayerSharedOrigin(origin));
     setPlayerTransitionPhase('closing');
+    if (miniSettleTimerRef.current) window.clearTimeout(miniSettleTimerRef.current);
+    if (miniSettleResetTimerRef.current) window.clearTimeout(miniSettleResetTimerRef.current);
+    miniSettleTimerRef.current = window.setTimeout(() => {
+      setMiniSettlePulse((pulse) => pulse + 1);
+      miniSettleResetTimerRef.current = window.setTimeout(() => setMiniSettlePulse(0), 650);
+    }, Math.max(0, (PLAYER_SHELL_EXIT_DURATION - PLAYER_MINI_SETTLE_LEAD) * 1000));
     playerTransitionTimerRef.current = window.setTimeout(() => {
       setIsPlayerOpen(false);
       setPlayerTransitionPhase('open');
       setPlayerTransitionOrigin(null);
       setPlayerSharedOrigin(null);
-      window.requestAnimationFrame(() => {
-        setMiniSettlePulse((pulse) => pulse + 1);
-        miniSettleTimerRef.current = window.setTimeout(() => setMiniSettlePulse(0), 650);
-        document.querySelector<HTMLElement>('[data-testid="mini-player"]')?.focus();
-      });
-    }, PLAYER_SHELL_EXIT_DURATION * 1000 + 60);
+      window.requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="mini-player"]')?.focus());
+    }, PLAYER_SHELL_EXIT_DURATION * 1000 + 20);
   }, [capturePlayerOrigin, capturePlayerSharedOrigin, isPlayerOpen, playerTransitionPhase]);
 
   React.useEffect(() => {

@@ -1,8 +1,10 @@
 import React from 'react';
+import { animate, motion, useMotionValue, useReducedMotion, type AnimationPlaybackControls } from 'framer-motion';
 import { useStore } from '../store';
 import { Icons } from './Icons';
 import { SkeletonBlock } from './Skeletons';
 import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
+import { PLAYER_SETTLE_SPRING, PLAYER_SETTLE_VELOCITY } from './motion/playerTransition';
 
 interface PlayerBarProps {
   onExpand: () => void;
@@ -13,6 +15,21 @@ interface PlayerBarProps {
 export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock', settlePulse = 0 }) => {
   const { playerState, getCurrentSong, togglePlay, nextSong } = useStore();
   const song = getCurrentSong();
+  const reduceMotion = useReducedMotion();
+  const settleScale = useMotionValue(1);
+  const settleAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
+
+  React.useEffect(() => {
+    settleAnimationRef.current?.stop();
+    settleScale.set(settlePulse > 0 && !reduceMotion ? 0.9985 : 1);
+    if (settlePulse <= 0 || reduceMotion) return;
+    settleAnimationRef.current = animate(settleScale, 1, {
+      ...PLAYER_SETTLE_SPRING,
+      velocity: PLAYER_SETTLE_VELOCITY * 1.15,
+    });
+  }, [reduceMotion, settlePulse, settleScale]);
+
+  React.useEffect(() => () => settleAnimationRef.current?.stop(), []);
 
   if (!song) return null;
 
@@ -20,7 +37,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
   const progress = Math.max(0, Math.min(1, ((playerState.currentTime - (song.trimStart ?? 0)) / denom)));
 
   return (
-    <div 
+    <motion.div
       className={`liquid-mini-player relative h-[56px] rounded-[18px] flex items-center cursor-pointer ${
         variant === 'island' ? 'rounded-full h-[48px]' : ''
       }`}
@@ -36,12 +53,13 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
       aria-label={`展开播放器：${song.title}`}
       data-liquid-control-root
       data-testid="mini-player"
+      data-liquid-settle-surface
+      style={{ scale: settleScale, transformOrigin: '50% 50%' }}
     >
       <LiquidGlassMotionContent
         profile="player"
         borderRadiusClass={variant === 'island' ? 'rounded-full' : 'rounded-[18px]'}
         className="flex h-full w-full items-center"
-        settlePulse={settlePulse}
       >
       {/* Album Art */}
       <div
@@ -107,6 +125,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
          )}
       </div>
       </LiquidGlassMotionContent>
-    </div>
+    </motion.div>
   );
 };

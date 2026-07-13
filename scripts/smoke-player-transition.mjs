@@ -44,15 +44,13 @@ const login = async () => {
 const sampleTransition = async (time, direction, clickSelector = null) => page.evaluate(({ sampleTime, sampleDirection, selector }) => {
   const shell = document.querySelector('[data-testid="player-transition-shell"]');
   const miniGlass = document.querySelector('.liquid-mini-player .liquid-tab-f-glass');
-  const miniSettleContent = document.querySelector('.liquid-mini-player [data-liquid-settle-content]');
-  const miniSettleRim = document.querySelector('.liquid-mini-player [data-liquid-settle-rim]');
+  const miniSettleSurface = document.querySelector('.liquid-mini-player[data-liquid-settle-surface]');
   const miniFilter = miniGlass ? getComputedStyle(miniGlass).backdropFilter : null;
   const base = {
     time: sampleTime,
     direction: sampleDirection,
     miniFilter,
-    miniSettleTransform: miniSettleContent ? getComputedStyle(miniSettleContent).transform : null,
-    miniSettleRim: Boolean(miniSettleRim),
+    miniSettleTransform: miniSettleSurface ? getComputedStyle(miniSettleSurface).transform : null,
   };
   if (!shell) return { ...base, exists: false };
   const style = getComputedStyle(shell);
@@ -210,7 +208,7 @@ try {
   );
 
   await page.getByTestId('player-view-close').click();
-  const closing = await captureTimeline('closing', [20, 80, 180, 320, 400, 460, 620, 760]);
+  const closing = await captureTimeline('closing', [20, 80, 160, 240, 300, 340, 400, 520, 760]);
   const closingShellSamples = closing.filter((sample) => sample.exists);
   for (const key of ['top', 'right', 'bottom', 'left']) assertMonotonic(closingShellSamples, key, 'increase');
   assert(closingShellSamples.some((sample) => sample.cover.length >= 2), '关闭时封面缺少反向共享双端');
@@ -222,11 +220,13 @@ try {
   const closingTitleScale = readMatrixScale(closingTitleTarget?.transform);
   assert(Math.abs(closingTitleScale.x - closingTitleScale.y) < 0.03, `收拢标题发生非等比压缩：${JSON.stringify(closingTitleScale)}`);
   assert((closingTitleTarget?.opacity ?? 1) < 0.25, `收拢标题没有在交接区淡出：${closingTitleTarget?.opacity}`);
-  const miniSettleSamples = closing.filter((sample) => !sample.exists && sample.miniSettleRim);
-  assert(miniSettleSamples.length > 0, 'Mini 内容与高光没有进入弹簧回落阶段');
+  const miniSettleSamples = closing.filter((sample) => sample.time >= 240);
+  const overlappingSettle = miniSettleSamples.find((sample) => sample.exists && readMatrixScale(sample.miniSettleTransform).x > 1.003);
+  assert(overlappingSettle, `Mini 整体回弹没有提前叠入收拢末段：${JSON.stringify(miniSettleSamples.map((sample) => ({ time: sample.time, exists: sample.exists, transform: sample.miniSettleTransform })))}`);
+  assert(miniSettleSamples.every((sample) => sample.miniFilter?.includes('url(')), 'Mini 整体回弹期间背景折射中断');
   assertSoftSettle(
     miniSettleSamples.map((sample) => sample.miniSettleTransform),
-    'Mini 内容落地',
+    'Mini 整体落地',
     { minPeak: 1.003, maxPeak: 1.014, finalDelta: 0.002 },
   );
   await page.waitForTimeout(80);

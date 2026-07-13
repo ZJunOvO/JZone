@@ -116,9 +116,11 @@ try {
   });
   assert(opening && (opening.filter !== 'none' || opening.transform !== 'none'), 'Mini 菜单没有执行缩放模糊入场');
   assert((opening?.shellWidth ?? 0) < (opening?.menuWidth ?? 0), 'Mini 菜单整个玻璃壳没有执行入场形变');
-  assert((opening?.shellOpacity ?? 0) > 0.45, `Mini 菜单首帧材质不可见：${JSON.stringify(opening)}`);
+  assert((opening?.shellOpacity ?? 0) > 0.99, `Mini 菜单首帧材质外壳不透明度建立了 Backdrop Root：${JSON.stringify(opening)}`);
   assert(opening?.glassFilter?.includes('url('), `Mini 菜单首帧缺少折射滤镜：${JSON.stringify(opening)}`);
   assert(opening?.mapReady, `Mini 菜单首帧位移图尚未生成：${JSON.stringify(opening)}`);
+  await mkdir('output/playwright', { recursive: true });
+  await page.screenshot({ path: `output/playwright/liquid-glass-menu-opening-35ms-${viewportWidth}x${viewportHeight}.png` });
 
   await page.waitForTimeout(620);
   const state = await page.evaluate(() => {
@@ -205,7 +207,6 @@ try {
     );
   }
 
-  await mkdir('output/playwright', { recursive: true });
   await page.screenshot({ path: `output/playwright/liquid-glass-regression-${viewportWidth}x${viewportHeight}.png` });
 
   await page.mouse.click(4, 4);
@@ -222,7 +223,7 @@ try {
     } : { exists: false };
   });
   assert(closing.exists && (closing.filter !== 'none' || closing.transform !== 'none'), 'Mini 菜单关闭时没有反向缩放模糊');
-  assert(closing.shellOpacity !== null && closing.shellOpacity < 0.9, `Mini 菜单高光框没有同步淡出：${JSON.stringify(closing)}`);
+  assert(closing.shellOpacity !== null && closing.shellOpacity > 0.99, `Mini 菜单退出时材质采样被透明度动画截断：${JSON.stringify(closing)}`);
   await page.waitForTimeout(350);
   assert((await page.locator('.liquid-context-menu-panel').count()) === 0, 'Mini 菜单退出动画后仍残留');
 

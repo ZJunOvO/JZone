@@ -42,6 +42,7 @@ export const PlayerSharedElement: React.FC<PlayerSharedElementProps> = ({
   const lastPhaseRef = React.useRef<PlayerTransitionPhase | null>(null);
   const animationRef = React.useRef<AnimationPlaybackControls | null>(null);
   const animationSequenceRef = React.useRef(0);
+  const settleStartedRef = React.useRef(false);
   const settleAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
   const progress = useMotionValue(phase === 'opening' && !reduceMotion ? 0 : 1);
   const settleScale = useMotionValue(1);
@@ -63,12 +64,15 @@ export const PlayerSharedElement: React.FC<PlayerSharedElementProps> = ({
     settleAnimationRef.current?.stop();
     settleAnimationRef.current = null;
     settleScale.set(1);
+    settleStartedRef.current = false;
   }, [settleScale]);
 
   const startSettleAnimation = React.useCallback(() => {
     if (name !== 'cover' || reduceMotion) return;
+    if (settleStartedRef.current) return;
+    settleStartedRef.current = true;
     settleAnimationRef.current?.stop();
-    settleScale.set(1);
+    settleScale.set(0.998);
     settleAnimationRef.current = animate(settleScale, 1, {
       ...PLAYER_SETTLE_SPRING,
       velocity: PLAYER_SETTLE_VELOCITY,
@@ -143,10 +147,11 @@ export const PlayerSharedElement: React.FC<PlayerSharedElementProps> = ({
     if (phase === 'open') {
       stopAnimation();
       progress.set(1);
+      startSettleAnimation();
       return;
     }
     animateTo(phase === 'closing' ? 0 : 1, phase === 'closing' ? PLAYER_SHELL_EXIT_DURATION : PLAYER_SHARED_TRANSITION.duration);
-  }, [animateTo, measure, phase, progress, reduceMotion, stopAnimation, stopSettleAnimation]);
+  }, [animateTo, measure, phase, progress, reduceMotion, startSettleAnimation, stopAnimation, stopSettleAnimation]);
 
   React.useEffect(() => () => {
     stopAnimation();
