@@ -128,6 +128,15 @@ const readMatrixScale = (transform) => {
   return values.length >= 4 ? { x: Math.abs(values[0]), y: Math.abs(values[3]) } : { x: 1, y: 1 };
 };
 
+const assertSoftSettle = (transforms, label, { minPeak = 1.003, maxPeak = 1.012, finalDelta = 0.002 } = {}) => {
+  const scales = transforms.filter(Boolean).map((transform) => readMatrixScale(transform).x);
+  const peak = Math.max(...scales);
+  const final = scales.at(-1) ?? 1;
+  assert(peak >= minPeak, `${label}缺少可感知的惯性越界：${JSON.stringify(scales)}`);
+  assert(peak <= maxPeak, `${label}回弹幅度过大：${JSON.stringify(scales)}`);
+  assert(Math.abs(final - 1) <= finalDelta, `${label}没有平滑收敛：${JSON.stringify(scales)}`);
+};
+
 const startFrameProbe = async (key, duration) => page.evaluate(({ probeKey, probeDuration }) => {
   window.__jzoneFrameProbes ??= {};
   const samples = [];
@@ -184,9 +193,9 @@ try {
   const openingFinal = opening.at(-1);
   assert(Object.values(openingFinal.insets).every((value) => value <= 1), `播放器没有铺满视窗：${JSON.stringify(openingFinal.insets)}`);
   assert(opening.every((sample) => sample.miniFilter?.includes('url(')), '展开期间 Mini 播放器材质没有持续保活');
-  assert(
-    opening.slice(4).some((sample) => readMatrixScale(sample.coverSettleTransform).x > 1.01),
-    `全屏封面落地后缺少微弹性：${JSON.stringify(opening.slice(4).map((sample) => sample.coverSettleTransform))}`,
+  assertSoftSettle(
+    opening.slice(4).map((sample) => sample.coverSettleTransform),
+    '全屏封面落地',
   );
   for (const key of ['cover', 'title', 'artist']) {
     assert(opening.slice(0, -1).some((sample) => sample[key].length >= 2), `${key} 缺少共享源/目标双端`);
@@ -213,9 +222,12 @@ try {
   const closingTitleScale = readMatrixScale(closingTitleTarget?.transform);
   assert(Math.abs(closingTitleScale.x - closingTitleScale.y) < 0.03, `收拢标题发生非等比压缩：${JSON.stringify(closingTitleScale)}`);
   assert((closingTitleTarget?.opacity ?? 1) < 0.25, `收拢标题没有在交接区淡出：${closingTitleTarget?.opacity}`);
-  assert(
-    closing.filter((sample) => !sample.exists).some((sample) => sample.miniSettleRim && readMatrixScale(sample.miniSettleTransform).x > 1.01),
-    `Mini 内容与高光缺少回弹：${JSON.stringify(closing.map((sample) => ({ transform: sample.miniSettleTransform, rim: sample.miniSettleRim })))}`,
+  const miniSettleSamples = closing.filter((sample) => !sample.exists && sample.miniSettleRim);
+  assert(miniSettleSamples.length > 0, 'Mini 内容与高光没有进入弹簧回落阶段');
+  assertSoftSettle(
+    miniSettleSamples.map((sample) => sample.miniSettleTransform),
+    'Mini 内容落地',
+    { minPeak: 1.003, maxPeak: 1.014, finalDelta: 0.002 },
   );
   await page.waitForTimeout(80);
   assert((await page.getByTestId('player-transition-shell').count()) === 0, '关闭完成后全屏播放器仍残留');

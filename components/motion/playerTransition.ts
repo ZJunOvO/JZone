@@ -29,9 +29,20 @@ export interface PlayerClipInsets {
   radius: number;
 }
 
-export const PLAYER_SHELL_DURATION = 0.46;
-export const PLAYER_SHELL_EXIT_DURATION = 0.36;
+export const PLAYER_SHELL_DURATION = 0.5;
+export const PLAYER_SHELL_EXIT_DURATION = 0.4;
 export const PLAYER_SHELL_EASE = [0.22, 0.72, 0.18, 1] as const;
+
+// 接近临界阻尼，只保留一次轻微越界；由转场末速度驱动，不额外播放缩放关键帧。
+export const PLAYER_SETTLE_SPRING = {
+  type: 'spring' as const,
+  stiffness: 190,
+  damping: 22,
+  mass: 0.9,
+  restSpeed: 0.001,
+  restDelta: 0.0005,
+};
+export const PLAYER_SETTLE_VELOCITY = 0.2;
 
 export const PLAYER_SHARED_TRANSITION = {
   duration: PLAYER_SHELL_DURATION,

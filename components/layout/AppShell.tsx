@@ -156,7 +156,7 @@ export const AppShell: React.FC = () => {
       setPlayerSharedOrigin(null);
       window.requestAnimationFrame(() => {
         setMiniSettlePulse((pulse) => pulse + 1);
-        miniSettleTimerRef.current = window.setTimeout(() => setMiniSettlePulse(0), 300);
+        miniSettleTimerRef.current = window.setTimeout(() => setMiniSettlePulse(0), 650);
         document.querySelector<HTMLElement>('[data-testid="mini-player"]')?.focus();
       });
     }, PLAYER_SHELL_EXIT_DURATION * 1000 + 60);

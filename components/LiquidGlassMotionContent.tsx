@@ -1,6 +1,15 @@
 import React from 'react';
-import { motion, useAnimationControls, useReducedMotion } from 'framer-motion';
+import {
+  animate,
+  motion,
+  useAnimationControls,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+  type AnimationPlaybackControls,
+} from 'framer-motion';
 import { LiquidGlassSurface } from './LiquidGlassSurface';
+import { PLAYER_SETTLE_SPRING, PLAYER_SETTLE_VELOCITY } from './motion/playerTransition';
 
 type LiquidGlassMotionProfile = 'menu' | 'player';
 
@@ -50,6 +59,8 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
 }) => {
   const reduceMotion = useReducedMotion();
   const contentControls = useAnimationControls();
+  const settleScale = useMotionValue(1);
+  const settleAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
   const previousClosingRef = React.useRef(closing);
   const previousSettlePulseRef = React.useRef(settlePulse);
   const config = motionProfiles[profile];
@@ -110,11 +121,8 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
     };
   }, [config, reduceMotion]);
   const isSettling = settlePulse > 0 && !closing && !reduceMotion;
-  const settleTransition = {
-    duration: 0.28,
-    times: [0, 0.38, 0.7, 1],
-    ease: [0.22, 0.72, 0.18, 1] as [number, number, number, number],
-  };
+  const settleInset = useTransform(settleScale, (value) => Math.min(1, Math.max(-2, (1 - value) * 150)));
+  const settleRimOpacity = useTransform(settleScale, (value) => Math.min(1, Math.abs(value - 1) * 90));
 
   React.useEffect(() => {
     const wasClosing = previousClosingRef.current;
@@ -122,16 +130,24 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
     previousClosingRef.current = closing;
     previousSettlePulseRef.current = settlePulse;
     if (closing) {
+      settleAnimationRef.current?.stop();
+      settleScale.set(1);
       void contentControls.start({ ...animation.contentClose, transition: animation.exitTransition });
       return;
     }
     if (isSettling) {
-      void contentControls.start(
-        { opacity: 1, scale: [1, 1.026, 0.994, 1], filter: 'blur(0px)', transition: settleTransition },
-      );
+      contentControls.set({ opacity: 1, scale: 1, filter: 'blur(0px)' });
+      settleAnimationRef.current?.stop();
+      settleScale.set(1);
+      settleAnimationRef.current = animate(settleScale, 1, {
+        ...PLAYER_SETTLE_SPRING,
+        velocity: PLAYER_SETTLE_VELOCITY * 1.15,
+      });
       return;
     }
     if (wasClosing || wasSettling) {
+      settleAnimationRef.current?.stop();
+      settleScale.set(1);
       contentControls.set({ opacity: 1, scale: 1, filter: 'blur(0px)' });
       return;
     }
@@ -140,7 +156,9 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
     } else {
       contentControls.set({ opacity: 1, scale: 1, filter: 'blur(0px)' });
     }
-  }, [animateOnMount, animation, closing, contentControls, isSettling, settlePulse]);
+  }, [animateOnMount, animation, closing, contentControls, isSettling, settlePulse, settleScale]);
+
+  React.useEffect(() => () => settleAnimationRef.current?.stop(), []);
 
   return (
     <>
@@ -170,15 +188,13 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
           key={`settle-rim-${settlePulse}`}
           aria-hidden
           className={`liquid-glass-elastic-rim pointer-events-none absolute z-[3] ${borderRadiusClass}`}
-          initial={{ top: 0, right: 0, bottom: 0, left: 0, opacity: 0.35 }}
-          animate={{
-            top: [0, -2.4, 1, 0],
-            right: [0, -2.4, 1, 0],
-            bottom: [0, -2.4, 1, 0],
-            left: [0, -2.4, 1, 0],
-            opacity: [0.35, 1, 0.55, 0],
+          style={{
+            top: settleInset,
+            right: settleInset,
+            bottom: settleInset,
+            left: settleInset,
+            opacity: settleRimOpacity,
           }}
-          transition={settleTransition}
           data-liquid-settle-rim
         />
       )}
@@ -186,9 +202,14 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
         className={`relative z-10 overflow-hidden ${borderRadiusClass} ${className}`}
         initial={animateOnMount ? animation.contentInitial : false}
         animate={contentControls}
-        data-liquid-settle-content
       >
-        {children}
+        <motion.div
+          className="h-full w-full"
+          style={{ scale: settleScale, transformOrigin: '50% 50%' }}
+          data-liquid-settle-content
+        >
+          {children}
+        </motion.div>
       </motion.div>
     </>
   );
