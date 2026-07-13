@@ -341,10 +341,10 @@ export const Library: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen ${viewMode === 'list' ? 'pb-24 pt-12 px-6' : 'pt-0 pb-0'}`}>
+    <div className="relative min-h-screen">
        
        {/* Header with View Toggle */}
-       <div className={`flex items-center ${viewMode === 'canvas' ? 'justify-end absolute top-12 inset-x-6 z-30 pointer-events-none' : 'justify-between mb-6'}`}>
+       <div className={`flex items-center ${viewMode === 'canvas' ? 'justify-end absolute top-12 inset-x-6 z-30 pointer-events-none' : 'relative z-30 justify-between px-6 pt-12 mb-6'}`}>
            {viewMode === 'list' && (
              <h1 className="text-3xl font-extrabold text-white tracking-tight pointer-events-auto drop-shadow-md">资料库</h1>
            )}
@@ -425,14 +425,15 @@ export const Library: React.FC = () => {
            </div>
        </div>
        
-       <AnimatePresence mode="wait" initial={false}>
+       <AnimatePresence mode="popLayout" initial={false}>
        {viewMode === 'list' ? (
            <motion.div
              key="library-list"
-             initial={{ opacity: 0, y: 5, filter: 'blur(5px)' }}
-             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-             exit={{ opacity: 0, y: -3, filter: 'blur(4px)' }}
-             transition={{ duration: 0.22, ease: [0.22, 0.74, 0.22, 1] }}
+             initial={{ opacity: 0, x: -12 }}
+             animate={{ opacity: 1, x: 0 }}
+             exit={{ opacity: 0.22, x: 30, scale: 0.988 }}
+             transition={{ duration: 0.32, ease: [0.32, 0, 0.24, 1] }}
+             className="px-6 pb-24"
              data-library-view="list"
            >
                <div className="space-y-3 mb-6">
@@ -517,13 +518,29 @@ export const Library: React.FC = () => {
            /* Canvas View */
            <motion.div
              key="library-canvas"
-             initial={{ opacity: 0, scale: 0.992, filter: 'blur(7px)' }}
-             animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-             exit={{ opacity: 0, scale: 0.994, filter: 'blur(5px)' }}
-             transition={{ duration: 0.28, ease: [0.22, 0.74, 0.22, 1] }}
-             className="origin-center"
+             initial={{
+               opacity: 0.72,
+               x: -18,
+               clipPath: 'polygon(0% 0%, 9% 0%, 0% 100%, 0% 100%)',
+             }}
+             animate={{
+               opacity: 1,
+               x: 0,
+               clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)',
+             }}
+             exit={{ opacity: 0, x: -14 }}
+             transition={{ duration: 0.56, ease: [0.22, 0.76, 0.18, 1] }}
+             className="min-h-screen origin-center"
              data-library-view="canvas"
            >
+           <motion.div
+             aria-hidden
+             data-testid="library-bento-transition-sheen"
+             className="pointer-events-none fixed inset-y-0 left-0 z-[24] w-[42%] max-w-[180px] bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.13),rgba(170,220,255,0.09),transparent)] blur-[2px]"
+             initial={{ x: '-135%', opacity: 0, skewX: -8 }}
+             animate={{ x: '345%', opacity: [0, 0.58, 0.32, 0], skewX: -8 }}
+             transition={{ duration: 0.62, times: [0, 0.24, 0.7, 1], ease: [0.22, 0.76, 0.18, 1] }}
+           />
            <LibraryCanvas
                items={bentoItems}
                onOpen={openBentoItem}
@@ -568,10 +585,11 @@ export const Library: React.FC = () => {
                <button
                  onClick={() => {
                    closeCreateMenu(() => setShowUpload(true));
-                 }}
-                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10"
-               >
-                 <Icons.Upload size={16} data-liquid-adaptive="true" />
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10"
+                  data-liquid-adaptive="true"
+                >
+                  <Icons.Upload size={16} />
                  上传音乐
                </button>
                <button
@@ -581,10 +599,11 @@ export const Library: React.FC = () => {
                      setCreateType('album');
                      setCreateModalOpen(true);
                    });
-                 }}
-                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-50"
-               >
-                 <Icons.Disc size={16} data-liquid-adaptive="true" />
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-50"
+                  data-liquid-adaptive="true"
+                >
+                  <Icons.Disc size={16} />
                  新建专辑
                </button>
                <button
@@ -594,10 +613,11 @@ export const Library: React.FC = () => {
                      setCreateType('playlist');
                      setCreateModalOpen(true);
                    });
-                 }}
-                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-50"
-               >
-                 <Icons.ListMusic size={16} data-liquid-adaptive="true" />
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-50"
+                  data-liquid-adaptive="true"
+                >
+                  <Icons.ListMusic size={16} />
                  新建歌单
                </button>
              </LiquidGlassMotionContent>

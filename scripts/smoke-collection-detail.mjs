@@ -36,7 +36,7 @@ const loginIfNeeded = async (page) => {
     return Boolean(button && !button.disabled);
   });
   await page.getByTestId('auth-submit').click();
-  await page.getByText('现在就听').first().waitFor({ timeout: 30000 });
+  await page.getByTestId('bottom-nav-home').waitFor({ state: 'visible', timeout: 30000 });
 };
 
 const openFirstAvailableCollection = async (page) => {

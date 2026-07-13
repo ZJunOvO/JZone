@@ -30,7 +30,16 @@ const captureLibraryViewFirstFrame = (page, buttonTestId, view) => page.evaluate
     const element = document.querySelector(`[data-library-view="${targetView}"]`);
     if (!element) continue;
     const style = getComputedStyle(element);
-    return { opacity: Number(style.opacity), transform: style.transform, filter: style.filter };
+    const sheen = document.querySelector('[data-testid="library-bento-transition-sheen"]');
+    const sheenStyle = sheen ? getComputedStyle(sheen) : null;
+    return {
+      opacity: Number(style.opacity),
+      transform: style.transform,
+      filter: style.filter,
+      clipPath: style.clipPath,
+      sheenOpacity: sheenStyle ? Number(sheenStyle.opacity) : null,
+      sheenTransform: sheenStyle?.transform ?? null,
+    };
   }
   return null;
 }, { buttonId: buttonTestId, targetView: view });
@@ -41,16 +50,25 @@ const clickAndCaptureRouteTransition = (page, tabId) => page.evaluate(async (rou
   for (let frame = 0; frame < 36; frame += 1) {
     await new Promise((resolve) => requestAnimationFrame(resolve));
     const stage = document.querySelector('.jzone-route-stage');
+    const mini = document.querySelector('[data-testid="mini-player-layer"]');
+    const bottomNav = document.querySelector('[data-testid="bottom-nav-layer"]');
+    const persistentState = (element) => element ? {
+      viewTransitionName: getComputedStyle(element).viewTransitionName,
+      opacity: Number(getComputedStyle(element).opacity),
+      visibility: getComputedStyle(element).visibility,
+      display: getComputedStyle(element).display,
+    } : null;
     const sample = {
       route,
-      viewTransitionName: stage ? getComputedStyle(stage).viewTransitionName : null,
-      activeAnimations: document.getAnimations().map((animation) => ({
-        name: 'animationName' in animation ? animation.animationName : '',
-        playState: animation.playState,
-      })).filter((animation) => /jzone-route-(in|out)/.test(animation.name)),
+      routeOpacity: stage ? Number(getComputedStyle(stage).opacity) : null,
+      routeTransform: stage ? getComputedStyle(stage).transform : null,
+      mini: persistentState(mini),
+      bottomNav: persistentState(bottomNav),
+      miniLayerCount: document.querySelectorAll('[data-testid="mini-player-layer"]').length,
+      bottomNavCount: document.querySelectorAll('[data-testid="bottom-nav-layer"]').length,
     };
     lastSample = sample;
-    if (sample.activeAnimations.length > 0) return sample;
+    if ((sample.routeOpacity ?? 1) < 0.99 || sample.routeTransform !== 'none') return sample;
   }
   return lastSample;
 }, tabId);
@@ -132,8 +150,10 @@ try {
     await page.waitForTimeout(360);
   }
 
-  assert(routeTransitionSamples.every((sample) => sample.viewTransitionName === 'jzone-route-content'), `一级路由没有使用独立快照层：${JSON.stringify(routeTransitionSamples)}`);
-  assert(routeTransitionSamples.filter((sample) => sample.activeAnimations.length > 0).length >= 3, `一级路由淡入淡出没有运行：${JSON.stringify(routeTransitionSamples)}`);
+  assert(routeTransitionSamples.every((sample) => sample.miniLayerCount === 1 && sample.bottomNavCount === 1), `一级路由切换生成了重复 Mini/Tab 实例：${JSON.stringify(routeTransitionSamples)}`);
+  assert(routeTransitionSamples.every((sample) => sample.mini?.opacity === 1 && sample.mini?.visibility === 'visible' && sample.mini?.display !== 'none'), `路由切换期间 Mini 播放器容器被隐藏：${JSON.stringify(routeTransitionSamples)}`);
+  assert(routeTransitionSamples.every((sample) => sample.bottomNav?.opacity === 1 && sample.bottomNav?.visibility === 'visible' && sample.bottomNav?.display !== 'none'), `路由切换期间底部 Tab 被隐藏：${JSON.stringify(routeTransitionSamples)}`);
+  assert(routeTransitionSamples.filter((sample) => (sample.routeOpacity ?? 1) < 0.99 || sample.routeTransform !== 'none').length >= 3, `一级路由内容层动画没有运行：${JSON.stringify(routeTransitionSamples)}`);
 
   await page.getByTestId('bottom-nav-library').click();
   await page.getByText('资料库').first().waitFor({ timeout: 15000 });
@@ -141,8 +161,31 @@ try {
   const canvasView = page.locator('[data-library-view="canvas"]');
   await canvasView.waitFor({ state: 'attached', timeout: 3000 });
   assert(isLibraryViewAnimating(canvasOpening), `Bento 视图没有入场转场：${JSON.stringify(canvasOpening)}`);
-  await page.waitForTimeout(360);
+  assert(canvasOpening?.clipPath && canvasOpening.clipPath !== 'none' && !canvasOpening.clipPath.includes('100% 0px, 100% 100%'), `Bento 视图没有使用向右展开的遮罩：${JSON.stringify(canvasOpening)}`);
+  assert(canvasOpening?.sheenOpacity !== null && canvasOpening?.sheenTransform !== 'none', `Bento 遮罩转场缺少右向扫光：${JSON.stringify(canvasOpening)}`);
+  await page.waitForTimeout(720);
   assert(await page.locator('[data-bento-canvas]').isVisible(), 'Bento 转场完成后画布不可见');
+  const bentoFraming = await page.evaluate(() => {
+    const canvas = document.querySelector('[data-bento-canvas]');
+    const tiles = [...document.querySelectorAll('[data-bento-item]')];
+    if (!canvas || !tiles.length) return null;
+    const canvasRect = canvas.getBoundingClientRect();
+    const tileRects = tiles.map((tile) => tile.getBoundingClientRect());
+    const minLeft = Math.min(...tileRects.map((rect) => rect.left));
+    const maxRight = Math.max(...tileRects.map((rect) => rect.right));
+    return {
+      scale: Number(canvas.getAttribute('data-bento-scale')),
+      leftMargin: minLeft - canvasRect.left,
+      rightMargin: canvasRect.right - maxRight,
+      minLeft,
+      maxRight,
+      canvasLeft: canvasRect.left,
+      canvasRight: canvasRect.right,
+    };
+  });
+  assert(bentoFraming && bentoFraming.scale <= 0.741, `Bento 默认镜头没有进一步缩小：${JSON.stringify(bentoFraming)}`);
+  assert((bentoFraming?.leftMargin ?? -1) >= 14 && (bentoFraming?.rightMargin ?? -1) >= 14, `Bento 两侧仍被视窗截断：${JSON.stringify(bentoFraming)}`);
+  assert(Math.abs((bentoFraming?.leftMargin ?? 0) - (bentoFraming?.rightMargin ?? 0)) <= 5, `Bento 默认镜头没有保持左右等距：${JSON.stringify(bentoFraming)}`);
 
   const listOpening = await captureLibraryViewFirstFrame(page, 'library-view-list', 'list');
   const listView = page.locator('[data-library-view="list"]');
@@ -156,7 +199,7 @@ try {
         baseUrl,
         checkedTabs: checks.map(([tabId]) => tabId),
         routeTransitionSamples,
-        libraryViewTransitions: { canvasOpening, listOpening },
+        libraryViewTransitions: { canvasOpening, listOpening, bentoFraming },
         consoleErrors,
         failedResponses,
       },

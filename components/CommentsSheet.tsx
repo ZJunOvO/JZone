@@ -125,20 +125,24 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
     <motion.div
       className="absolute inset-0 z-[60] flex flex-col justify-end"
       data-testid="comments-sheet"
-      initial={{ opacity: 0 }}
+      initial={false}
       animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: reduceMotion ? 0.1 : 0.2, ease: 'easeOut' }}
+      exit={{ opacity: 1 }}
+      transition={{ duration: reduceMotion ? 0.1 : 0.32 }}
     >
       {/* Backdrop */}
       <motion.div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" 
+        className="absolute inset-0 bg-black/60"
         onClick={onClose}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: reduceMotion ? 0.1 : 0.2, ease: 'easeOut' }}
       />
 
       {/* Sheet Content */}
       <motion.div
-        className="relative bg-zinc-900/85 backdrop-blur-3xl h-[85vh] w-full rounded-t-[32px] border-t border-white/10 flex flex-col shadow-[0_-20px_60px_-10px_rgba(0,0,0,0.8)] overflow-hidden"
+        className="relative bg-zinc-900/95 h-[85vh] w-full rounded-t-[32px] border-t border-white/10 flex flex-col shadow-[0_-20px_60px_-10px_rgba(0,0,0,0.8)] overflow-hidden will-change-transform transform-gpu"
         data-testid="comments-sheet-panel"
         initial={reduceMotion ? { opacity: 0 } : { y: '100%', opacity: 0.88 }}
         animate={{ y: 0, opacity: 1 }}

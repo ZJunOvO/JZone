@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { runViewTransition } from '../utils/viewTransition';
 
 export interface AppRouteState {
   activeTab: string;
@@ -81,11 +80,9 @@ export const useAppRoute = (): AppRouteState => {
   React.useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent)?.detail as { userId?: string } | undefined;
-      runViewTransition(() => {
-        setProfileUserId(detail?.userId);
-        setActiveTab('profile');
-        setCollectionId(null);
-      });
+      setProfileUserId(detail?.userId);
+      setActiveTab('profile');
+      setCollectionId(null);
     };
     window.addEventListener('jzone:navigate-profile', handler as any);
     return () => window.removeEventListener('jzone:navigate-profile', handler as any);

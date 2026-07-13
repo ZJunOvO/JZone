@@ -181,6 +181,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
       className="fixed left-1/2 z-30 h-[66px] w-[min(400px,calc(100vw-24px))] -translate-x-1/2"
       style={{ ...navDynamicVars, bottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}
       data-liquid-control-root
+      data-testid="bottom-nav-layer"
     >
       <svg className="liquid-tab-filter-defs" aria-hidden focusable="false">
         <filter

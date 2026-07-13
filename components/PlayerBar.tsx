@@ -84,6 +84,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
           className="text-[14px] font-medium text-white truncate leading-tight"
           data-shared-element="song-title"
           data-player-shared-source="title"
+          data-liquid-adaptive="true"
         >
             {song.title}
         </h4>
@@ -91,6 +92,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
           className="flex items-center text-zinc-400"
           data-shared-element="song-artist"
           data-player-shared-source="artist"
+          data-liquid-adaptive="true"
         >
           <span className="text-[12px] truncate">{song.artist}</span>
         </div>

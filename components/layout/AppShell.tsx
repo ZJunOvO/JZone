@@ -11,7 +11,6 @@ import { useStore } from '../../store';
 import { feedback } from '../feedback';
 import { useLiquidGlassAdaptiveForeground } from '../../hooks/useLiquidGlassAdaptiveForeground';
 import { SharedElementLayer } from '../motion/SharedElementLayer';
-import { runViewTransition } from '../../utils/viewTransition';
 import {
   getDefaultPlayerOrigin,
   getDefaultPlayerSharedOrigin,
@@ -65,7 +64,6 @@ export const AppShell: React.FC = () => {
   const miniSettleResetTimerRef = React.useRef<number | null>(null);
   const routeFallbackControls = useAnimationControls();
   const previousRouteRef = React.useRef(activeTab);
-  const supportsViewTransition = typeof document !== 'undefined' && 'startViewTransition' in document;
 
   useAutoFullscreen();
   useLiquidGlassAdaptiveForeground();
@@ -81,19 +79,20 @@ export const AppShell: React.FC = () => {
   }, [activeTab]);
 
   React.useLayoutEffect(() => {
-    if (supportsViewTransition || previousRouteRef.current === activeTab) return;
+    if (previousRouteRef.current === activeTab) return;
     previousRouteRef.current = activeTab;
-    routeFallbackControls.set({ opacity: 0.76, y: 6, filter: 'blur(5px)' });
+    routeFallbackControls.stop();
+    routeFallbackControls.set({ opacity: 0.82, x: 8, scale: 0.998 });
     const frame = window.requestAnimationFrame(() => {
       void routeFallbackControls.start({
         opacity: 1,
-        y: 0,
-        filter: 'blur(0px)',
+        x: 0,
+        scale: 1,
         transition: { duration: 0.26, ease: [0.22, 0.74, 0.22, 1] },
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeTab, routeFallbackControls, supportsViewTransition]);
+  }, [activeTab, routeFallbackControls]);
 
   React.useEffect(() => {
     if (songs.length > 0) void loadPlayerView();
@@ -233,7 +232,7 @@ export const AppShell: React.FC = () => {
           className="jzone-route-stage min-h-full"
           data-route={activeTab}
           initial={false}
-          animate={supportsViewTransition ? undefined : routeFallbackControls}
+          animate={routeFallbackControls}
         >
         <Suspense fallback={<PageFallback />}>
           {activeTab === 'home' && <Home />}
@@ -246,7 +245,7 @@ export const AppShell: React.FC = () => {
           {activeTab === 'profile' && (
             <Profile
               userId={profileUserId}
-              onBack={profileUserId ? () => runViewTransition(() => setProfileUserId(undefined)) : undefined}
+              onBack={profileUserId ? () => setProfileUserId(undefined) : undefined}
             />
           )}
         </Suspense>
@@ -300,10 +299,8 @@ export const AppShell: React.FC = () => {
       <BottomNavigation
         currentTab={activeTab}
         setTab={(tab) => {
-          runViewTransition(() => {
-            setActiveTab(tab);
-            if (tab === 'profile') setProfileUserId(undefined);
-          });
+          setActiveTab(tab);
+          if (tab === 'profile') setProfileUserId(undefined);
         }}
       />
 

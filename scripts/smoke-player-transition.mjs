@@ -232,12 +232,20 @@ try {
   const readPlayerMenu = async () => page.evaluate(() => {
     const menu = document.querySelector('.liquid-context-menu-panel');
     const content = menu?.querySelector(':scope > div.relative.z-10');
+    const material = menu?.querySelector('[data-liquid-material]');
+    const rim = menu?.querySelector('[data-liquid-motion-rim]');
+    const shell = menu?.querySelector('[data-liquid-motion-shell]');
     const glass = menu?.querySelector('.liquid-tab-f-glass');
     return {
       exists: Boolean(menu),
       buttonCount: menu?.querySelectorAll('button').length ?? 0,
       contentOpacity: content ? Number(getComputedStyle(content).opacity) : 0,
       contentFilter: content ? getComputedStyle(content).filter : null,
+      materialOpacity: material ? Number(getComputedStyle(material).opacity) : 0,
+      rimOpacity: rim ? Number(getComputedStyle(rim).opacity) : 0,
+      rimFilter: rim ? getComputedStyle(rim).filter : null,
+      shellOpacity: shell ? Number(getComputedStyle(shell).opacity) : 0,
+      shellLayerOpacity: shell ? getComputedStyle(shell).getPropertyValue('--lg-motion-layer-opacity').trim() : null,
       glassFilter: glass ? getComputedStyle(glass).backdropFilter : null,
     };
   });
@@ -246,51 +254,84 @@ try {
   });
 
   await page.getByTestId('player-more-menu').click();
-  await page.waitForTimeout(90);
+  await page.waitForTimeout(35);
+  const playerMenuFirstFrame = await readPlayerMenu();
+  assert(playerMenuFirstFrame.contentOpacity < 0.82 && playerMenuFirstFrame.contentFilter?.includes('blur('), `播放页 Mini 菜单首帧内容没有参与模糊入场：${JSON.stringify(playerMenuFirstFrame)}`);
+  assert(playerMenuFirstFrame.materialOpacity < 0.82 && playerMenuFirstFrame.rimOpacity < 0.82, `播放页 Mini 菜单首帧材质或高光提前完成：${JSON.stringify(playerMenuFirstFrame)}`);
+  assert(Math.abs(playerMenuFirstFrame.materialOpacity - playerMenuFirstFrame.rimOpacity) < 0.18, `播放页 Mini 菜单首帧材质与高光不同步：${JSON.stringify(playerMenuFirstFrame)}`);
+  await page.waitForTimeout(55);
   const playerMenuFirstOpen = await readPlayerMenu();
   assert(playerMenuFirstOpen.buttonCount >= 5 && playerMenuFirstOpen.contentOpacity > 0.2, `播放页 Mini 菜单首次打开缺少内容：${JSON.stringify(playerMenuFirstOpen)}`);
   assert(playerMenuFirstOpen.glassFilter?.includes('url('), `播放页 Mini 菜单首次打开缺少材质：${JSON.stringify(playerMenuFirstOpen)}`);
   await requestPlayerMenuClose();
+  await page.waitForTimeout(170);
+  const playerMenuClosing = await readPlayerMenu();
+  assert(playerMenuClosing.contentOpacity > 0.04 && playerMenuClosing.materialOpacity > 0.04, `播放页 Mini 菜单退出中途已有图层提前消失：${JSON.stringify(playerMenuClosing)}`);
+  assert(playerMenuClosing.contentOpacity < 0.88 && playerMenuClosing.materialOpacity < 0.88 && playerMenuClosing.rimOpacity < 0.88, `播放页 Mini 菜单退出中途有图层尚未开始淡出：${JSON.stringify(playerMenuClosing)}`);
+  assert(Math.abs(playerMenuClosing.materialOpacity - playerMenuClosing.rimOpacity) < 0.18, `播放页 Mini 菜单退出时材质与高光不同步：${JSON.stringify(playerMenuClosing)}`);
   await page.locator('.liquid-context-menu-panel').waitFor({ state: 'detached', timeout: 900 });
 
   await page.getByTestId('player-more-menu').click();
-  await page.waitForTimeout(90);
+  await page.waitForTimeout(35);
+  const playerMenuSlowReopenFirstFrame = await readPlayerMenu();
+  assert(playerMenuSlowReopenFirstFrame.contentOpacity < 0.82 && playerMenuSlowReopenFirstFrame.contentFilter?.includes('blur('), `播放页 Mini 菜单慢速重开首帧跳过内容动画：${JSON.stringify(playerMenuSlowReopenFirstFrame)}`);
+  assert(playerMenuSlowReopenFirstFrame.materialOpacity < 0.82 && playerMenuSlowReopenFirstFrame.rimOpacity < 0.82, `播放页 Mini 菜单慢速重开首帧材质不同步：${JSON.stringify(playerMenuSlowReopenFirstFrame)}`);
+  await page.waitForTimeout(55);
   const playerMenuSlowReopen = await readPlayerMenu();
   assert(playerMenuSlowReopen.buttonCount >= 5 && playerMenuSlowReopen.contentOpacity > 0.2, `播放页 Mini 菜单慢速重开后内容为空：${JSON.stringify(playerMenuSlowReopen)}`);
   await requestPlayerMenuClose();
   await page.waitForTimeout(80);
   await page.getByTestId('player-more-menu').click();
-  await page.waitForTimeout(100);
+  await page.waitForTimeout(35);
+  const playerMenuRapidReopenFirstFrame = await readPlayerMenu();
+  assert(playerMenuRapidReopenFirstFrame.contentOpacity < 0.82 && playerMenuRapidReopenFirstFrame.contentFilter?.includes('blur('), `播放页 Mini 菜单退出中断后文字图标直接出现：${JSON.stringify(playerMenuRapidReopenFirstFrame)}`);
+  assert(playerMenuRapidReopenFirstFrame.materialOpacity < 0.82 && playerMenuRapidReopenFirstFrame.rimOpacity < 0.82, `播放页 Mini 菜单退出中断后材质或高光提前完成：${JSON.stringify(playerMenuRapidReopenFirstFrame)}`);
+  assert(Math.abs(playerMenuRapidReopenFirstFrame.materialOpacity - playerMenuRapidReopenFirstFrame.rimOpacity) < 0.18, `播放页 Mini 菜单退出中断后材质与高光不同步：${JSON.stringify(playerMenuRapidReopenFirstFrame)}`);
+  await page.waitForTimeout(65);
   const playerMenuRapidReopen = await readPlayerMenu();
   assert(playerMenuRapidReopen.buttonCount >= 5 && playerMenuRapidReopen.contentOpacity > 0.2, `播放页 Mini 菜单快速重开后内容为空：${JSON.stringify(playerMenuRapidReopen)}`);
   assert(playerMenuRapidReopen.glassFilter?.includes('url('), `播放页 Mini 菜单快速重开后材质丢失：${JSON.stringify(playerMenuRapidReopen)}`);
   await requestPlayerMenuClose();
   await page.locator('.liquid-context-menu-panel').waitFor({ state: 'detached', timeout: 900 });
 
+  await startFrameProbe('comments-open', 720);
   await page.getByTestId('player-open-comments').click();
   await page.getByTestId('comments-sheet').waitFor({ state: 'visible', timeout: 2000 });
   await page.waitForTimeout(70);
   const commentsEnterTransform = await page.getByTestId('comments-sheet-panel').evaluate((element) => getComputedStyle(element).transform);
   assert(commentsEnterTransform !== 'none', `评论区没有执行二级页面进场：${commentsEnterTransform}`);
+  await page.waitForTimeout(650);
+  const commentsOpenFrames = await readFrameProbe('comments-open');
+  assertFrameBudget(commentsOpenFrames, '评论区打开');
+  await startFrameProbe('comments-close', 520);
   await page.getByTestId('comments-sheet-close').click();
   await page.waitForTimeout(40);
   assert((await page.getByTestId('comments-sheet').count()) === 1, '评论区关闭时没有保留退出动画生命周期');
   const commentsExitTransform = await page.getByTestId('comments-sheet-panel').evaluate((element) => getComputedStyle(element).transform);
   assert(commentsExitTransform !== 'none', `评论区没有执行返回动画：${commentsExitTransform}`);
   await page.waitForTimeout(520);
+  const commentsCloseFrames = await readFrameProbe('comments-close');
+  assertFrameBudget(commentsCloseFrames, '评论区关闭');
   assert((await page.getByTestId('comments-sheet').count()) === 0, '评论区退出动画结束后仍残留');
 
+  await startFrameProbe('queue-open', 720);
   await page.getByTestId('player-open-queue').click();
   await page.getByTestId('player-queue-sheet').waitFor({ state: 'visible', timeout: 2000 });
   await page.waitForTimeout(70);
   const queueEnterTransform = await page.getByTestId('player-queue-panel').evaluate((element) => getComputedStyle(element).transform);
   assert(queueEnterTransform !== 'none', `待播清单没有执行二级页面进场：${queueEnterTransform}`);
+  await page.waitForTimeout(650);
+  const queueOpenFrames = await readFrameProbe('queue-open');
+  assertFrameBudget(queueOpenFrames, '待播清单打开');
+  await startFrameProbe('queue-close', 520);
   await page.getByTestId('player-queue-close').click();
   await page.waitForTimeout(40);
   assert((await page.getByTestId('player-queue-sheet').count()) === 1, '待播清单关闭时没有保留退出动画生命周期');
   const queueExitTransform = await page.getByTestId('player-queue-panel').evaluate((element) => getComputedStyle(element).transform);
   assert(queueExitTransform !== 'none', `待播清单没有执行返回动画：${queueExitTransform}`);
   await page.waitForTimeout(520);
+  const queueCloseFrames = await readFrameProbe('queue-close');
+  assertFrameBudget(queueCloseFrames, '待播清单关闭');
   assert((await page.getByTestId('player-queue-sheet').count()) === 0, '待播清单退出动画结束后仍残留');
 
   await page.getByTestId('player-view-close').click();
@@ -373,6 +414,41 @@ try {
   await page.getByTestId('player-view-close').click();
   await page.waitForTimeout(450);
 
+  const persistentRouteLayers = await page.evaluate(async () => {
+    document.querySelector('[data-testid="bottom-nav-home"]')?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const miniLayer = document.querySelector('[data-testid="mini-player-layer"]');
+    const mini = document.querySelector('[data-testid="mini-player"]');
+    const bottomNav = document.querySelector('[data-testid="bottom-nav-layer"]');
+    const miniGlass = mini?.querySelector('.liquid-tab-f-glass');
+    const navGlass = bottomNav?.querySelector('.liquid-tab-f-glass');
+    const routeStage = document.querySelector('.jzone-route-stage');
+    const read = (element) => element ? {
+      opacity: Number(getComputedStyle(element).opacity),
+      visibility: getComputedStyle(element).visibility,
+      display: getComputedStyle(element).display,
+      viewTransitionName: getComputedStyle(element).viewTransitionName,
+      rect: element.getBoundingClientRect().toJSON(),
+    } : null;
+    return {
+      miniLayer: read(miniLayer),
+      mini: read(mini),
+      bottomNav: read(bottomNav),
+      miniLayerCount: document.querySelectorAll('[data-testid="mini-player-layer"]').length,
+      bottomNavCount: document.querySelectorAll('[data-testid="bottom-nav-layer"]').length,
+      miniFilter: miniGlass ? getComputedStyle(miniGlass).backdropFilter : null,
+      navFilter: navGlass ? getComputedStyle(navGlass).backdropFilter : null,
+      routeOpacity: routeStage ? Number(getComputedStyle(routeStage).opacity) : null,
+      routeTransform: routeStage ? getComputedStyle(routeStage).transform : null,
+    };
+  });
+  assert((persistentRouteLayers.routeOpacity ?? 1) < 0.99 || persistentRouteLayers.routeTransform !== 'none', `播放器持久层测试时一级路由动画未运行：${JSON.stringify(persistentRouteLayers)}`);
+  assert(persistentRouteLayers.miniLayerCount === 1 && persistentRouteLayers.bottomNavCount === 1, `路由切换时生成了重复 Mini/Tab：${JSON.stringify(persistentRouteLayers)}`);
+  assert((persistentRouteLayers.mini?.rect.height ?? 0) > 40 && persistentRouteLayers.mini?.opacity === 1 && persistentRouteLayers.mini?.visibility === 'visible', `路由转场期间播放中的 Mini 播放器消失：${JSON.stringify(persistentRouteLayers)}`);
+  assert((persistentRouteLayers.bottomNav?.rect.height ?? 0) > 50 && persistentRouteLayers.bottomNav?.opacity === 1 && persistentRouteLayers.bottomNav?.visibility === 'visible', `路由转场期间底部 Tab 消失：${JSON.stringify(persistentRouteLayers)}`);
+  assert(persistentRouteLayers.miniFilter?.includes('url(') && persistentRouteLayers.navFilter?.includes('url('), `路由转场期间 Mini/Tab 折射材质丢失：${JSON.stringify(persistentRouteLayers)}`);
+  await page.waitForTimeout(320);
+
   if (process.env.JZONE_CAPTURE_FRAMES === '1') {
     for (const offset of [100, 260, 460]) {
       await page.getByTestId('mini-player').click({ position: { x: 180, y: 28 } });
@@ -395,8 +471,17 @@ try {
 
   const relevantErrors = consoleErrors.filter((message) => !/Failed to load resource.*404/i.test(message));
   assert(relevantErrors.length === 0, `播放器转场产生控制台错误：${JSON.stringify(relevantErrors)}`);
-  const secondarySheets = { commentsEnterTransform, commentsExitTransform, queueEnterTransform, queueExitTransform };
-  const result = { ok: true, viewport: `${viewportWidth}x${viewportHeight}`, opening, closing, playerMenuFirstOpen, playerMenuSlowReopen, playerMenuRapidReopen, secondarySheets, rapidReversals, openingFrames, sampledRapidFrames, rapidFrames, consoleErrors };
+  const secondarySheets = {
+    commentsEnterTransform,
+    commentsExitTransform,
+    queueEnterTransform,
+    queueExitTransform,
+    commentsOpenFrames,
+    commentsCloseFrames,
+    queueOpenFrames,
+    queueCloseFrames,
+  };
+  const result = { ok: true, viewport: `${viewportWidth}x${viewportHeight}`, opening, closing, playerMenuFirstOpen, playerMenuSlowReopen, playerMenuRapidReopen, secondarySheets, rapidReversals, persistentRouteLayers, openingFrames, sampledRapidFrames, rapidFrames, consoleErrors };
   console.log(JSON.stringify(process.env.JZONE_COMPACT === '1' ? {
     ok: result.ok,
     viewport: result.viewport,

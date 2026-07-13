@@ -62,9 +62,9 @@ image.setAttributeNS(
 
 同一页面的液态玻璃前景也禁止使用 `mix-blend-mode`。在 Chromium / Android WebView 中，混合模式会改变 SVG `backdrop-filter` 的合成顺序；项目实测结果是封面和背景折射同时消失，只剩透明底色与边缘高光。
 
-## 5. 图标明暗自适应
+## 5. 文字与图标明暗自适应
 
-液态玻璃控件外层标记 `data-liquid-control-root`，需要适配的中性图标或按钮标记 `data-liquid-adaptive="true"`。全局 `useLiquidGlassAdaptiveForeground` 会：
+液态玻璃控件外层标记 `data-liquid-control-root`，需要适配的中性文字容器、按钮或图标标记 `data-liquid-adaptive="true"`。优先把标记放在同时包含文字和图标的按钮上，让子级继承同一颜色。全局 `useLiquidGlassAdaptiveForeground` 会：
 
 - 低频采样图标中心及周围的图片或背景亮度。
 - 浅色背景设置深色前景，深色背景设置浅色前景。
@@ -114,7 +114,7 @@ Shuding F 位移默认强调边缘。小圆形按钮几乎全部处于边缘区�
 
 1. `LiquidGlassSurface` 保持静态并负责真实背景采样。
 2. `data-liquid-motion-shell` 使用 `top/right/bottom/left` 插值改变整块玻璃边界，完成不会创建变换祖先的 Q 弹。
-3. `liquid-glass-elastic-rim` 与内容兄弟层同步完成轮廓、`scale + blur + opacity` 动画。
+3. 材质视觉层、`liquid-glass-elastic-rim` 与内容兄弟层由同一时间轴同步完成轮廓、`scale + blur + opacity` 动画；采样外壳本身保持 `opacity: 1`。
 4. 菜单关闭时先反向模糊和缩小，再由调用方卸载。
 
 该结构既保留 iOS 风格的可见形变，也不会让动画层成为新的 Backdrop Root。
@@ -124,7 +124,7 @@ Shuding F 位移默认强调边缘。小圆形按钮几乎全部处于边缘区�
 - [ ] 外层具有明确尺寸、圆角和 `overflow-hidden`。
 - [ ] 只挂载一个 `LiquidGlassSurface`。
 - [ ] 内容使用 `relative z-10`。
-- [ ] 外层标记 `data-liquid-control-root`，中性图标标记 `data-liquid-adaptive="true"`。
+- [ ] 外层标记 `data-liquid-control-root`，中性文字和图标的共同容器标记 `data-liquid-adaptive="true"`。
 - [ ] 语义色图标排除自动反相。
 - [ ] 页面不存在为图标适配而添加的 `mix-blend-mode`。
 - [ ] 祖先不存在 `filter` 或第二层 `backdrop-filter`。

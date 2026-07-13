@@ -17,7 +17,7 @@ interface LiquidGlassMotionContentProps {
   animateOnMount?: boolean;
 }
 
-export const LIQUID_MENU_EXIT_MS = 360;
+export const LIQUID_MENU_EXIT_MS = 380;
 
 const motionProfiles = {
   menu: {
@@ -71,31 +71,61 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
       enterTransition,
       exitTransition,
       shellInitial: reduceMotion
-        ? { top: 0, right: 0, bottom: 0, left: 0, '--lg-motion-blur-boost': '0px' }
+        ? {
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            '--lg-motion-blur-boost': '0px',
+            '--lg-motion-layer-opacity': 0,
+            '--lg-motion-rim-blur': '0px',
+          }
         : {
             top: config.verticalInset,
             right: config.horizontalInset,
             bottom: config.verticalInset,
             left: config.horizontalInset,
             '--lg-motion-blur-boost': `${config.initialBlur * 0.72}px`,
+            '--lg-motion-layer-opacity': 0,
+            '--lg-motion-rim-blur': '7px',
           },
       shellEnter: reduceMotion
-        ? { top: 0, right: 0, bottom: 0, left: 0, '--lg-motion-blur-boost': '0px' }
+        ? {
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            '--lg-motion-blur-boost': '0px',
+            '--lg-motion-layer-opacity': 1,
+            '--lg-motion-rim-blur': '0px',
+          }
         : {
             top: [config.verticalInset, 6, -2, 0],
             right: [config.horizontalInset, 5, -2, 0],
             bottom: [config.verticalInset, 6, -2, 0],
             left: [config.horizontalInset, 5, -2, 0],
             '--lg-motion-blur-boost': '0px',
+            '--lg-motion-layer-opacity': [0, 0.68, 0.96, 1],
+            '--lg-motion-rim-blur': ['7px', '3px', '0.8px', '0px'],
           },
       shellClose: reduceMotion
-        ? { top: 0, right: 0, bottom: 0, left: 0, '--lg-motion-blur-boost': '0px' }
+        ? {
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            '--lg-motion-blur-boost': '0px',
+            '--lg-motion-layer-opacity': 0,
+            '--lg-motion-rim-blur': '0px',
+          }
         : {
             top: config.verticalInset * 0.72,
             right: config.horizontalInset * 0.72,
             bottom: config.verticalInset * 0.72,
             left: config.horizontalInset * 0.72,
             '--lg-motion-blur-boost': `${config.exitBlur * 0.78}px`,
+            '--lg-motion-layer-opacity': 0,
+            '--lg-motion-rim-blur': '9px',
           },
       contentInitial: reduceMotion
         ? { opacity: 0 }
@@ -121,7 +151,8 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
       return;
     }
     if (wasClosing) {
-      contentControls.set({ opacity: 1, scale: 1, filter: 'blur(0px)' });
+      contentControls.set(animation.contentInitial);
+      void contentControls.start({ ...animation.contentAnimate, transition: animation.enterTransition });
       return;
     }
     if (animateOnMount) {
@@ -142,7 +173,15 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
           ? animation.shellClose
           : animateOnMount
             ? animation.shellEnter
-            : { top: 0, right: 0, bottom: 0, left: 0, '--lg-motion-blur-boost': '0px' }}
+            : {
+                top: 0,
+                right: 0,
+                bottom: 0,
+                left: 0,
+                '--lg-motion-blur-boost': '0px',
+                '--lg-motion-layer-opacity': 1,
+                '--lg-motion-rim-blur': '0px',
+              }}
         transition={closing ? animation.exitTransition : animation.enterTransition}
       >
         <LiquidGlassSurface
@@ -152,11 +191,8 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
           eagerMap
           borderRadiusClass={borderRadiusClass}
         />
-        <motion.div
+        <div
           className={`liquid-glass-elastic-rim pointer-events-none absolute inset-0 z-[2] ${borderRadiusClass}`}
-          initial={animateOnMount && !reduceMotion ? { opacity: 0, filter: 'blur(7px)' } : false}
-          animate={closing ? { opacity: 0, filter: 'blur(9px)' } : { opacity: 1, filter: 'blur(0px)' }}
-          transition={closing ? animation.exitTransition : animation.enterTransition}
           data-liquid-motion-rim
         />
       </motion.div>

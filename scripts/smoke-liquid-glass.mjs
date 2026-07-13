@@ -100,6 +100,8 @@ try {
     const menu = document.querySelector('.liquid-context-menu-panel');
     const content = document.querySelector('.liquid-context-menu-panel > div.relative.z-10');
     const shell = menu?.querySelector('[data-liquid-motion-shell]');
+    const material = menu?.querySelector('[data-liquid-material]');
+    const rim = menu?.querySelector('[data-liquid-motion-rim]');
     const glass = menu?.querySelector('.liquid-tab-f-glass');
     const mapImage = menu?.querySelector('feImage');
     const menuRect = menu?.getBoundingClientRect();
@@ -110,6 +112,8 @@ try {
       menuWidth: menuRect?.width,
       shellWidth: shellRect?.width,
       shellOpacity: shell ? Number(getComputedStyle(shell).opacity) : null,
+      materialOpacity: material ? Number(getComputedStyle(material).opacity) : null,
+      rimOpacity: rim ? Number(getComputedStyle(rim).opacity) : null,
       glassFilter: glass ? getComputedStyle(glass).backdropFilter : null,
       mapReady: (mapImage?.getAttribute('href') || mapImage?.getAttribute('xlink:href') || '').startsWith('data:image/'),
     } : null;
@@ -117,6 +121,8 @@ try {
   assert(opening && (opening.filter !== 'none' || opening.transform !== 'none'), 'Mini 菜单没有执行缩放模糊入场');
   assert((opening?.shellWidth ?? 0) < (opening?.menuWidth ?? 0), 'Mini 菜单整个玻璃壳没有执行入场形变');
   assert((opening?.shellOpacity ?? 0) > 0.99, `Mini 菜单首帧材质外壳不透明度建立了 Backdrop Root：${JSON.stringify(opening)}`);
+  assert((opening?.materialOpacity ?? 1) < 0.82 && (opening?.rimOpacity ?? 1) < 0.82, `Mini 菜单材质或高光首帧提前完成：${JSON.stringify(opening)}`);
+  assert(Math.abs((opening?.materialOpacity ?? 0) - (opening?.rimOpacity ?? 0)) < 0.18, `Mini 菜单材质和高光没有同步入场：${JSON.stringify(opening)}`);
   assert(opening?.glassFilter?.includes('url('), `Mini 菜单首帧缺少折射滤镜：${JSON.stringify(opening)}`);
   assert(opening?.mapReady, `Mini 菜单首帧位移图尚未生成：${JSON.stringify(opening)}`);
   await mkdir('output/playwright', { recursive: true });
@@ -129,6 +135,9 @@ try {
     const nav = document.querySelector('[data-testid="bottom-nav-library"]')?.closest('[data-liquid-control-root]');
     const miniMaterial = mini?.querySelector('[data-liquid-material]');
     const menuMaterial = menu?.querySelector('[data-liquid-material]');
+    const adaptiveMenuButton = menu?.querySelector('button[data-liquid-adaptive="true"]');
+    const adaptiveMenuIcon = adaptiveMenuButton?.querySelector('svg');
+    const adaptiveMiniTitle = mini?.querySelector('[data-player-shared-source="title"]');
     const miniRect = mini?.getBoundingClientRect();
     const navRect = nav?.getBoundingClientRect();
     const unsafeAncestors = [];
@@ -150,6 +159,10 @@ try {
       menuRootTransform: menu ? getComputedStyle(menu).transform : null,
       menuRootWillChange: menu ? getComputedStyle(menu).willChange : null,
       gap: miniRect && navRect ? navRect.top - miniRect.bottom : null,
+      adaptiveMenuButtons: menu?.querySelectorAll('button[data-liquid-adaptive="true"]').length ?? 0,
+      adaptiveMenuButtonColor: adaptiveMenuButton ? getComputedStyle(adaptiveMenuButton).color : null,
+      adaptiveMenuIconColor: adaptiveMenuIcon ? getComputedStyle(adaptiveMenuIcon).color : null,
+      adaptiveMiniTitle: adaptiveMiniTitle?.getAttribute('data-liquid-adaptive') ?? null,
       unsafeAncestors,
       visibleImages: [...document.images].filter((image) => {
         const rect = image.getBoundingClientRect();
@@ -162,6 +175,9 @@ try {
   assert(state.menuFilter?.includes('url('), 'Mini 菜单缺少 SVG 背景折射');
   assert(state.miniCoverage === 'full' && state.menuCoverage === 'full', '宽面板没有启用全幅折射');
   assert(state.menuGeometry === 'panel', 'Mini 菜单没有启用纵向面板折射几何');
+  assert(state.adaptiveMenuButtons >= 4, `Mini 菜单文字没有纳入液态玻璃前景适配：${JSON.stringify(state)}`);
+  assert(state.adaptiveMenuButtonColor === state.adaptiveMenuIconColor, `Mini 菜单文字与图标没有继承同一前景色：${JSON.stringify(state)}`);
+  assert(state.adaptiveMiniTitle === 'true', 'Mini 播放器标题文字没有纳入液态玻璃前景适配');
   assert(state.gap >= 12 && state.gap <= 15, `Mini 播放器与 Tab 间距异常：${state.gap}`);
   assert(state.unsafeAncestors.length === 0, `Mini 播放器存在不安全合成祖先：${JSON.stringify(state.unsafeAncestors)}`);
   assert(state.menuRootFilter === 'none' && state.menuRootTransform === 'none', 'Mini 菜单材质根仍存在 filter 或 transform');
@@ -215,6 +231,7 @@ try {
     const menu = document.querySelector('.liquid-context-menu-panel');
     const content = menu?.querySelector(':scope > div.relative.z-10');
     const shell = menu?.querySelector('[data-liquid-motion-shell]');
+    const material = menu?.querySelector('[data-liquid-material]');
     const glass = menu?.querySelector('.liquid-tab-f-glass');
     const rim = menu?.querySelector('[data-liquid-motion-rim]');
     return content ? {
@@ -222,12 +239,15 @@ try {
       filter: getComputedStyle(content).filter,
       transform: getComputedStyle(content).transform,
       shellOpacity: shell ? Number(getComputedStyle(shell).opacity) : null,
+      materialOpacity: material ? Number(getComputedStyle(material).opacity) : null,
       glassFilter: glass ? getComputedStyle(glass).backdropFilter : null,
       rimOpacity: rim ? Number(getComputedStyle(rim).opacity) : null,
     } : { exists: false };
   });
   assert(closing.exists && (closing.filter !== 'none' || closing.transform !== 'none'), 'Mini 菜单关闭时没有反向缩放模糊');
   assert(closing.shellOpacity !== null && closing.shellOpacity > 0.99, `Mini 菜单退出时材质采样被透明度动画截断：${JSON.stringify(closing)}`);
+  assert((closing.materialOpacity ?? 1) < 0.72 && (closing.rimOpacity ?? 1) < 0.72, `Mini 菜单退出时玻璃或高光仍然滞留：${JSON.stringify(closing)}`);
+  assert(Math.abs((closing.materialOpacity ?? 0) - (closing.rimOpacity ?? 0)) < 0.18, `Mini 菜单退出时玻璃和高光不同步：${JSON.stringify(closing)}`);
   assert(Number(closing.glassFilter?.match(/blur\(([\d.]+)px\)/)?.[1] ?? 0) > 3.5, `Mini 菜单退出时整层玻璃没有同步模糊：${JSON.stringify(closing)}`);
   assert((closing.rimOpacity ?? 1) < 0.7, `Mini 菜单内容消失时高光层仍然滞留：${JSON.stringify(closing)}`);
   await page.waitForTimeout(350);

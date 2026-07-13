@@ -152,8 +152,9 @@ export const CollectionContextMenu: React.FC<{
                 className={`liquid-glass-interactive ${entry.danger ? 'liquid-glass-semantic' : ''} w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-colors ${
                   entry.danger ? 'text-red-500 hover:bg-red-500/10' : 'text-zinc-200 hover:text-white hover:bg-white/10'
                 }`}
+                data-liquid-adaptive={entry.danger ? undefined : 'true'}
               >
-                <Icon size={16} data-liquid-adaptive={entry.danger ? undefined : 'true'} />
+                <Icon size={16} />
                 {entry.label}
               </button>
             );

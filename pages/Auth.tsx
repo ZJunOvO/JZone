@@ -111,12 +111,12 @@ export const Auth: React.FC = () => {
         <div className="auth-aurora-light auth-aurora-light-b" />
       </div>
 
-      <div className="auth-liquid-card frosted-auth-card relative w-full max-w-md rounded-[34px]">
+      <div className="auth-liquid-card frosted-auth-card relative w-full max-w-md rounded-[34px]" data-liquid-control-root>
         <div className="relative rounded-[34px] p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-black text-white tracking-tight">{title}</h1>
-            <p className="text-zinc-300 text-sm font-medium mt-1">仅注册登录用户可访问站点内容</p>
+            <h1 className="text-3xl font-black text-white tracking-tight" data-liquid-adaptive="true">{title}</h1>
+            <p className="text-zinc-300 text-sm font-medium mt-1" data-liquid-adaptive="true">仅注册登录用户可访问站点内容</p>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-red-600/15 border border-red-500/20 flex items-center justify-center text-red-500">
             <Icons.Play size={20} fill="currentColor" />
@@ -133,6 +133,7 @@ export const Auth: React.FC = () => {
             onClick={() => setDiagOpen((v) => !v)}
             className="text-[10px] font-bold uppercase tracking-widest text-zinc-300/75 hover:text-white transition"
             type="button"
+            data-liquid-adaptive="true"
           >
             诊断
           </button>
@@ -145,7 +146,7 @@ export const Auth: React.FC = () => {
 
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
-            <label htmlFor="auth-email" className="text-[10px] text-zinc-300/80 font-bold uppercase tracking-widest ml-1">邮箱</label>
+            <label htmlFor="auth-email" className="text-[10px] text-zinc-300/80 font-bold uppercase tracking-widest ml-1" data-liquid-adaptive="true">邮箱</label>
             <input
               ref={emailRef}
               id="auth-email"
@@ -163,7 +164,7 @@ export const Auth: React.FC = () => {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="auth-password" className="text-[10px] text-zinc-300/80 font-bold uppercase tracking-widest ml-1">密码</label>
+            <label htmlFor="auth-password" className="text-[10px] text-zinc-300/80 font-bold uppercase tracking-widest ml-1" data-liquid-adaptive="true">密码</label>
             <input
               ref={passwordRef}
               id="auth-password"
@@ -199,6 +200,7 @@ export const Auth: React.FC = () => {
           <button
             type="button"
             onClick={() => switchMode('login')}
+            data-liquid-adaptive="true"
             className={`text-[11px] font-bold uppercase tracking-widest ${
               mode === 'login' ? 'text-white' : 'text-zinc-300/70 hover:text-white'
             }`}
@@ -209,6 +211,7 @@ export const Auth: React.FC = () => {
             type="button"
             onClick={() => switchMode('signup')}
             disabled={!enableSignup}
+            data-liquid-adaptive={enableSignup ? 'true' : undefined}
             className={`text-[11px] font-bold uppercase tracking-widest ${
               mode === 'signup'
                 ? 'text-white'
@@ -222,12 +225,12 @@ export const Auth: React.FC = () => {
         </div>
 
         {!enableSignup && (
-          <div className="mt-4 text-[12px] text-zinc-300/80">
+          <div className="mt-4 text-[12px] text-zinc-300/80" data-liquid-adaptive="true">
             注册入口已关闭。若需要新增账号，请暂时打开 VITE_ENABLE_SIGNUP 并在 Supabase 控制台允许注册。
           </div>
         )}
 
-        <div className="mt-6 text-[10px] text-zinc-400/80 font-mono text-center">Build: {BUILD_ID}</div>
+        <div className="mt-6 text-[10px] text-zinc-400/80 font-mono text-center" data-liquid-adaptive="true">Build: {BUILD_ID}</div>
         </div>
       </div>
     </div>

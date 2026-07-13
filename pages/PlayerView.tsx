@@ -98,8 +98,9 @@ const QueueSongRow: React.FC<{
   );
 
   const className = `flex items-center p-3 rounded-2xl transition group touch-pan-y ${active ? 'bg-white/10' : 'hover:bg-white/5'}`;
+  const rowStyle: React.CSSProperties = { contentVisibility: 'auto', containIntrinsicSize: '72px' };
   if (!sorting) {
-    return <div onClick={onPlay} className={`${className} cursor-pointer`}>{content}</div>;
+    return <div onClick={onPlay} className={`${className} cursor-pointer`} style={rowStyle}>{content}</div>;
   }
   return (
     <Reorder.Item
@@ -108,6 +109,7 @@ const QueueSongRow: React.FC<{
       dragControls={dragControls}
       onClick={onPlay}
       className={className}
+      style={rowStyle}
       whileDrag={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.12)', zIndex: 10 }}
     >
       {content}
@@ -500,16 +502,18 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
         <motion.div
           className="absolute inset-0 z-50"
           data-testid="player-queue-sheet"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: isQueueClosing ? 0 : 1 }}
-          transition={{ duration: reduceMotion ? 0.1 : 0.2, ease: 'easeOut' }}
+          initial={false}
+          animate={{ opacity: 1 }}
         >
           <motion.div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
+            className="absolute inset-0 bg-black/60"
             onClick={closeQueue}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: isQueueClosing ? 0 : 1 }}
+            transition={{ duration: reduceMotion ? 0.1 : 0.2, ease: 'easeOut' }}
           />
           <motion.div
-            className="absolute inset-x-0 bottom-0 top-1/3 bg-zinc-900/60 backdrop-blur-3xl rounded-t-[32px] border-t border-white/10 flex flex-col shadow-[0_-20px_50px_rgba(0,0,0,0.5)]"
+            className="absolute inset-x-0 bottom-0 top-1/3 bg-zinc-900/95 rounded-t-[32px] border-t border-white/10 flex flex-col shadow-[0_-20px_50px_rgba(0,0,0,0.5)] will-change-transform transform-gpu"
             data-testid="player-queue-panel"
             initial={reduceMotion ? { opacity: 0 } : { y: '100%', opacity: 0.86 }}
             animate={isQueueClosing ? { y: '100%', opacity: 0.82 } : { y: 0, opacity: 1 }}
@@ -546,7 +550,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 pb-12 no-scrollbar">
+            <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-12 no-scrollbar">
               {isQueueSorting ? (
                 <Reorder.Group axis="y" values={queueSongs.map((item) => item.id)} onReorder={reorderQueue} className="space-y-1 mt-4">
                   {queueSongs.map((queueSong) => (

@@ -240,8 +240,9 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({ isOp
                             ? 'text-red-500 hover:bg-red-500/10' 
                             : 'text-zinc-300 hover:text-white hover:bg-white/10'
                         }`}
+                        data-liquid-adaptive={menuItem.danger ? undefined : 'true'}
                     >
-                        {menuItem.icon && <menuItem.icon size={16} data-liquid-adaptive={menuItem.danger ? undefined : 'true'} />}
+                        {menuItem.icon && <menuItem.icon size={16} />}
                         {menuItem.label}
                     </button>
                 ))}

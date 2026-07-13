@@ -942,10 +942,6 @@ body {
   animation: none;
 }
 
-.jzone-route-stage {
-  view-transition-name: jzone-route-content;
-}
-
 ::view-transition-group(jzone-route-content) {
   animation-duration: 280ms;
   animation-timing-function: cubic-bezier(0.22, 0.74, 0.22, 1);

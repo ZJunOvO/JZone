@@ -372,7 +372,13 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({
   useEffect(() => {
     if (!containerSize.width || !containerSize.height) return;
     if (!initializedRef.current) {
-      x.set(24);
+      const horizontalMargin = 18;
+      const fitScale = Math.max(
+        0.58,
+        Math.min(0.74, (containerSize.width - horizontalMargin * 2) / grid.totalWidth),
+      );
+      scale.set(fitScale);
+      x.set((containerSize.width - grid.totalWidth * fitScale) / 2);
       y.set(74);
       initializedRef.current = true;
     }
@@ -438,6 +444,8 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({
     <div
       ref={containerRef}
       data-bento-canvas
+      data-bento-scale={scaleValue.toFixed(3)}
+      data-bento-grid-width={grid.totalWidth}
       onPointerDown={(event) => { if (!isEditing) dragControls.start(event); }}
       onTouchStart={(event) => {
         if (event.touches.length >= 2) {
