@@ -9,6 +9,7 @@ import { getFallbackAvatarUrl, getQQAvatarUrl } from '../utils/avatar';
 import { AvatarWithFrame } from './AvatarWithFrame';
 import { useCurrentArtistProfile } from '../hooks/useCurrentArtistProfile';
 import { CommentItem } from './comments/CommentItem';
+import { createRuntimeUuid } from '../utils/runtimeId';
 
 const CommentShareModal = React.lazy(() => import('./comments/CommentShareModal').then((module) => ({
   default: module.CommentShareModal,
@@ -25,9 +26,7 @@ const formatTime = (time: number) => {
   return `${min}:${sec < 10 ? '0' : ''}${sec}`;
 };
 
-const createTemporaryCommentId = () => globalThis.crypto?.randomUUID
-  ? globalThis.crypto.randomUUID()
-  : `comment_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+const createTemporaryCommentId = () => createRuntimeUuid();
 
 export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose }) => {
   const {

@@ -28,21 +28,21 @@ export const supabaseApi = {
   ...profilesApi,
   ...songArtistsApi,
 
-  async createSignedAudioUrl(path: string, expiresInSeconds = 6 * 60 * 60) {
+  async createSignedAudioUrl(path: string, expiresInSeconds = 8 * 24 * 60 * 60) {
     return createSignedAudioUrl(path, expiresInSeconds);
   },
 
-  async createSignedCoverUrl(path: string, expiresInSeconds = 24 * 60 * 60) {
+  async createSignedCoverUrl(path: string, expiresInSeconds = 31 * 24 * 60 * 60) {
     return createSignedCoverUrl(path, expiresInSeconds);
   },
 
-  async createSignedAvatarUrl(path: string, expiresInSeconds = 24 * 60 * 60) {
+  async createSignedAvatarUrl(path: string, expiresInSeconds = 31 * 24 * 60 * 60) {
     return createSignedAvatarUrl(path, expiresInSeconds);
   },
 
-  clearCache() {
+  clearCache(options?: { media?: boolean }) {
     clearApiCache();
-    clearSignedUrlCache();
+    if (options?.media) clearSignedUrlCache();
   },
 };
 

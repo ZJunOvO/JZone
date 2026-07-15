@@ -10,29 +10,6 @@ html[data-profile-avatar-transition="pending"] [data-profile-avatar-target="true
   visibility: hidden !important;
 }
 
-[data-profile-background-visual="true"] {
-  transition: opacity 280ms cubic-bezier(0.22, 0.74, 0.22, 1);
-}
-
-/* 头像共享移动时暂停目标页和常驻玻璃的背景采样，避免同一帧重建多个滤镜层。 */
-html[data-profile-background-transition] [data-profile-background-visual="true"] {
-  opacity: 0 !important;
-}
-
-html[data-profile-background-transition] [data-profile-page="true"],
-html[data-profile-background-transition] [data-profile-page="true"] * {
-  filter: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-html[data-profile-background-transition] [data-liquid-material] .liquid-tab-f-glass,
-html[data-profile-background-transition] [data-liquid-material] .liquid-glass-mobile-backstop,
-html[data-profile-background-transition] .liquid-tab-lens {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
 .frosted-glass-panel,
 .frosted-glass-menu,
 .frosted-auth-card {

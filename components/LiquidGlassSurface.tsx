@@ -92,13 +92,14 @@ export const LiquidGlassSurface: React.FC<{
     return () => observer.disconnect();
   }, [lockInitialSize]);
 
+  React.useLayoutEffect(() => {
+    if (!eagerMap) return;
+    setMap(getCachedDisplacementMap(size.width, size.height, mapOptions));
+  }, [eagerMap, mapOptions, size.height, size.width]);
+
   React.useEffect(() => {
-    const updateMap = () => setMap(getCachedDisplacementMap(size.width, size.height, mapOptions));
-    if (!eagerMap) {
-      updateMap();
-      return;
-    }
-    updateMap();
+    if (eagerMap) return;
+    setMap(getCachedDisplacementMap(size.width, size.height, mapOptions));
   }, [eagerMap, mapOptions, size.height, size.width]);
 
   const strengthRatio = Math.max(0, settings.strength / DEFAULT_LIQUID_GLASS_SETTINGS.strength);

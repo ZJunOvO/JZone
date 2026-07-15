@@ -7,6 +7,8 @@ import { transcodeAudioToMp3 } from '../../utils/audioTranscode';
 import type { SongArtistInput } from '../../supabaseApi';
 import type { CurrentArtistProfile } from '../../hooks/useCurrentArtistProfile';
 import { prepareImageForEditing } from '../../imageProcessing';
+import { getSongCoverFallback } from '../../utils/cover';
+import { createRuntimeUuid } from '../../utils/runtimeId';
 
 export interface UploadDraftState {
   step: 1 | 2;
@@ -20,6 +22,7 @@ export interface UploadDraftState {
   genre: string;
   story: string;
   songVisibility: UploadVisibility;
+  streamOptimizationEnabled: boolean;
   coverUrl: string;
   coverFile: File | null;
   duration: number;
@@ -46,6 +49,7 @@ export interface UploadDraftActions {
   setGenre: (value: string) => void;
   setStory: (value: string) => void;
   setSongVisibility: (value: UploadVisibility) => void;
+  setStreamOptimizationEnabled: (value: boolean) => void;
   setRange: React.Dispatch<React.SetStateAction<[number, number]>>;
   setPreviewError: (value: string | null) => void;
   loadFile: (file: File) => Promise<void>;
@@ -69,7 +73,7 @@ export interface UploadDraftStatus {
   label: string;
 }
 
-const randomCover = () => `https://picsum.photos/seed/${Math.random()}/400/400`;
+const randomCover = () => getSongCoverFallback(createRuntimeUuid());
 
 const emptySelection: CollectionSelectValue = { kind: 'none' };
 
@@ -97,6 +101,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
     genre: '',
     story: '',
     songVisibility: 'public',
+    streamOptimizationEnabled: true,
     coverUrl: randomCover(),
     coverFile: null,
     duration: 240,
@@ -257,6 +262,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
             genre: normalizedMeta.genre,
             story: normalizedMeta.story,
             songVisibility: normalizedMeta.visibility,
+            streamOptimizationEnabled: normalizedMeta.streamOptimizationEnabled,
             duration: normalizedMeta.duration ?? next.duration,
             range: normalizedMeta.range ?? next.range,
           };
@@ -304,12 +310,13 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
           genre: draft.genre,
           story: draft.story,
           visibility: draft.songVisibility,
+          streamOptimizationEnabled: draft.streamOptimizationEnabled,
           duration: draft.duration,
           range: draft.range,
         })
       )
       .catch(() => {});
-  }, [draft.album, draft.artist, draft.artistCredits, draft.duration, draft.genre, draft.range, draft.songVisibility, draft.story, draft.title, isDraftRestored]);
+  }, [draft.album, draft.artist, draft.artistCredits, draft.duration, draft.genre, draft.range, draft.songVisibility, draft.story, draft.streamOptimizationEnabled, draft.title, isDraftRestored]);
 
   useEffect(() => {
     return () => {
@@ -334,6 +341,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
       genre: '',
       story: '',
       songVisibility: 'public',
+      streamOptimizationEnabled: true,
       coverUrl: randomCover(),
       coverFile: null,
       duration: 240,
@@ -361,6 +369,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
         isReadingFile: true,
         previewError: null,
         sourceWarning: null,
+        streamOptimizationEnabled: true,
         transcodeMessage: '',
         transcodeProgress: 0,
         isTranscoding: false,
@@ -646,6 +655,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
     setGenre: (value) => patchDraft({ genre: value }),
     setStory: (value) => patchDraft({ story: value }),
     setSongVisibility: (value) => patchDraft({ songVisibility: value }),
+    setStreamOptimizationEnabled: (value) => patchDraft({ streamOptimizationEnabled: value }),
     setRange: (value) => setDraft((prev) => ({ ...prev, range: typeof value === 'function' ? value(prev.range) : value })),
     setPreviewError: (value) => patchDraft({ previewError: value }),
     loadFile,

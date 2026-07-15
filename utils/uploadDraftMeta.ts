@@ -11,6 +11,7 @@ export interface NormalizedUploadDraftMeta {
   genre: string;
   story: string;
   visibility: UploadVisibility;
+  streamOptimizationEnabled: boolean;
   duration: number | null;
   range: [number, number] | null;
 }
@@ -45,6 +46,7 @@ export const normalizeUploadDraftMeta = (meta: UploadDraftMeta): NormalizedUploa
   genre: meta.genre ?? '',
   story: meta.story ?? '',
   visibility: isVisibility(meta.visibility) ? meta.visibility : 'public',
+  streamOptimizationEnabled: meta.streamOptimizationEnabled !== false,
   duration: normalizeDuration(meta.duration),
   range: normalizeRange(meta.range),
 });
@@ -57,6 +59,7 @@ export const createUploadDraftMeta = (input: {
   genre: string;
   story: string;
   visibility: UploadVisibility;
+  streamOptimizationEnabled: boolean;
   duration: number;
   range: [number, number];
 }): UploadDraftMeta => ({
@@ -67,6 +70,7 @@ export const createUploadDraftMeta = (input: {
   genre: input.genre,
   story: input.story,
   visibility: input.visibility,
+  streamOptimizationEnabled: input.streamOptimizationEnabled,
   duration: input.duration,
   range: input.range,
 });

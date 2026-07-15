@@ -10,6 +10,10 @@ export interface Song {
   coverUrl: string;
   audioUrl: string;
   audioPath?: string;
+  sourceAudioPath?: string;
+  streamAudioPath?: string;
+  streamFileSize?: number;
+  streamBitrateKbps?: number;
   coverPath?: string;
   visibility?: 'private' | 'public';
   ownerId?: string;

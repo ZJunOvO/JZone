@@ -118,8 +118,10 @@ const loadFfmpeg = async (onProgress?: (progress: TranscodeProgress) => void) =>
   }
 };
 
-export const transcodeAudioToMp3 = async (
+const transcodeAudioToMp3AtBitrate = async (
   inputFile: File,
+  bitrateKbps: number,
+  outputSuffix: string,
   onProgress?: (progress: TranscodeProgress) => void
 ): Promise<File> => {
   activeProgressCallback = onProgress;
@@ -143,7 +145,7 @@ export const transcodeAudioToMp3 = async (
       '-codec:a',
       'libmp3lame',
       '-b:a',
-      '192k',
+      `${bitrateKbps}k`,
       outputName,
     ]);
 
@@ -156,10 +158,22 @@ export const transcodeAudioToMp3 = async (
     await ffmpeg.deleteFile(outputName).catch(() => {});
 
     const blob = new Blob([data], { type: 'audio/mpeg' });
-    const name = replaceExt(inputFile.name || 'audio', 'mp3');
+    const baseName = replaceExt(inputFile.name || 'audio', 'mp3').replace(/\.mp3$/i, '');
+    const name = `${baseName}${outputSuffix}.mp3`;
     onProgress?.({ progress: 1, message: '转码完成' });
     return new File([blob], name, { type: guessAudioMime(name) || 'audio/mpeg' });
   } finally {
     activeProgressCallback = undefined;
   }
 };
+
+export const transcodeAudioToMp3 = (
+  inputFile: File,
+  onProgress?: (progress: TranscodeProgress) => void,
+) => transcodeAudioToMp3AtBitrate(inputFile, 192, '', onProgress);
+
+export const transcodeAudioForStreaming = (
+  inputFile: File,
+  bitrateKbps: number,
+  onProgress?: (progress: TranscodeProgress) => void,
+) => transcodeAudioToMp3AtBitrate(inputFile, bitrateKbps, '.stream', onProgress);

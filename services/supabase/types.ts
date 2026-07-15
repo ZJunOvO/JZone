@@ -34,6 +34,9 @@ export interface SongRow {
   trim_start: number;
   trim_end: number;
   audio_path: string;
+  stream_audio_path?: string | null;
+  stream_file_size?: number | null;
+  stream_bitrate_kbps?: number | null;
   cover_path: string | null;
   plays_count?: number | null;
   is_public?: boolean;

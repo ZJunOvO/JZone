@@ -35,8 +35,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setStatus(data.session ? 'signed_in' : 'signed_out');
     });
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      supabaseApi.clearCache();
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      // 令牌续期和初始会话不会改变媒体权限，不应清空稳定的 COS 签名地址。
+      supabaseApi.clearCache({ media: event === 'SIGNED_OUT' });
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
       setStatus(nextSession ? 'signed_in' : 'signed_out');
@@ -96,4 +97,3 @@ export const useAuth = () => {
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 };
-

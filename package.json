@@ -15,7 +15,11 @@
     "smoke:shared": "node scripts/smoke-shared-elements.mjs",
     "smoke:player-transition": "node scripts/smoke-player-transition.mjs",
     "smoke:comments": "node scripts/smoke-comments.mjs",
-    "smoke:upload-metadata": "node scripts/smoke-upload-metadata.mjs"
+    "smoke:cover": "node scripts/smoke-cover-fallback.mjs",
+    "smoke:runtime": "node scripts/smoke-runtime-compat.mjs",
+    "smoke:upload-metadata": "node scripts/smoke-upload-metadata.mjs",
+    "smoke:media-delivery": "node scripts/smoke-media-delivery.mjs",
+    "smoke:audio-stream-copy": "node scripts/smoke-audio-stream-copy.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",

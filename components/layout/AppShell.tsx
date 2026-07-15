@@ -12,6 +12,7 @@ import { feedback } from '../feedback';
 import { useLiquidGlassAdaptiveForeground } from '../../hooks/useLiquidGlassAdaptiveForeground';
 import { SharedElementLayer } from '../motion/SharedElementLayer';
 import { ProfileAvatarRouteTransition } from '../motion/ProfileAvatarRouteTransition';
+import { useCurrentArtistProfile } from '../../hooks/useCurrentArtistProfile';
 import {
   getDefaultPlayerOrigin,
   getDefaultPlayerSharedOrigin,
@@ -42,6 +43,7 @@ const PageFallback = () => (
 
 export const AppShell: React.FC = () => {
   const { songs, playContext } = useStore();
+  const { resolvedAvatarUrl: profileAvatarUrl } = useCurrentArtistProfile();
   const liquidGlassSettings = useLiquidGlassSettings();
   const liquidGlassCssVars = getLiquidGlassCssVars(liquidGlassSettings);
   const {
@@ -262,7 +264,7 @@ export const AppShell: React.FC = () => {
           animate={routeFallbackControls}
         >
         <Suspense fallback={<PageFallback />}>
-          {activeTab === 'home' && <Home />}
+          {activeTab === 'home' && <Home profileAvatarUrl={profileAvatarUrl} />}
           {activeTab === 'library' && <Library />}
           {uploadMounted && (
             <div className={activeTab === 'upload' ? 'block' : 'hidden'} aria-hidden={activeTab !== 'upload'}>
@@ -278,6 +280,10 @@ export const AppShell: React.FC = () => {
                   ? 'invisible pointer-events-none absolute inset-x-0 top-0 h-full overflow-hidden'
                   : 'hidden'}
               aria-hidden={activeTab !== 'profile'}
+              data-profile-route-shell="true"
+              style={activeTab === 'profile'
+                ? undefined
+                : { visibility: 'hidden', opacity: 0, transition: 'none' }}
             >
               <Profile
                 userId={profileUserId}
@@ -335,6 +341,7 @@ export const AppShell: React.FC = () => {
 
       <BottomNavigation
         currentTab={activeTab}
+        profileAvatarUrl={profileAvatarUrl}
         setTab={(tab) => {
           setActiveTab(tab);
           if (tab === 'profile') setProfileUserId(undefined);

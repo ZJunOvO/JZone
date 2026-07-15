@@ -7,6 +7,7 @@ import { useAuth } from './auth';
 import { supabaseApi } from './supabaseApi';
 import { feedback } from './components/feedback';
 import { useCommentsController } from './hooks/useCommentsController';
+import { getSongCoverFallback } from './utils/cover';
 
 interface AppContextType {
   songs: Song[];
@@ -264,7 +265,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const mapped: Song[] = await Promise.all(
         rows.map(async (r) => {
           const prev = prevById.get(r.id);
-          let coverUrl = `https://picsum.photos/seed/${r.id}/400/400`;
+          let coverUrl = getSongCoverFallback(r.id);
           
           if (r.cover_path) {
             try {
@@ -283,7 +284,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             fileSize: typeof r.file_size === 'number' ? r.file_size : undefined,
             coverUrl,
             audioUrl: '',
-            audioPath: r.audio_path,
+            audioPath: r.stream_audio_path ?? r.audio_path,
+            sourceAudioPath: r.audio_path,
+            streamAudioPath: r.stream_audio_path ?? undefined,
+            streamFileSize: typeof r.stream_file_size === 'number' ? r.stream_file_size : undefined,
+            streamBitrateKbps: typeof r.stream_bitrate_kbps === 'number' ? r.stream_bitrate_kbps : undefined,
             coverPath: r.cover_path ?? undefined,
             visibility: isPublic ? 'public' : 'private',
             isPublic,
@@ -490,41 +495,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setPlayerState(prev => ({ ...prev, currentSongId: songId, isPlaying: false, isAudioLoading: true, currentTime: song.trimStart || 0 }));
 
-    let src = song.audioUrl;
-    if (hasSupabaseConfig && song.audioPath) {
-      try {
-        src = await supabaseApi.createSignedAudioUrl(song.audioPath);
-      } catch {
-        if (!src) {
-          feedback.error('音频加载失败，请检查音频读取配置');
-          return;
+    const sources: string[] = [];
+    if (hasSupabaseConfig) {
+      const remotePaths = Array.from(new Set([song.audioPath, song.sourceAudioPath].filter(Boolean))) as string[];
+      for (const path of remotePaths) {
+        try {
+          sources.push(await supabaseApi.createSignedAudioUrl(path));
+        } catch (error) {
+          console.warn('音频签名地址生成失败，尝试下一音源:', path, error);
         }
       }
     }
+    if (song.audioUrl && !sources.includes(song.audioUrl)) sources.push(song.audioUrl);
 
-    audio.src = src;
-    audio.load();
-
-    try {
-      await new Promise<void>((resolve, reject) => {
+    const loadAudioSource = (src: string) => new Promise<void>((resolve, reject) => {
         const onLoaded = () => {
           audio.removeEventListener('loadedmetadata', onLoaded);
           audio.removeEventListener('error', onError);
-          setPlayerState(prev => ({ ...prev, isAudioLoading: false }));
           resolve();
         };
         const onError = () => {
           audio.removeEventListener('loadedmetadata', onLoaded);
           audio.removeEventListener('error', onError);
-          setPlayerState(prev => ({ ...prev, isAudioLoading: false }));
           reject(audio.error ?? new Error('音频加载失败'));
         };
         audio.addEventListener('loadedmetadata', onLoaded);
         audio.addEventListener('error', onError);
+        // 先绑定事件再加载；命中本地缓存时 metadata 可能在极短时间内完成。
+        audio.src = src;
+        audio.load();
       });
-    } catch (e: any) {
+
+    let loadError: any = null;
+    let sourceLoaded = false;
+    for (const source of sources) {
+      try {
+        await loadAudioSource(source);
+        sourceLoaded = true;
+        break;
+      } catch (error) {
+        loadError = error;
+        if (seq !== playSeqRef.current) return;
+        console.warn('音源加载失败，尝试回退音源:', error);
+      }
+    }
+    setPlayerState(prev => ({ ...prev, isAudioLoading: false }));
+
+    if (!sourceLoaded) {
       const code = audio.error?.code ? `MediaError(${audio.error.code})` : 'unknown';
-      const detail = typeof e?.message === 'string' ? e.message : code;
+      const detail = typeof loadError?.message === 'string' ? loadError.message : code;
       feedback.error(`音频加载失败：${detail}`);
       return;
     }

@@ -1,0 +1,16 @@
+{
+  "name": "@jzone/liquid-glass-webgl",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./catalog": "./src/catalog.tsx",
+    "./renderer": "./src/renderer/index.ts"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  }
+}

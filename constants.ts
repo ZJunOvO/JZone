@@ -1,5 +1,6 @@
 
 import { Song, Comment } from './types';
+import { getSongCoverFallback } from './utils/cover';
 
 // Using a sample MP3 for demo purposes
 const DEMO_AUDIO_URL = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
@@ -10,7 +11,7 @@ export const MOCK_SONGS: Song[] = [
     title: 'OH LA LA LA',
     artist: '蔡依林',
     album: 'Single',
-    coverUrl: 'https://picsum.photos/id/129/400/400',
+    coverUrl: getSongCoverFallback('mock-song-1'),
     audioUrl: DEMO_AUDIO_URL,
     duration: 240,
     trimStart: 0,
@@ -23,7 +24,7 @@ export const MOCK_SONGS: Song[] = [
     title: '高所爱',
     artist: '辛丑',
     album: 'Dream',
-    coverUrl: 'https://picsum.photos/id/145/400/400',
+    coverUrl: getSongCoverFallback('mock-song-2'),
     audioUrl: DEMO_AUDIO_URL,
     duration: 185,
     trimStart: 10,
@@ -36,7 +37,7 @@ export const MOCK_SONGS: Song[] = [
     title: '日落大道',
     artist: 'Chill Cow',
     album: 'Beats',
-    coverUrl: 'https://picsum.photos/id/184/400/400',
+    coverUrl: getSongCoverFallback('mock-song-3'),
     audioUrl: DEMO_AUDIO_URL,
     duration: 120,
     trimStart: 0,

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Icons } from '../Icons';
 import { CollectionCreatableSelect } from '../CollectionCreatableSelect';
 import { WaveformCropper } from '../WaveformCropper';
@@ -7,6 +7,7 @@ import { useUploadSave } from './useUploadSave';
 import { ArtistPicker } from './ArtistPicker';
 import type { CurrentArtistProfile } from '../../hooks/useCurrentArtistProfile';
 import { snapshotAudioFile } from '../../utils/uploadAudio';
+import { analyzeAudioDelivery } from '../../utils/audioDelivery';
 
 const AUDIO_FILE_ACCEPT = 'audio/*,video/mp4,application/octet-stream,.mp3,.m4a,.mp4,.wav,.flac,.amr,.3gp';
 
@@ -57,6 +58,10 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
       ? 'space-y-8 animate-[fadeIn_0.3s_ease-out]'
       : 'space-y-8 animate-in slide-in-from-bottom-4 duration-300 bg-zinc-900/50 p-6 rounded-[28px] border border-white/5 shadow-2xl';
   const genreTags = draft.genre.split(/[,，]/).map((value) => value.trim()).filter(Boolean);
+  const deliveryAnalysis = useMemo(
+    () => draft.file ? analyzeAudioDelivery(draft.file, draft.duration) : null,
+    [draft.duration, draft.file],
+  );
 
   useEffect(() => {
     onDraftStatusChange?.(status);
@@ -197,6 +202,38 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
           <p className="text-[10px] text-zinc-500 font-mono">{(draft.file ? draft.file.size / 1024 / 1024 : 0).toFixed(2)} MB</p>
         </div>
       </div>
+
+      {deliveryAnalysis?.isHighBitrate ? (
+        <div className="rounded-2xl border border-amber-300/20 bg-amber-300/[0.07] px-4 py-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 space-y-1">
+              <div className="text-xs font-bold text-amber-100">
+                {deliveryAnalysis.canCreateStreamCopy
+                  ? draft.streamOptimizationEnabled ? '将生成节流播放副本' : '已关闭播放副本优化'
+                  : '检测到大型高码率音频'}
+              </div>
+              <div className="text-[11px] leading-relaxed text-amber-100/65">
+                {deliveryAnalysis.estimatedBitrateKbps ? `预计 ${deliveryAnalysis.estimatedBitrateKbps}kbps` : '无损音频'}
+                {deliveryAnalysis.canCreateStreamCopy
+                  ? `，可生成 ${deliveryAnalysis.targetBitrateKbps}kbps MP3 供播放，原文件仍会保留，预计完整播放节省约 ${deliveryAnalysis.expectedSavingsPercent}% 流量。转码失败会自动使用原文件。`
+                  : '，文件超过浏览器安全转码上限。为避免手机页面崩溃，本次保留原文件直接上传，建议之后在电脑端生成播放副本。'}
+              </div>
+            </div>
+            {deliveryAnalysis.canCreateStreamCopy ? (
+              <button
+                type="button"
+                role="switch"
+                aria-label="生成节流播放副本"
+                aria-checked={draft.streamOptimizationEnabled}
+                onClick={() => actions.setStreamOptimizationEnabled(!draft.streamOptimizationEnabled)}
+                className={`relative mt-0.5 h-7 w-12 shrink-0 rounded-full border transition-colors duration-200 ${draft.streamOptimizationEnabled ? 'border-amber-200/40 bg-amber-300/70' : 'border-white/15 bg-white/10'}`}
+              >
+                <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${draft.streamOptimizationEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="space-y-4">
         <div className="flex justify-between items-center">

@@ -69,12 +69,14 @@
 - `styles/glass-materials.css`：Mini 播放器、Mini 菜单等共用 F 材质外壳与 Q 弹动画；菜单采样根禁止 `will-change: opacity`。
 - `utils/liquidGlassSettings.ts`：液态玻璃默认参数、存储、事件同步、CSS 变量。
 - `utils/liquidGlassDisplacement.ts`：SVG displacement map 生成逻辑，含宽播放器和纵向菜单 `panel` 几何。
-- `components/LiquidGlassMotionContent.tsx`：保持采样层静态，以 inset 几何驱动整块玻璃 Q 弹，并同步内容模糊。
+- `components/LiquidGlassMotionContent.tsx`：保持采样层静态，以 inset 几何驱动整块玻璃 Q 弹；液态材质、折射和高光从首帧持续可见，文字图标独立执行模糊入场。
 - `components/motion/sharedElementRegistry.ts`：合集封面的稳定共享对象 ID 与弹簧参数。
 - `components/motion/SharedElementLayer.tsx`：全局 Framer Motion `LayoutGroup` 与减少动态效果策略。
 - `components/motion/playerTransition.ts`：播放器容器三段展开/收拢曲线、来源边界和封面/文字共享时间轴。
-- `components/motion/ProfileAvatarRouteTransition.tsx`：现在就听头像到个人页头像的单覆盖层 FLIP 转场；目标页激活前先冻结源头像，避免懒加载空档。
+- `components/motion/ProfileAvatarRouteTransition.tsx`：现在就听与个人页头像之间的双向单覆盖层 FLIP 转场；进入个人页时放大到个人头像，返回现在就听时缩小到右上角头像，终点均以真实头像和覆盖层交叉淡出避免闪帧。
+- `components/motion/profileAvatarTransition.ts`：统一采集头像源边界、声明转场目的地、提交覆盖层并延后一帧导航；共享动画严格限定于 Home 右上角头像与个人页头像之间，资料库和创作进入个人页只执行普通路由切换。
 - `components/motion/PlayerArtworkTransition.tsx`：全屏播放器切歌时的新旧封面交接层，连续切歌后主动清理旧节点。
+- `pages/PlayerView.tsx`：全屏播放器和共享转场目标；打开时使用单个小面积模糊幕布覆盖进度与控制区，结束后 `display:none`，不保留透明合成层。
 - `components/PlayerBar.tsx`：mini player。
 - `components/UniversalContextMenu.tsx`：歌曲 mini 菜单。
 

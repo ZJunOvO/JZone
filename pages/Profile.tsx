@@ -20,6 +20,7 @@ import { EditCollectionModal } from '../components/EditCollectionModal';
 import { Song } from '../types';
 import { CreateCollectionModal } from '../components/CreateCollectionModal';
 import { feedback } from '../components/feedback';
+import { normalizeSecureMediaUrl } from '../utils/mediaUrl';
 
 interface ProfileProps {
   userId?: string; // If undefined, show current user
@@ -44,7 +45,12 @@ const readProfileMediaCache = (userId?: string): ProfileMediaCache | null => {
   if (!userId) return null;
   try {
     const value = JSON.parse(localStorage.getItem(`${PROFILE_MEDIA_CACHE_PREFIX}${userId}`) || 'null') as ProfileMediaCache | null;
-    return value && value.expiresAt > Date.now() ? value : null;
+    if (!value || value.expiresAt <= Date.now()) return null;
+    return {
+      ...value,
+      avatarUrl: normalizeSecureMediaUrl(value.avatarUrl),
+      coverUrl: normalizeSecureMediaUrl(value.coverUrl),
+    };
   } catch {
     return null;
   }

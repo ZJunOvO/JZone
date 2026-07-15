@@ -6,6 +6,7 @@ const email = process.env.JZONE_TEST_EMAIL;
 const password = process.env.JZONE_TEST_PASSWORD;
 const viewportWidth = Number(process.env.JZONE_VIEWPORT_WIDTH || 390);
 const viewportHeight = Number(process.env.JZONE_VIEWPORT_HEIGHT || 844);
+const disablePlayerBlurForDiagnostics = process.env.JZONE_PERF_DISABLE_PLAYER_BLUR === '1';
 
 if (!email || !password) throw new Error('Missing JZONE_TEST_EMAIL or JZONE_TEST_PASSWORD');
 
@@ -70,6 +71,7 @@ const sampleTransition = async (time, direction, clickSelector = null) => page.e
     rect: element.getBoundingClientRect().toJSON(),
   }));
   const secondary = document.querySelector('[data-player-transition-part="secondary"]');
+  const secondaryBlurReveal = document.querySelector('[data-testid="player-secondary-blur-reveal"]');
   const background = document.querySelector('[data-player-transition-part="background"]');
   const sample = {
     ...base,
@@ -79,6 +81,9 @@ const sampleTransition = async (time, direction, clickSelector = null) => page.e
     clipPath,
     insets: { top: insets[0], right: insets[1], bottom: insets[2], left: insets[3] },
     secondaryOpacity: secondary ? Number(getComputedStyle(secondary).opacity) : null,
+    secondaryBlurOpacity: secondaryBlurReveal ? Number(getComputedStyle(secondaryBlurReveal).opacity) : null,
+    secondaryBlurFilter: secondaryBlurReveal ? getComputedStyle(secondaryBlurReveal).backdropFilter : null,
+    secondaryBlurDisplay: secondaryBlurReveal ? getComputedStyle(secondaryBlurReveal).display : null,
     backgroundOpacity: background ? Number(getComputedStyle(background).opacity) : null,
     shellBackgroundColor: style.backgroundColor,
     coverSettleTransform: getComputedStyle(document.querySelector('[data-player-shared-settle="cover"]')).transform,
@@ -184,6 +189,11 @@ const readFrameProbe = async (key) => page.evaluate((probeKey) => {
 try {
   await mkdir('output/playwright', { recursive: true });
   await login();
+  if (disablePlayerBlurForDiagnostics) {
+    await page.addStyleTag({
+      content: '[data-testid="player-secondary-blur-reveal"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }',
+    });
+  }
   consoleErrors.length = 0;
   await page.getByTestId('bottom-nav-library').evaluate((element) => element.click());
   const songRows = page.locator('[data-library-song="true"]:visible');
@@ -228,6 +238,33 @@ try {
     opening[0].secondaryOpacity < opening[3].secondaryOpacity,
     `控制项没有随容器展开分阶段显现：${opening.map((sample) => sample.secondaryOpacity)}`,
   );
+  if (!disablePlayerBlurForDiagnostics) {
+    assert(opening[0].secondaryBlurOpacity > 0.35, `播放控制区没有从模糊揭幕状态开始：${JSON.stringify(opening[0])}`);
+    assert(opening[0].secondaryBlurFilter?.includes('blur('), `播放控制区入场缺少模糊采样：${JSON.stringify(opening[0])}`);
+    assert(
+      opening.slice(1, 4).some((sample) => sample.secondaryBlurOpacity !== null && sample.secondaryBlurOpacity < opening[0].secondaryBlurOpacity),
+      `播放控制区模糊揭幕没有随现有运动方向淡出：${JSON.stringify(opening.slice(0, 4))}`,
+    );
+  }
+  assert(
+    opening.slice(4).every((sample) => sample.secondaryBlurOpacity === null || sample.secondaryBlurDisplay === 'none'),
+    '播放控制区模糊层在展开完成后仍然参与合成',
+  );
+  if (process.env.JZONE_PERF_OPENING_ONLY === '1') {
+    console.log(JSON.stringify({
+      ok: true,
+      disablePlayerBlurForDiagnostics,
+      openingFrames,
+      openingSecondaryBlur: opening.map((sample) => ({
+        time: sample.time,
+        opacity: sample.secondaryBlurOpacity,
+        filter: sample.secondaryBlurFilter,
+        display: sample.secondaryBlurDisplay,
+      })),
+    }, null, 2));
+    await browser.close();
+    process.exit(0);
+  }
 
   const artworkBefore = await page.locator('[data-testid="player-artwork-layer"] img').last().getAttribute('src');
   await page.getByTestId('player-next-song').click();
@@ -289,13 +326,16 @@ try {
   const requestPlayerMenuClose = async () => page.evaluate(() => {
     document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
   });
+  const isMenuContentEntering = (sample) => {
+    const blur = Number.parseFloat(sample.contentFilter?.match(/blur\(([-\d.]+)px\)/)?.[1] ?? '0');
+    return sample.contentOpacity < 0.99 && blur > 0.4;
+  };
 
   await page.getByTestId('player-more-menu').click();
   await page.waitForTimeout(35);
   const playerMenuFirstFrame = await readPlayerMenu();
-  assert(playerMenuFirstFrame.contentOpacity < 0.82 && playerMenuFirstFrame.contentFilter?.includes('blur('), `播放页 Mini 菜单首帧内容没有参与模糊入场：${JSON.stringify(playerMenuFirstFrame)}`);
-  assert(playerMenuFirstFrame.materialOpacity < 0.82 && playerMenuFirstFrame.rimOpacity < 0.82, `播放页 Mini 菜单首帧材质或高光提前完成：${JSON.stringify(playerMenuFirstFrame)}`);
-  assert(Math.abs(playerMenuFirstFrame.materialOpacity - playerMenuFirstFrame.rimOpacity) < 0.18, `播放页 Mini 菜单首帧材质与高光不同步：${JSON.stringify(playerMenuFirstFrame)}`);
+  assert(isMenuContentEntering(playerMenuFirstFrame), `播放页 Mini 菜单首帧内容没有参与模糊入场：${JSON.stringify(playerMenuFirstFrame)}`);
+  assert(playerMenuFirstFrame.materialOpacity > 0.99 && playerMenuFirstFrame.rimOpacity > 0.99, `播放页 Mini 菜单首帧缺少完整液态玻璃或高光：${JSON.stringify(playerMenuFirstFrame)}`);
   await page.waitForTimeout(55);
   const playerMenuFirstOpen = await readPlayerMenu();
   assert(playerMenuFirstOpen.buttonCount >= 5 && playerMenuFirstOpen.contentOpacity > 0.2, `播放页 Mini 菜单首次打开缺少内容：${JSON.stringify(playerMenuFirstOpen)}`);
@@ -311,8 +351,8 @@ try {
   await page.getByTestId('player-more-menu').click();
   await page.waitForTimeout(35);
   const playerMenuSlowReopenFirstFrame = await readPlayerMenu();
-  assert(playerMenuSlowReopenFirstFrame.contentOpacity < 0.82 && playerMenuSlowReopenFirstFrame.contentFilter?.includes('blur('), `播放页 Mini 菜单慢速重开首帧跳过内容动画：${JSON.stringify(playerMenuSlowReopenFirstFrame)}`);
-  assert(playerMenuSlowReopenFirstFrame.materialOpacity < 0.82 && playerMenuSlowReopenFirstFrame.rimOpacity < 0.82, `播放页 Mini 菜单慢速重开首帧材质不同步：${JSON.stringify(playerMenuSlowReopenFirstFrame)}`);
+  assert(isMenuContentEntering(playerMenuSlowReopenFirstFrame), `播放页 Mini 菜单慢速重开首帧跳过内容动画：${JSON.stringify(playerMenuSlowReopenFirstFrame)}`);
+  assert(playerMenuSlowReopenFirstFrame.materialOpacity > 0.99 && playerMenuSlowReopenFirstFrame.rimOpacity > 0.99, `播放页 Mini 菜单慢速重开首帧材质不完整：${JSON.stringify(playerMenuSlowReopenFirstFrame)}`);
   await page.waitForTimeout(55);
   const playerMenuSlowReopen = await readPlayerMenu();
   assert(playerMenuSlowReopen.buttonCount >= 5 && playerMenuSlowReopen.contentOpacity > 0.2, `播放页 Mini 菜单慢速重开后内容为空：${JSON.stringify(playerMenuSlowReopen)}`);
@@ -321,9 +361,8 @@ try {
   await page.getByTestId('player-more-menu').click();
   await page.waitForTimeout(35);
   const playerMenuRapidReopenFirstFrame = await readPlayerMenu();
-  assert(playerMenuRapidReopenFirstFrame.contentOpacity < 0.82 && playerMenuRapidReopenFirstFrame.contentFilter?.includes('blur('), `播放页 Mini 菜单退出中断后文字图标直接出现：${JSON.stringify(playerMenuRapidReopenFirstFrame)}`);
-  assert(playerMenuRapidReopenFirstFrame.materialOpacity < 0.82 && playerMenuRapidReopenFirstFrame.rimOpacity < 0.82, `播放页 Mini 菜单退出中断后材质或高光提前完成：${JSON.stringify(playerMenuRapidReopenFirstFrame)}`);
-  assert(Math.abs(playerMenuRapidReopenFirstFrame.materialOpacity - playerMenuRapidReopenFirstFrame.rimOpacity) < 0.18, `播放页 Mini 菜单退出中断后材质与高光不同步：${JSON.stringify(playerMenuRapidReopenFirstFrame)}`);
+  assert(isMenuContentEntering(playerMenuRapidReopenFirstFrame), `播放页 Mini 菜单退出中断后文字图标直接出现：${JSON.stringify(playerMenuRapidReopenFirstFrame)}`);
+  assert(playerMenuRapidReopenFirstFrame.materialOpacity > 0.99 && playerMenuRapidReopenFirstFrame.rimOpacity > 0.99, `播放页 Mini 菜单退出中断后材质或高光不完整：${JSON.stringify(playerMenuRapidReopenFirstFrame)}`);
   await page.waitForTimeout(65);
   const playerMenuRapidReopen = await readPlayerMenu();
   assert(playerMenuRapidReopen.buttonCount >= 5 && playerMenuRapidReopen.contentOpacity > 0.2, `播放页 Mini 菜单快速重开后内容为空：${JSON.stringify(playerMenuRapidReopen)}`);
@@ -518,12 +557,14 @@ try {
     queueOpenFrames,
     queueCloseFrames,
   };
-  const result = { ok: true, viewport: `${viewportWidth}x${viewportHeight}`, opening, closing, playerMenuFirstOpen, playerMenuSlowReopen, playerMenuRapidReopen, secondarySheets, rapidReversals, persistentRouteLayers, openingFrames, sampledRapidFrames, rapidFrames, consoleErrors };
+  const result = { ok: true, viewport: `${viewportWidth}x${viewportHeight}`, disablePlayerBlurForDiagnostics, opening, closing, playerMenuFirstOpen, playerMenuSlowReopen, playerMenuRapidReopen, secondarySheets, rapidReversals, persistentRouteLayers, openingFrames, sampledRapidFrames, rapidFrames, consoleErrors };
   console.log(JSON.stringify(process.env.JZONE_COMPACT === '1' ? {
     ok: result.ok,
     viewport: result.viewport,
+    disablePlayerBlurForDiagnostics,
     openingInsets: opening.map((sample) => ({ time: sample.time, ...sample.insets })),
     openingSecondaryOpacity: opening.map((sample) => ({ time: sample.time, opacity: sample.secondaryOpacity })),
+    openingSecondaryBlur: opening.map((sample) => ({ time: sample.time, opacity: sample.secondaryBlurOpacity, filter: sample.secondaryBlurFilter, display: sample.secondaryBlurDisplay })),
     openingBackgroundOpacity: opening.map((sample) => ({ time: sample.time, opacity: sample.backgroundOpacity })),
     closingInsets: closing.map((sample) => ({ time: sample.time, exists: sample.exists, ...(sample.insets ?? {}) })),
     sharedParts: ['cover', 'title', 'artist'],

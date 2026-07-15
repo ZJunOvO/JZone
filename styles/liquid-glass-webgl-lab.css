@@ -1,0 +1,391 @@
+.webgl-lab-page {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(360px, 430px) minmax(280px, 340px);
+  justify-content: center;
+  align-items: center;
+  gap: 22px;
+  padding: 18px;
+  color: #f7f7fa;
+  background:
+    radial-gradient(circle at 15% 12%, rgba(49, 91, 154, 0.2), transparent 32%),
+    radial-gradient(circle at 85% 76%, rgba(156, 47, 96, 0.13), transparent 34%),
+    #050506;
+  overflow: hidden;
+}
+
+.webgl-lab-workbench {
+  width: 100%;
+  min-width: 0;
+}
+
+.webgl-lab-header {
+  height: 58px;
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+}
+
+.webgl-lab-header > div {
+  min-width: 0;
+  text-align: center;
+}
+
+.webgl-lab-header strong,
+.webgl-lab-header span {
+  display: block;
+  letter-spacing: 0;
+}
+
+.webgl-lab-header strong {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.webgl-lab-header span {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.webgl-lab-icon-button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.webgl-lab-phone {
+  position: relative;
+  width: 100%;
+  height: min(790px, calc(100dvh - 94px));
+  min-height: 620px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 34px;
+  background: #000;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.webgl-glass-stage,
+.webgl-glass-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.webgl-glass-stage {
+  position: relative;
+  overflow: hidden;
+  border-radius: inherit;
+  background: #050507;
+}
+
+.jzone-liquid-glass-canvas {
+  position: absolute !important;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.jzone-liquid-glass-canvas > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.webgl-glass-canvas {
+  display: block;
+  touch-action: none;
+}
+
+.webgl-glass-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 28px;
+  text-align: center;
+  background: #09090b;
+}
+
+.webgl-glass-error span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 13px;
+}
+
+.webgl-lab-controls {
+  align-self: center;
+  max-height: min(790px, calc(100dvh - 36px));
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 22px;
+  background: rgba(19, 19, 23, 0.82);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+}
+
+.webgl-lab-controls-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.webgl-lab-controls-head strong,
+.webgl-lab-controls-head span {
+  display: block;
+  letter-spacing: 0;
+}
+
+.webgl-lab-controls-head strong {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.webgl-lab-controls-head span {
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 11px;
+}
+
+.webgl-lab-close {
+  display: none;
+  color: #ff5069;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.webgl-lab-stats {
+  display: grid;
+  grid-template-columns: 0.75fr 0.75fr 1.5fr;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.webgl-lab-stats > div {
+  min-width: 0;
+  padding: 11px 9px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.webgl-lab-stats strong,
+.webgl-lab-stats span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+
+.webgl-lab-stats strong {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.webgl-lab-stats span {
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 10px;
+}
+
+.webgl-lab-renderer {
+  margin: 8px 2px 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.36);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webgl-lab-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 16px 0 18px;
+}
+
+.webgl-lab-material-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.webgl-lab-material-grid > div {
+  min-width: 0;
+  padding: 11px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.webgl-lab-material-grid span,
+.webgl-lab-material-grid strong {
+  display: block;
+  letter-spacing: 0;
+}
+
+.webgl-lab-material-grid span {
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 10px;
+}
+
+.webgl-lab-material-grid strong {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.webgl-lab-implementation-note {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  line-height: 1.65;
+  letter-spacing: 0;
+}
+
+.webgl-lab-actions button {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.webgl-lab-sliders {
+  display: grid;
+  gap: 14px;
+}
+
+.webgl-lab-slider > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+
+.webgl-lab-slider strong,
+.webgl-lab-slider output {
+  letter-spacing: 0;
+}
+
+.webgl-lab-slider strong {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.webgl-lab-slider output {
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.webgl-lab-slider input {
+  width: 100%;
+  accent-color: #ff405d;
+}
+
+.webgl-lab-scrim {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .webgl-lab-page {
+    display: block;
+    padding: 0;
+    background: #050507;
+  }
+
+  .webgl-lab-workbench {
+    height: 100dvh;
+  }
+
+  .webgl-lab-header {
+    position: absolute;
+    inset: max(8px, env(safe-area-inset-top)) 8px auto;
+    z-index: 10;
+    height: 46px;
+    pointer-events: none;
+  }
+
+  .webgl-lab-header > * {
+    pointer-events: auto;
+  }
+
+  .webgl-lab-header > div {
+    visibility: hidden;
+  }
+
+  .webgl-lab-phone {
+    height: 100dvh;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .webgl-lab-controls {
+    position: fixed;
+    z-index: 30;
+    left: 10px;
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    max-height: min(74dvh, 680px);
+    transform: translateY(calc(100% + 28px));
+    opacity: 0;
+    border-radius: 20px;
+    transition: transform 280ms cubic-bezier(0.22, 0.78, 0.22, 1), opacity 180ms ease;
+    pointer-events: none;
+  }
+
+  .webgl-lab-controls.is-open {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .webgl-lab-close {
+    display: block;
+  }
+
+  .webgl-lab-scrim {
+    position: fixed;
+    z-index: 20;
+    inset: 0;
+    display: block;
+    background: rgba(0, 0, 0, 0.46);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .webgl-lab-controls {
+    transition: none;
+  }
+}

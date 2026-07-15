@@ -8,6 +8,8 @@ import { localLibraryStorage } from '../../localLibraryStorage';
 import { attachUploadedSongToCollection, createUploadedSongFromRow, resolveUploadAlbum } from '../../utils/uploadFlow';
 import type { UploadDraftState } from './useUploadDraft';
 import { feedback } from '../feedback';
+import { analyzeAudioDelivery, STREAM_COPY_BITRATE_KBPS } from '../../utils/audioDelivery';
+import { transcodeAudioForStreaming } from '../../utils/audioTranscode';
 
 export interface UploadSaveProgress {
   percent: number;
@@ -39,7 +41,36 @@ export const useUploadSave = ({
 
     try {
       if (hasSupabaseConfig && user) {
+        let streamAudioFile: File | undefined;
+        const delivery = analyzeAudioDelivery(draft.file, draft.duration);
+        if (draft.streamOptimizationEnabled && delivery.canCreateStreamCopy) {
+          setSaveProgress({ percent: 1, message: '正在生成节流播放副本' });
+          try {
+            const candidate = await transcodeAudioForStreaming(
+              draft.file,
+              STREAM_COPY_BITRATE_KBPS,
+              (progress) => {
+                setSaveProgress({
+                  percent: Math.max(1, Math.round(progress.progress * 22)),
+                  message: progress.message,
+                });
+              },
+            );
+
+            if (candidate.size < draft.file.size * 0.9) {
+              streamAudioFile = candidate;
+            } else {
+              feedback.info('播放副本节省不足 10%，已直接使用原文件播放');
+            }
+          } catch (error) {
+            console.warn('节流播放副本生成失败，回退到原文件:', error);
+            feedback.info('播放副本生成失败，已自动使用原文件继续上传', { duration: 7000 });
+          }
+        }
+
         const albumForSong = resolveUploadAlbum(draft.collectionSelection, draft.album);
+        const uploadProgressBase = streamAudioFile ? 24 : 0;
+        const uploadProgressSpan = streamAudioFile ? 72 : 96;
         const row = await supabaseApi.uploadAndCreateSong({
           userId: user.id,
           title: draft.title || '未命名',
@@ -52,10 +83,15 @@ export const useUploadSave = ({
           trimStart: draft.range[0],
           trimEnd: draft.range[1],
           audioFile: draft.file,
+          streamAudioFile,
+          streamBitrateKbps: streamAudioFile ? STREAM_COPY_BITRATE_KBPS : undefined,
           coverFile: draft.coverFile ?? undefined,
           visibility: draft.songVisibility,
           onUploadProgress: (progress) => {
-            setSaveProgress({ percent: progress.percent, message: progress.message });
+            setSaveProgress({
+              percent: uploadProgressBase + Math.round(progress.percent * uploadProgressSpan / 100),
+              message: progress.message,
+            });
           },
         });
 

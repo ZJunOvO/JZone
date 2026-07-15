@@ -7,13 +7,15 @@ import {
   useLiquidGlassSettings,
 } from '../../utils/liquidGlassSettings';
 import { createLiquidGlassDisplacementMap, type LiquidGlassDisplacementMap } from '../../utils/liquidGlassDisplacement';
+import { navigateWithProfileAvatarTransition } from '../motion/profileAvatarTransition';
 
 interface BottomNavigationProps {
   currentTab: string;
   setTab: (tab: string) => void;
+  profileAvatarUrl?: string;
 }
 
-export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, setTab }) => {
+export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, setTab, profileAvatarUrl }) => {
   const liquidGlassSettings = useLiquidGlassSettings();
   const effectiveNavGlass = liquidGlassSettings;
   const navGlassVars = getLiquidGlassCssVars(effectiveNavGlass);
@@ -130,6 +132,24 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
     return Math.min(max, Math.max(min, value));
   };
 
+  const selectTab = React.useCallback((tabId: string) => {
+    if (tabId === 'profile' && currentTab === 'home') {
+      const homeAvatar = document.querySelector('[data-profile-home-avatar-source="true"]');
+      if (homeAvatar && homeAvatar.getBoundingClientRect().width > 0) {
+        navigateWithProfileAvatarTransition(homeAvatar, profileAvatarUrl, () => setTab(tabId));
+        return;
+      }
+    }
+    if (tabId === 'home' && currentTab === 'profile') {
+      const profileAvatar = document.querySelector('[data-profile-avatar-target="true"]');
+      if (profileAvatar && profileAvatar.getBoundingClientRect().width > 0) {
+        navigateWithProfileAvatarTransition(profileAvatar, profileAvatarUrl, () => setTab(tabId), 'home');
+        return;
+      }
+    }
+    setTab(tabId);
+  }, [currentTab, profileAvatarUrl, setTab]);
+
   const startLensDrag = (event: React.PointerEvent<HTMLButtonElement>, tabId: string) => {
     if (tabId !== currentTab) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -166,7 +186,8 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
     setDragCenterX(null);
     setLensVisible(true);
     if (tabs[nextIndex]?.id && tabs[nextIndex].id !== currentTab) {
-      setTab(tabs[nextIndex].id);
+      const tabId = tabs[nextIndex].id;
+      selectTab(tabId);
     } else {
       if (hideLensTimerRef.current) window.clearTimeout(hideLensTimerRef.current);
       hideLensTimerRef.current = window.setTimeout(() => setLensVisible(false), 260);
@@ -271,7 +292,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
                   event.preventDefault();
                   return;
                 }
-                setTab(tab.id);
+                selectTab(tab.id);
               }}
               className="liquid-glass-interactive relative z-20 flex h-[54px] items-center justify-center rounded-[25px] transition-all duration-300 group touch-none"
               data-liquid-adaptive={isActive ? undefined : 'true'}

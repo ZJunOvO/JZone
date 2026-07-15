@@ -1,4 +1,5 @@
 import COS from 'cos-js-sdk-v5';
+import { normalizeSecureMediaUrl } from './utils/mediaUrl';
 
 // ⚠️ 安全警告
 // ==============================================================================
@@ -51,8 +52,50 @@ export interface CosUploadProgress {
   percent: number;
 }
 
+export const COS_AUDIO_BROWSER_CACHE_CONTROL = 'private, max-age=604800, immutable';
+export const COS_IMAGE_BROWSER_CACHE_CONTROL = 'private, max-age=2592000, immutable';
+
+const getMediaCacheControl = (path: string, contentType?: string) => {
+  const normalizedType = contentType?.toLowerCase() ?? '';
+  if (normalizedType.startsWith('audio/') || /\.(?:aac|amr|flac|m4a|mp3|mp4|ogg|opus|wav|3gp|3gpp)$/i.test(path)) {
+    return COS_AUDIO_BROWSER_CACHE_CONTROL;
+  }
+  if (normalizedType.startsWith('image/') || /\.(?:avif|gif|jpe?g|png|webp)$/i.test(path)) {
+    return COS_IMAGE_BROWSER_CACHE_CONTROL;
+  }
+  return 'private, max-age=86400';
+};
+
 export const cosClient = {
   isEnabled: isCosEnabled,
+
+  async objectExists(path: string): Promise<boolean> {
+    if (!cosInstance || !bucket || !region) throw new Error('COS 未配置');
+
+    return new Promise((resolve, reject) => {
+      cosInstance!.headObject(
+        {
+          Bucket: bucket,
+          Region: region,
+          Key: path,
+        },
+        (err) => {
+          if (!err) {
+            resolve(true);
+            return;
+          }
+
+          const statusCode = Number((err as any)?.statusCode ?? (err as any)?.status);
+          const code = String((err as any)?.Code ?? (err as any)?.code ?? '');
+          if (statusCode === 404 || code === 'NoSuchKey' || code === 'NotFound') {
+            resolve(false);
+            return;
+          }
+          reject(toCosError('COS 检查对象失败', err));
+        },
+      );
+    });
+  },
 
   /**
    * 上传文件到 COS
@@ -62,6 +105,8 @@ export const cosClient = {
   async uploadFile(file: Blob, path: string, contentType?: string, onProgress?: (progress: CosUploadProgress) => void) {
     if (!cosInstance || !bucket || !region) throw new Error('COS 未配置');
 
+    const resolvedContentType = contentType || file.type || undefined;
+
     return new Promise((resolve, reject) => {
       cosInstance!.putObject(
         {
@@ -69,7 +114,8 @@ export const cosClient = {
           Region: region,
           Key: path,
           Body: file,
-          ...(contentType ? { ContentType: contentType } : {}),
+          ...(resolvedContentType ? { ContentType: resolvedContentType } : {}),
+          CacheControl: getMediaCacheControl(path, resolvedContentType),
           onProgress: function (progressData) {
             const total = typeof progressData.total === 'number' ? progressData.total : file.size;
             const loaded = typeof progressData.loaded === 'number' ? progressData.loaded : Math.round((progressData.percent ?? 0) * total);
@@ -85,12 +131,27 @@ export const cosClient = {
     });
   },
 
+  async uploadFileIfAbsent(file: Blob, path: string, contentType?: string, onProgress?: (progress: CosUploadProgress) => void) {
+    try {
+      if (await cosClient.objectExists(path)) {
+        onProgress?.({ loaded: file.size, total: file.size, percent: 100 });
+        return { skipped: true } as const;
+      }
+    } catch (error) {
+      // 部分旧 CORS 规则未开放 HEAD；内容寻址对象即使覆盖写入也仍是同一份内容。
+      console.warn('COS 对象查重不可用，回退为幂等覆盖上传:', error);
+    }
+
+    const data = await cosClient.uploadFile(file, path, contentType, onProgress);
+    return { skipped: false, data } as const;
+  },
+
   /**
    * 获取带签名的访问链接
    * @param path 存储路径
    * @param expiresInSeconds 过期时间（秒），默认 1 小时
    */
-  async getSignedUrl(path: string, expiresInSeconds = 3600): Promise<string> {
+  async getSignedUrl(path: string, expiresInSeconds = 3600, responseCacheControl?: string): Promise<string> {
     if (!cosInstance || !bucket || !region) throw new Error('COS 未配置');
 
     return new Promise((resolve, reject) => {
@@ -101,12 +162,13 @@ export const cosClient = {
           Key: path,
           Sign: true,
           Expires: expiresInSeconds,
+          ...(responseCacheControl ? { Query: { 'response-cache-control': responseCacheControl } } : {}),
         },
         function (err, data) {
           if (err) return reject(toCosError('COS 获取签名链接失败', err));
-          // 某些情况下返回的 URL 可能没有协议头，确保加上 https
+          // COS SDK 可能返回 HTTP 链接；HTTPS 页面会将其作为混合内容拦截。
           const url = data.Url.startsWith('http') ? data.Url : `https://${data.Url}`;
-          resolve(url);
+          resolve(normalizeSecureMediaUrl(url) ?? url);
         }
       );
     });

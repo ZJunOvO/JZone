@@ -1,5 +1,6 @@
 import { cosClient } from '../../cosClient';
 import { downscaleImageBlob } from '../../imageProcessing';
+import { createSharedCoverPath, isSharedCoverPath } from '../../utils/sharedMedia';
 import {
   cached,
   emitCollectionsChanged,
@@ -17,12 +18,6 @@ import type {
   ProfileRow,
   SongRow,
 } from './types';
-
-const getExt = (name: string) => {
-  const idx = name.lastIndexOf('.');
-  if (idx === -1) return '';
-  return name.slice(idx + 1).toLowerCase();
-};
 
 const invalidateCollectionCaches = (collectionId?: string) => {
   invalidateApiCache((key) => {
@@ -323,13 +318,11 @@ export const createCollectionsApi = () => {
       });
     },
 
-    async uploadCollectionCover(creatorId: string, file: File): Promise<string> {
-      const ext = getExt(file.name) || 'jpg';
-      const path = `${creatorId}/collections/cover_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-
+    async uploadCollectionCover(_creatorId: string, file: File): Promise<string> {
       if (!cosClient.isEnabled) throw new Error('COS 未配置');
       const compressed = await downscaleImageBlob(file, { maxWidth: 1024, maxHeight: 1024, mimeType: 'image/jpeg', quality: 0.86 });
-      await cosClient.uploadFile(compressed, path);
+      const path = await createSharedCoverPath(compressed);
+      await cosClient.uploadFileIfAbsent(compressed, path, 'image/jpeg');
       return path;
     },
 
@@ -363,7 +356,7 @@ export const createCollectionsApi = () => {
     async deleteCollection(collectionId: string) {
       const client = ensureSupabase();
       const { data: collection } = await client.from('albums').select('cover_url').eq('id', collectionId).single();
-      if (collection?.cover_url && !/^https?:\/\//i.test(collection.cover_url)) {
+      if (collection?.cover_url && !/^https?:\/\//i.test(collection.cover_url) && !isSharedCoverPath(collection.cover_url)) {
         if (cosClient.isEnabled) {
           await cosClient.deleteFiles([collection.cover_url]).catch(() => {});
         }

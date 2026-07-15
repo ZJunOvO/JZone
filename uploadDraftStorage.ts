@@ -87,6 +87,7 @@ export interface UploadDraftMeta {
   genre?: string;
   story?: string;
   visibility?: 'public' | 'private';
+  streamOptimizationEnabled?: boolean;
   range?: [number, number];
   duration?: number;
 }

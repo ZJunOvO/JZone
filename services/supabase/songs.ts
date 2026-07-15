@@ -1,12 +1,15 @@
 import { cosClient } from '../../cosClient';
 import { downscaleImageBlob } from '../../imageProcessing';
 import { getAudioExtFromMime } from '../../utils/uploadAudio';
+import { createRuntimeUuid } from '../../utils/runtimeId';
+import { createSharedCoverPath, isSharedCoverPath } from '../../utils/sharedMedia';
 import { cached, TTL_MY_SONG_PLAY_MS } from './cache';
 import { ensureSupabase } from './client';
+import { createSignedCoverUrl } from './storageApi';
 import type { SongRow, SongVisibility } from './types';
 
 export interface SongUploadProgress {
-  phase: 'audio' | 'cover' | 'database';
+  phase: 'audio' | 'stream' | 'cover' | 'database';
   percent: number;
   message: string;
 }
@@ -15,20 +18,6 @@ const getExt = (name: string) => {
   const idx = name.lastIndexOf('.');
   if (idx === -1) return '';
   return name.slice(idx + 1).toLowerCase();
-};
-
-const uuidv4 = () => {
-  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
-  const bytes = new Uint8Array(16);
-  if (globalThis.crypto?.getRandomValues) {
-    crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
 const guessAudioContentType = (file: File) => {
@@ -73,15 +62,18 @@ export const createSongsApi = () => ({
     trimStart: number;
     trimEnd: number;
     audioFile: File;
+    streamAudioFile?: File;
+    streamBitrateKbps?: number;
     coverFile?: File;
     visibility?: SongVisibility;
     onUploadProgress?: (progress: SongUploadProgress) => void;
   }): Promise<SongRow> {
     const client = ensureSupabase();
-    const songId = uuidv4();
+    const songId = createRuntimeUuid();
     const audioContentType = guessAudioContentType(input.audioFile) ?? 'audio/mp4';
     const audioExt = getExt(input.audioFile.name) || getAudioExtFromMime(audioContentType) || 'm4a';
     const audioPath = `${input.userId}/${songId}/audio.${audioExt}`;
+    let streamAudioPath = input.streamAudioFile ? `${input.userId}/${songId}/stream.mp3` : null;
 
     let coverPath: string | null = null;
 
@@ -90,18 +82,38 @@ export const createSongsApi = () => ({
 
       input.onUploadProgress?.({ phase: 'audio', percent: 0, message: '正在上传音频' });
       await cosClient.uploadFile(input.audioFile, audioPath, audioContentType, (progress) => {
+        const audioEnd = streamAudioPath ? 55 : 85;
         input.onUploadProgress?.({
           phase: 'audio',
-          percent: Math.min(85, Math.round(progress.percent * 0.85)),
+          percent: Math.min(audioEnd, Math.round(progress.percent * audioEnd / 100)),
           message: `正在上传音频 ${progress.percent}%`,
         });
       });
 
+      if (input.streamAudioFile && streamAudioPath) {
+        input.onUploadProgress?.({ phase: 'stream', percent: 55, message: '正在上传节流播放副本' });
+        const pendingStreamPath = streamAudioPath;
+        try {
+          await cosClient.uploadFile(input.streamAudioFile, pendingStreamPath, 'audio/mpeg', (progress) => {
+            input.onUploadProgress?.({
+              phase: 'stream',
+              percent: 55 + Math.round(progress.percent * 0.3),
+              message: `正在上传节流播放副本 ${progress.percent}%`,
+            });
+          });
+        } catch (error) {
+          console.warn('节流播放副本上传失败，继续使用原文件:', error);
+          await cosClient.deleteFiles([pendingStreamPath]).catch(() => {});
+          streamAudioPath = null;
+          input.onUploadProgress?.({ phase: 'stream', percent: 85, message: '播放副本失败，已回退原文件' });
+        }
+      }
+
       if (input.coverFile) {
-        coverPath = `${input.userId}/${songId}/cover.jpg`;
         input.onUploadProgress?.({ phase: 'cover', percent: 86, message: '正在处理封面' });
         const compressed = await downscaleImageBlob(input.coverFile, { maxWidth: 1024, maxHeight: 1024, mimeType: 'image/jpeg', quality: 0.86 });
-        await cosClient.uploadFile(compressed, coverPath, 'image/jpeg', (progress) => {
+        coverPath = await createSharedCoverPath(compressed);
+        await cosClient.uploadFileIfAbsent(compressed, coverPath, 'image/jpeg', (progress) => {
           input.onUploadProgress?.({
             phase: 'cover',
             percent: 86 + Math.round(progress.percent * 0.09),
@@ -132,6 +144,9 @@ export const createSongsApi = () => ({
         ...insertBase,
         story: input.story ?? null,
         file_size: input.fileSize ?? null,
+        stream_audio_path: streamAudioPath,
+        stream_file_size: streamAudioPath ? input.streamAudioFile?.size ?? null : null,
+        stream_bitrate_kbps: streamAudioPath ? input.streamBitrateKbps ?? null : null,
       };
 
       const tryInsert = async (payload: any) => {
@@ -140,16 +155,20 @@ export const createSongsApi = () => ({
 
       let { data, error } = await tryInsert(insertWithExtras);
       const message = typeof (error as any)?.message === 'string' ? (error as any).message : '';
-      if (error && (message.includes('story') || message.includes('file_size') || message.includes('is_public'))) {
+      if (error && (message.includes('story') || message.includes('file_size') || message.includes('is_public') || message.includes('stream_audio_path') || message.includes('stream_file_size') || message.includes('stream_bitrate_kbps'))) {
         ({ data, error } = await tryInsert(insertBase));
+        if (!error && streamAudioPath) {
+          await cosClient.deleteFiles([streamAudioPath]).catch(() => {});
+        }
       }
 
       if (error) throw error;
       input.onUploadProgress?.({ phase: 'database', percent: 100, message: '上传完成' });
       return data as SongRow;
     } catch (error) {
-      await cosClient.deleteFiles([audioPath]).catch(() => {});
-      if (coverPath) await cosClient.deleteFiles([coverPath]).catch(() => {});
+      await cosClient.deleteFiles([audioPath, ...(streamAudioPath ? [streamAudioPath] : [])]).catch(() => {});
+      // 内容寻址封面可能已被其他歌曲或合集复用，失败回滚时也不能删除。
+      if (coverPath && !isSharedCoverPath(coverPath)) await cosClient.deleteFiles([coverPath]).catch(() => {});
       throw error;
     }
   },
@@ -183,11 +202,19 @@ export const createSongsApi = () => ({
   async deleteSong(songId: string, userId: string) {
     const client = ensureSupabase();
 
-    const { data: song, error: fetchError } = await client
+    let { data: song, error: fetchError } = await client
       .from('songs')
-      .select('audio_path, cover_path, owner_id')
+      .select('audio_path, stream_audio_path, cover_path, owner_id')
       .eq('id', songId)
       .single();
+
+    if (fetchError && String(fetchError.message ?? '').includes('stream_audio_path')) {
+      ({ data: song, error: fetchError } = await client
+        .from('songs')
+        .select('audio_path, cover_path, owner_id')
+        .eq('id', songId)
+        .single() as any);
+    }
 
     if (fetchError) throw fetchError;
     if (song.owner_id !== userId) throw new Error('Permission denied');
@@ -200,20 +227,20 @@ export const createSongsApi = () => ({
     if (deleteError) throw deleteError;
 
     const filesToDelete = [song.audio_path];
-    if (song.cover_path) filesToDelete.push(song.cover_path);
+    if ((song as any).stream_audio_path) filesToDelete.push((song as any).stream_audio_path);
+    if (song.cover_path && !isSharedCoverPath(song.cover_path)) filesToDelete.push(song.cover_path);
 
     if (!cosClient.isEnabled) throw new Error('COS 未配置');
     await cosClient.deleteFiles(filesToDelete).catch(() => {});
   },
 
   async uploadSongCover(songId: string, ownerId: string, file: File, oldCoverPath?: string): Promise<{ path: string; signedUrl: string }> {
-    const path = `${ownerId}/${songId}/cover_${Date.now()}.jpg`;
-
     if (!cosClient.isEnabled) throw new Error('COS 未配置');
     const compressed = await downscaleImageBlob(file, { maxWidth: 1024, maxHeight: 1024, mimeType: 'image/jpeg', quality: 0.86 });
-    await cosClient.uploadFile(compressed, path);
+    const path = await createSharedCoverPath(compressed);
+    await cosClient.uploadFileIfAbsent(compressed, path, 'image/jpeg');
 
-    if (oldCoverPath && oldCoverPath !== path && !/^https?:\/\//i.test(oldCoverPath)) {
+    if (oldCoverPath && oldCoverPath !== path && !/^https?:\/\//i.test(oldCoverPath) && !isSharedCoverPath(oldCoverPath)) {
       try {
         await cosClient.deleteFiles([oldCoverPath]);
       } catch (error) {
@@ -221,7 +248,7 @@ export const createSongsApi = () => ({
       }
     }
 
-    const signedUrl = await cosClient.getSignedUrl(path, 3600);
+    const signedUrl = await createSignedCoverUrl(path);
     return { path, signedUrl };
   },
 });

@@ -328,7 +328,22 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col px-8 justify-between mt-2 relative z-10">
-        
+        {transitionPhase === 'opening' && !reduceMotion && (
+          <motion.div
+            aria-hidden
+            data-testid="player-secondary-blur-reveal"
+            className="pointer-events-none absolute inset-x-2 bottom-0 z-20 h-[38%] rounded-[32px] bg-black/[0.004] backdrop-blur-[4px]"
+            initial={{ opacity: 0.92, y: 10 }}
+            animate={{ opacity: 0, y: 0, transitionEnd: { display: 'none' } }}
+            transition={{ duration: 0.36, delay: 0.025, ease: PLAYER_SHELL_EASE }}
+            style={{
+              willChange: 'transform, opacity',
+              maskImage: 'linear-gradient(to bottom, transparent 0%, black 18%, black 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 18%, black 100%)',
+            }}
+          />
+        )}
+
         {/* Core Cover Area */}
         <div className="flex items-center justify-center flex-grow-[2] py-4">
           <PlayerSharedElement

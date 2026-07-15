@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../auth';
 import { Icons } from '../components/Icons';
-import { useCurrentArtistProfile } from '../hooks/useCurrentArtistProfile';
+import { navigateWithProfileAvatarTransition } from '../components/motion/profileAvatarTransition';
 import { supabaseApi } from '../supabaseApi';
 import { useStore } from '../store';
 import type { Song } from '../types';
@@ -262,13 +262,17 @@ const FrequentListening = ({
   );
 };
 
-export const Home: React.FC = () => {
+interface HomeProps {
+  profileAvatarUrl?: string;
+}
+
+export const Home: React.FC<HomeProps> = ({ profileAvatarUrl }) => {
   const { user } = useAuth();
 
   useEffect(() => {
     void import('./Profile');
   }, []);
-  const { resolvedAvatarUrl } = useCurrentArtistProfile();
+  const resolvedAvatarUrl = profileAvatarUrl;
   const { songs, playContext, playerState } = useStore();
   const [recentSongIds, setRecentSongIds] = useState<string[]>(() => {
     try {
@@ -374,21 +378,16 @@ export const Home: React.FC = () => {
         <motion.button
           type="button"
           onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect();
-            window.dispatchEvent(new CustomEvent('jzone:profile-avatar-transition', {
-              detail: {
-                rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-                src: resolvedAvatarUrl,
-              },
-            }));
-            // 先让共享头像覆盖层提交一帧，再切换较重的个人页内容。
-            window.requestAnimationFrame(() => {
+            navigateWithProfileAvatarTransition(event.currentTarget, resolvedAvatarUrl, () => {
               window.dispatchEvent(new CustomEvent('jzone:navigate-profile'));
             });
           }}
           className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center text-white shadow-lg overflow-hidden border border-white/10 active:scale-95 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
           aria-label="进入我的页面"
           data-shared-element="profile-avatar"
+          data-profile-avatar-source="true"
+          data-profile-home-avatar-source="true"
+          data-profile-home-avatar-target="true"
         >
           {resolvedAvatarUrl ? (
             <img src={resolvedAvatarUrl} alt="" className="w-full h-full object-cover" />

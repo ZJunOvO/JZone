@@ -79,7 +79,7 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
             bottom: 0,
             left: 0,
             '--lg-motion-blur-boost': '0px',
-            '--lg-motion-layer-opacity': 0,
+            '--lg-motion-layer-opacity': 1,
             '--lg-motion-rim-blur': '0px',
           }
         : {
@@ -88,7 +88,7 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
             bottom: config.verticalInset,
             left: config.horizontalInset,
             '--lg-motion-blur-boost': `${config.initialBlur * 0.72}px`,
-            '--lg-motion-layer-opacity': 0,
+            '--lg-motion-layer-opacity': 1,
             '--lg-motion-rim-blur': '7px',
           },
       shellEnter: reduceMotion
@@ -107,7 +107,7 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
             bottom: [config.verticalInset, 6, -2, 0],
             left: [config.horizontalInset, 5, -2, 0],
             '--lg-motion-blur-boost': '0px',
-            '--lg-motion-layer-opacity': [0, 0.68, 0.96, 1],
+            '--lg-motion-layer-opacity': 1,
             '--lg-motion-rim-blur': ['7px', '3px', '0.8px', '0px'],
           },
       shellClose: reduceMotion
@@ -184,7 +184,12 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
                 '--lg-motion-layer-opacity': 1,
                 '--lg-motion-rim-blur': '0px',
               }}
-        transition={closing ? animation.exitTransition : animation.enterTransition}
+        transition={closing
+          ? animation.exitTransition
+          : {
+              ...animation.enterTransition,
+              '--lg-motion-layer-opacity': { duration: 0 },
+            }}
       >
         <LiquidGlassSurface
           material="shuding"

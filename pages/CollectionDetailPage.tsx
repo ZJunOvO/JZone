@@ -14,6 +14,7 @@ import { extractAverageColor } from '../utils/extractAverageColor';
 import { CollectionHeaderSkeleton, SongRowSkeleton } from '../components/Skeletons';
 import { feedback } from '../components/feedback';
 import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from '../components/motion/sharedElementRegistry';
+import { getSongCoverFallback } from '../utils/cover';
 
 export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () => void }> = ({ collectionId, onClose }) => {
   useModalPresence(true);
@@ -116,7 +117,7 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
           genre: r.genre ?? undefined,
           story: r.story ?? undefined,
           fileSize: typeof r.file_size === 'number' ? r.file_size : undefined,
-          coverUrl: coverUrl || `https://picsum.photos/seed/${r.id}/400/400`,
+          coverUrl: coverUrl || getSongCoverFallback(r.id),
           audioUrl: '',
           audioPath: r.audio_path,
           coverPath: r.cover_path ?? undefined,

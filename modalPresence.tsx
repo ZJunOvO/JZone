@@ -1,16 +1,12 @@
 import { useLayoutEffect, useRef } from 'react';
+import { createRuntimeUuid } from './utils/runtimeId';
 
 const EVENT_NAME = 'jzone:modal-presence';
 
 type ModalEventDetail = { id: string; action: 'open' | 'close' };
 
-const randomId = () => {
-  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
-  return `m_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-};
-
 export const useModalPresence = (isOpen: boolean) => {
-  const idRef = useRef<string>(randomId());
+  const idRef = useRef<string>(createRuntimeUuid());
   const activeRef = useRef(false);
 
   useLayoutEffect(() => {

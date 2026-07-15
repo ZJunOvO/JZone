@@ -129,8 +129,7 @@ try {
   assert(opening && (opening.filter !== 'none' || opening.transform !== 'none'), 'Mini 菜单没有执行缩放模糊入场');
   assert((opening?.shellWidth ?? 0) < (opening?.menuWidth ?? 0), 'Mini 菜单整个玻璃壳没有执行入场形变');
   assert((opening?.shellOpacity ?? 0) > 0.99, `Mini 菜单首帧材质外壳不透明度建立了 Backdrop Root：${JSON.stringify(opening)}`);
-  assert((opening?.materialOpacity ?? 1) < 0.82 && (opening?.rimOpacity ?? 1) < 0.82, `Mini 菜单材质或高光首帧提前完成：${JSON.stringify(opening)}`);
-  assert(Math.abs((opening?.materialOpacity ?? 0) - (opening?.rimOpacity ?? 0)) < 0.18, `Mini 菜单材质和高光没有同步入场：${JSON.stringify(opening)}`);
+  assert((opening?.materialOpacity ?? 0) > 0.99 && (opening?.rimOpacity ?? 0) > 0.99, `Mini 菜单首帧没有建立完整液态玻璃和高光：${JSON.stringify(opening)}`);
   assert(opening?.glassFilter?.includes('url('), `Mini 菜单首帧缺少折射滤镜：${JSON.stringify(opening)}`);
   assert(opening?.mapReady, `Mini 菜单首帧位移图尚未生成：${JSON.stringify(opening)}`);
   await mkdir('output/playwright', { recursive: true });

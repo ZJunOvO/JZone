@@ -108,6 +108,11 @@ try {
       const route = document.querySelector('.jzone-route-stage[data-route="profile"]');
       const background = document.querySelector('[data-testid="profile-immersive-background"]');
       const backgroundRect = background?.getBoundingClientRect();
+      const readBackdrop = (element) => {
+        if (!element) return null;
+        const style = getComputedStyle(element);
+        return style.backdropFilter || style.webkitBackdropFilter || 'none';
+      };
       const readLayer = (element) => {
         if (!element) return null;
         const style = getComputedStyle(element);
@@ -122,11 +127,16 @@ try {
       window.__jzoneProfileTransitionFrames.push({
         time: now - startedAt,
         routeTransform: route ? getComputedStyle(route).transform : null,
+        transitionPending: document.documentElement.dataset.profileAvatarTransition === 'pending',
+        materialSuspended: document.documentElement.hasAttribute('data-profile-background-transition'),
+        miniBackdrop: readBackdrop(document.querySelector('[data-testid="mini-player"] [data-liquid-material] .liquid-tab-f-glass')),
+        profileTabsBackdrop: readBackdrop(document.querySelector('[data-profile-page="true"] .sticky')),
         target: readLayer(target),
         overlay: readLayer(overlay),
         background: background && backgroundRect && backgroundRect.width > 0 ? {
           rect: backgroundRect.toJSON(),
           transform: getComputedStyle(background).transform,
+          opacity: Number(getComputedStyle(background).opacity),
           src: background.getAttribute('src'),
         } : null,
       });
@@ -159,7 +169,7 @@ try {
     };
   });
   assert(!homeAvatarSrc || profileFirstPaint.avatarSrc === homeAvatarSrc, `个人页首帧头像回退到其他来源：${JSON.stringify({ homeAvatarSrc, profileFirstPaint })}`);
-  await page.waitForTimeout(650);
+  await page.waitForTimeout(720);
   const avatarAfter = await page.evaluate(() => {
     const overlay = document.querySelector('[data-testid="profile-avatar-route-transition"]');
     return {
@@ -187,8 +197,15 @@ try {
   assert(routedFrames.length > 6, `个人页路由帧样本不足：${routedFrames.length}`);
   assert(routedFrames.every((frame) => frame.routeTransform === 'none'), `个人页仍被路由 transform 干扰：${JSON.stringify(routedFrames.map((frame) => frame.routeTransform))}`);
   assert(overlayFrames.length > 4, `头像覆盖动画帧样本不足：${overlayFrames.length}`);
-  assert(overlayFrames.every((frame) => !frame.target?.visible), '共享头像移动期间个人页目标头像提前显示');
-  assert(routedFrames.every((frame) => Number(Boolean(frame.target?.visible)) + Number(Boolean(frame.overlay?.visible)) === 1), '头像转场期间出现重复头像或共享元素空档');
+  assert(profileFrames.every((frame) => !frame.materialSuspended), '头像路由转场仍在临时撤销液态玻璃或模糊材质');
+  const miniMaterialFrames = profileFrames.filter((frame) => frame.miniBackdrop !== null);
+  assert(miniMaterialFrames.every((frame) => frame.miniBackdrop !== 'none'), `Mini 播放器液态玻璃在头像转场中断：${JSON.stringify(miniMaterialFrames)}`);
+  const profileTabsMaterialFrames = routedFrames.filter((frame) => frame.profileTabsBackdrop !== null);
+  assert(profileTabsMaterialFrames.length > 4, '个人页创作/收藏栏材质采样不足');
+  assert(profileTabsMaterialFrames.every((frame) => frame.profileTabsBackdrop !== 'none'), `个人页创作/收藏栏模糊在头像转场中断：${JSON.stringify(profileTabsMaterialFrames)}`);
+  assert(overlayFrames.filter((frame) => frame.transitionPending).every((frame) => !frame.target?.visible), '共享头像移动期间个人页目标头像提前显示');
+  assert(routedFrames.every((frame) => Boolean(frame.target?.visible) || Boolean(frame.overlay?.visible)), '头像转场期间出现共享元素空档');
+  assert(routedFrames.some((frame) => frame.target?.visible && frame.overlay?.visible), '共享头像终点缺少目标与覆盖层的交叉淡出帧');
   assert(avatarFrameP95 <= 34, `头像共享动画帧率不稳定：${JSON.stringify({ avatarFrameP95, avatarFrameMax, overlayFrameDeltas, avatarLongTasks, disableFiltersForDiagnostics })}`);
   if (backgroundFrames.length > 1) {
     const firstBackground = backgroundFrames[0].background;
@@ -203,6 +220,7 @@ try {
     }));
     assert(maxGeometryDelta <= 1, `个人页背景首帧后仍发生二次几何缩放：${maxGeometryDelta}px`);
     assert(backgroundFrames.every((frame) => frame.background.transform === firstBackground.transform), '个人页背景 transform 在入场后发生变化');
+    assert(backgroundFrames.every((frame) => frame.background.opacity > 0.1), '个人页背景在头像转场期间被隐藏，产生黑屏闪烁');
   }
   const profileSettled = await page.evaluate(() => {
     const background = document.querySelector('[data-testid="profile-immersive-background"]');
@@ -228,6 +246,105 @@ try {
     return result;
   });
   assert(profileScroll && profileScroll.maxScroll > 0 && profileScroll.scrollTop > 0, `个人页绝对布局没有进入主滚动容器：${JSON.stringify(profileScroll)}`);
+
+  await page.evaluate(() => {
+    window.__jzoneProfileExitFrames = [];
+    window.__jzoneProfileHomeTransitionDetail = null;
+    window.addEventListener('jzone:profile-avatar-transition', (event) => {
+      window.__jzoneProfileHomeTransitionDetail = event.detail;
+    }, { once: true });
+    const startedAt = performance.now();
+    const read = (element) => {
+      if (!element) return null;
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return {
+        display: style.display,
+        visibility: style.visibility,
+        opacity: Number(style.opacity),
+        visible: element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) && rect.width > 0,
+      };
+    };
+    const tick = (now) => {
+      window.__jzoneProfileExitFrames.push({
+        time: now - startedAt,
+        route: document.querySelector('.jzone-route-stage')?.getAttribute('data-route'),
+        shell: read(document.querySelector('[data-profile-route-shell="true"]')),
+        avatar: read(document.querySelector('[data-profile-avatar-target="true"]')),
+        tabs: read(document.querySelector('[data-profile-page="true"] .sticky')),
+      });
+      if (now - startedAt < 420) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  const reverseProfileSourceRect = await page.locator('[data-profile-avatar-target="true"]').boundingBox();
+  await page.getByTestId('bottom-nav-home').click();
+  await page.waitForFunction(() => window.__jzoneProfileHomeTransitionDetail !== null);
+  const reverseTransitionDetail = await page.evaluate(() => window.__jzoneProfileHomeTransitionDetail);
+  assert(
+    reverseProfileSourceRect
+      && reverseTransitionDetail?.destination === 'home'
+      && Math.abs(reverseTransitionDetail.rect.left - reverseProfileSourceRect.x) <= 1
+      && Math.abs(reverseTransitionDetail.rect.top - reverseProfileSourceRect.y) <= 1,
+    `个人页返回现在就听没有从个人头像启动反向共享动画：${JSON.stringify({ reverseProfileSourceRect, reverseTransitionDetail })}`,
+  );
+  await page.waitForFunction(() => document.querySelector('.jzone-route-stage')?.getAttribute('data-route') === 'home');
+  await page.getByTestId('profile-avatar-route-transition').waitFor({ state: 'attached', timeout: 3000 });
+  const reverseArrivalDistance = await page.evaluate(() => new Promise((resolve) => {
+    let minimumDistance = Number.POSITIVE_INFINITY;
+    const startedAt = performance.now();
+    const tick = () => {
+      const overlay = document.querySelector('[data-testid="profile-avatar-route-transition"]');
+      const target = document.querySelector('[data-profile-home-avatar-target="true"]');
+      if (overlay && target) {
+        const overlayRect = overlay.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        minimumDistance = Math.min(
+          minimumDistance,
+          Math.hypot(overlayRect.left - targetRect.left, overlayRect.top - targetRect.top)
+            + Math.abs(overlayRect.width - targetRect.width),
+        );
+      }
+      if (!overlay || performance.now() - startedAt > 1400) {
+        resolve(minimumDistance);
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }));
+  assert(reverseArrivalDistance <= 2, `反向共享头像没有移动到现在就听页右上角终点：${reverseArrivalDistance}`);
+  await page.waitForTimeout(440);
+  const profileExitFrames = await page.evaluate(() => window.__jzoneProfileExitFrames ?? []);
+  const homeExitFrames = profileExitFrames.filter((frame) => frame.route === 'home');
+  assert(homeExitFrames.length > 4, `个人页离场帧样本不足：${JSON.stringify(profileExitFrames)}`);
+  assert(homeExitFrames.every((frame) => !frame.shell?.visible && !frame.avatar?.visible && !frame.tabs?.visible), `个人页组件残留到其他路由：${JSON.stringify(homeExitFrames)}`);
+
+  const homeAvatarSource = page.locator('[data-profile-home-avatar-source="true"]');
+  const homeAvatarSourceRect = await homeAvatarSource.boundingBox();
+  assert(homeAvatarSourceRect, '现在就听页右上角头像不可见，无法校验共享动画起点');
+  await page.evaluate(() => {
+    window.__jzoneHomeProfileTransitionDetail = null;
+    window.addEventListener('jzone:profile-avatar-transition', (event) => {
+      window.__jzoneHomeProfileTransitionDetail = event.detail;
+    }, { once: true });
+  });
+  await page.getByTestId('bottom-nav-profile').click();
+  await page.waitForFunction(() => window.__jzoneHomeProfileTransitionDetail !== null);
+  const homeProfileTransitionDetail = await page.evaluate(() => window.__jzoneHomeProfileTransitionDetail);
+  const homeProfileStartRect = homeProfileTransitionDetail?.rect;
+  assert(
+    homeProfileStartRect
+      && Math.abs(homeProfileStartRect.left - homeAvatarSourceRect.x) <= 1
+      && Math.abs(homeProfileStartRect.top - homeAvatarSourceRect.y) <= 1
+      && Math.abs(homeProfileStartRect.width - homeAvatarSourceRect.width) <= 1
+      && Math.abs(homeProfileStartRect.height - homeAvatarSourceRect.height) <= 1,
+    `从现在就听页进入个人页时，共享头像没有从右上角头像出发：${JSON.stringify({ homeAvatarSourceRect, homeProfileStartRect })}`,
+  );
+  await page.waitForFunction(() => document.querySelector('.jzone-route-stage')?.getAttribute('data-route') === 'profile');
+  await page.getByTestId('profile-avatar-route-transition').waitFor({ state: 'detached', timeout: 1200 });
+  await page.getByTestId('bottom-nav-home').click();
+  await page.waitForFunction(() => document.querySelector('.jzone-route-stage')?.getAttribute('data-route') === 'home');
 
   await page.getByTestId('bottom-nav-library').evaluate((element) => element.click());
   await page.waitForTimeout(500);
@@ -263,8 +380,23 @@ try {
   const residualPlayerNodes = await page.locator('[data-shared-element="song-cover"]').count();
   assert(residualPlayerNodes === 1, `播放器连续开关后残留共享节点：${residualPlayerNodes}`);
 
-  await page.getByTestId('bottom-nav-profile').evaluate((element) => element.click());
-  await page.waitForTimeout(700);
+  await page.evaluate(() => {
+    window.__jzoneUnexpectedProfileTransitionCount = 0;
+    window.addEventListener('jzone:profile-avatar-transition', () => {
+      window.__jzoneUnexpectedProfileTransitionCount += 1;
+    }, { once: true });
+  });
+  await page.getByTestId('bottom-nav-profile').click();
+  await page.waitForFunction(() => document.querySelector('.jzone-route-stage')?.getAttribute('data-route') === 'profile');
+  await page.waitForTimeout(180);
+  const nonHomeProfileTransition = await page.evaluate(() => ({
+    eventCount: window.__jzoneUnexpectedProfileTransitionCount ?? 0,
+    overlayCount: document.querySelectorAll('[data-testid="profile-avatar-route-transition"]').length,
+  }));
+  assert(
+    nonHomeProfileTransition.eventCount === 0 && nonHomeProfileTransition.overlayCount === 0,
+    `资料库进入个人页错误触发头像共享动画：${JSON.stringify(nonHomeProfileTransition)}`,
+  );
   let collectionChecked = false;
   for (const tab of ['albums', 'playlists']) {
     await page.getByTestId(`profile-subtab-${tab}`).click();
