@@ -4,6 +4,8 @@ import {
 import { isSupabaseEnabled } from './client';
 import { createCollectionsApi } from './collections';
 import { createInteractionsApi } from './interactions';
+import { createListeningRecapApi } from './listeningRecap';
+import { clearListeningRecapCache } from './listeningRecapCache';
 import { createProfilesApi } from './profiles';
 import { createSongArtistsApi } from './songArtists';
 import { createSongsApi } from './songs';
@@ -17,6 +19,7 @@ import {
 const collectionsApi = createCollectionsApi();
 const songsApi = createSongsApi();
 const interactionsApi = createInteractionsApi();
+const listeningRecapApi = createListeningRecapApi();
 const profilesApi = createProfilesApi();
 const songArtistsApi = createSongArtistsApi();
 
@@ -25,6 +28,7 @@ export const supabaseApi = {
   ...collectionsApi,
   ...songsApi,
   ...interactionsApi,
+  ...listeningRecapApi,
   ...profilesApi,
   ...songArtistsApi,
 
@@ -42,7 +46,10 @@ export const supabaseApi = {
 
   clearCache(options?: { media?: boolean }) {
     clearApiCache();
-    if (options?.media) clearSignedUrlCache();
+    if (options?.media) {
+      clearListeningRecapCache();
+      clearSignedUrlCache();
+    }
   },
 };
 

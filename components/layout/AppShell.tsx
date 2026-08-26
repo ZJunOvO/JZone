@@ -31,6 +31,7 @@ const loadProfile = () => import('../../pages/Profile').then((module) => ({ defa
 const Profile = React.memo(lazy(loadProfile));
 const loadCollectionDetail = () => import('../../pages/CollectionDetailPage').then((module) => ({ default: module.CollectionDetailPage }));
 const CollectionDetailPage = lazy(loadCollectionDetail);
+const ListeningRecapPage = lazy(() => import('../../pages/ListeningRecap').then((module) => ({ default: module.ListeningRecap })));
 const loadPlayerView = () => import('../../pages/PlayerView').then((module) => ({ default: module.PlayerView }));
 const PlayerView = lazy(loadPlayerView);
 
@@ -53,7 +54,12 @@ export const AppShell: React.FC = () => {
     setProfileUserId,
     collectionId,
     closeCollection,
+    isListeningRecap,
+    listeningRecapPeriod,
+    closeListeningRecap,
+    replaceListeningRecapPeriod,
   } = useAppRoute();
+  const currentRoute = isListeningRecap ? 'listening-recap' : activeTab;
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
   const [playerTransitionPhase, setPlayerTransitionPhase] = useState<PlayerTransitionPhase>('open');
   const [playerTransitionOrigin, setPlayerTransitionOrigin] = useState<PlayerTransitionOrigin | null>(null);
@@ -69,7 +75,7 @@ export const AppShell: React.FC = () => {
   const miniSettleTimerRef = React.useRef<number | null>(null);
   const miniSettleResetTimerRef = React.useRef<number | null>(null);
   const routeFallbackControls = useAnimationControls();
-  const previousRouteRef = React.useRef(activeTab);
+  const previousRouteRef = React.useRef(currentRoute);
 
   useAutoFullscreen();
   useLiquidGlassAdaptiveForeground();
@@ -86,8 +92,8 @@ export const AppShell: React.FC = () => {
   }, [activeTab]);
 
   React.useLayoutEffect(() => {
-    if (previousRouteRef.current === activeTab) return;
-    previousRouteRef.current = activeTab;
+    if (previousRouteRef.current === currentRoute) return;
+    previousRouteRef.current = currentRoute;
     routeFallbackControls.stop();
     if (activeTab === 'profile') {
       routeFallbackControls.set({ opacity: 1, x: 0, scale: 1 });
@@ -103,7 +109,7 @@ export const AppShell: React.FC = () => {
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeTab, routeFallbackControls]);
+  }, [activeTab, currentRoute, routeFallbackControls]);
 
   React.useEffect(() => {
     if (songs.length > 0) void loadPlayerView();
@@ -251,6 +257,16 @@ export const AppShell: React.FC = () => {
     );
   }, [playContext, songs]);
 
+  const playListeningRecapSong = React.useCallback((songId: string) => {
+    if (!songId) return;
+    playContext([songId], songId);
+  }, [playContext]);
+
+  const playListeningRecapQueue = React.useCallback((songIds: string[], startSongId: string) => {
+    if (!songIds.length || !startSongId) return;
+    playContext(songIds, startSongId);
+  }, [playContext]);
+
   const isModalActive = modalCount > 0;
 
   return (
@@ -259,37 +275,49 @@ export const AppShell: React.FC = () => {
       <div className="jzone-glass-source flex-1 overflow-y-auto no-scrollbar scroll-smooth bg-black">
         <motion.div
           className="jzone-route-stage relative min-h-full"
-          data-route={activeTab}
+          data-route={currentRoute}
           initial={false}
           animate={routeFallbackControls}
         >
         <Suspense fallback={<PageFallback />}>
-          {activeTab === 'home' && <Home profileAvatarUrl={profileAvatarUrl} />}
-          {activeTab === 'library' && <Library />}
-          {uploadMounted && (
-            <div className={activeTab === 'upload' ? 'block' : 'hidden'} aria-hidden={activeTab !== 'upload'}>
-              <Upload />
-            </div>
-          )}
-          {(profileMounted || activeTab === 'profile') && (
-            <div
-              ref={profileRouteRef}
-              className={activeTab === 'profile'
-                ? 'absolute inset-x-0 top-0 min-h-full'
-                : activeTab === 'home'
-                  ? 'invisible pointer-events-none absolute inset-x-0 top-0 h-full overflow-hidden'
-                  : 'hidden'}
-              aria-hidden={activeTab !== 'profile'}
-              data-profile-route-shell="true"
-              style={activeTab === 'profile'
-                ? undefined
-                : { visibility: 'hidden', opacity: 0, transition: 'none' }}
-            >
-              <Profile
-                userId={profileUserId}
-                onBack={profileUserId ? () => setProfileUserId(undefined) : undefined}
-              />
-            </div>
+          {isListeningRecap ? (
+            <ListeningRecapPage
+              period={listeningRecapPeriod ?? undefined}
+              onBack={closeListeningRecap}
+              onPeriodChange={replaceListeningRecapPeriod}
+              onPlaySong={playListeningRecapSong}
+              onPlayQueue={playListeningRecapQueue}
+            />
+          ) : (
+            <>
+              {activeTab === 'home' && <Home profileAvatarUrl={profileAvatarUrl} />}
+              {activeTab === 'library' && <Library />}
+              {uploadMounted && (
+                <div className={activeTab === 'upload' ? 'block' : 'hidden'} aria-hidden={activeTab !== 'upload'}>
+                  <Upload />
+                </div>
+              )}
+              {(profileMounted || activeTab === 'profile') && (
+                <div
+                  ref={profileRouteRef}
+                  className={activeTab === 'profile'
+                    ? 'absolute inset-x-0 top-0 min-h-full'
+                    : activeTab === 'home'
+                      ? 'invisible pointer-events-none absolute inset-x-0 top-0 h-full overflow-hidden'
+                      : 'hidden'}
+                  aria-hidden={activeTab !== 'profile'}
+                  data-profile-route-shell="true"
+                  style={activeTab === 'profile'
+                    ? undefined
+                    : { visibility: 'hidden', opacity: 0, transition: 'none' }}
+                >
+                  <Profile
+                    userId={profileUserId}
+                    onBack={profileUserId ? () => setProfileUserId(undefined) : undefined}
+                  />
+                </div>
+              )}
+            </>
           )}
         </Suspense>
         </motion.div>
@@ -321,7 +349,7 @@ export const AppShell: React.FC = () => {
               : {
                   top: 'auto',
                   // 当前导航顶部与播放器底部保持 12px，兼顾触达密度和 SVG 滤镜采样稳定性。
-                  bottom: '92px',
+                  bottom: isListeningRecap ? 'calc(env(safe-area-inset-bottom) + 14px)' : '92px',
                   left: '12px',
                   right: '12px',
                   width: 'min(400px, calc(100% - 24px))',
@@ -339,14 +367,16 @@ export const AppShell: React.FC = () => {
         <PlayerBar onExpand={openPlayer} variant={isModalActive ? 'island' : 'dock'} settlePulse={miniSettlePulse} />
       </motion.div>
 
-      <BottomNavigation
-        currentTab={activeTab}
-        profileAvatarUrl={profileAvatarUrl}
-        setTab={(tab) => {
-          setActiveTab(tab);
-          if (tab === 'profile') setProfileUserId(undefined);
-        }}
-      />
+      {!isListeningRecap && (
+        <BottomNavigation
+          currentTab={activeTab}
+          profileAvatarUrl={profileAvatarUrl}
+          setTab={(tab) => {
+            setActiveTab(tab);
+            if (tab === 'profile') setProfileUserId(undefined);
+          }}
+        />
+      )}
 
       {isPlayerOpen && (
         <Suspense fallback={null}>

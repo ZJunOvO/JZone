@@ -8,6 +8,16 @@ import { supabaseApi } from './supabaseApi';
 import { feedback } from './components/feedback';
 import { useCommentsController } from './hooks/useCommentsController';
 import { getSongCoverFallback } from './utils/cover';
+import { createRuntimeUuid } from './utils/runtimeId';
+import type { ListeningRecapRecordEventResult } from './services/supabase/listeningRecapTypes';
+import {
+  clearListeningRecapEventOutbox,
+  enqueueListeningRecapEvent,
+  flushListeningRecapEventOutbox,
+  type ListeningRecapEventInput,
+  type ListeningRecapOutboxSendContext,
+  type ListeningRecapOutboxSendResult,
+} from './utils/listeningRecapEventOutbox';
 
 interface AppContextType {
   songs: Song[];
@@ -77,6 +87,30 @@ const getQualifyingPlaySeconds = (song: Song, mediaDuration: number) => {
   return Math.max(1, playableDuration * QUALIFYING_PLAY_RATIO);
 };
 
+type ListeningRecapApi = typeof supabaseApi & {
+  recordListeningPlayEvent?: (input: ListeningRecapEventInput) => Promise<ListeningRecapRecordEventResult>;
+};
+
+const listeningRecapApi = supabaseApi as ListeningRecapApi;
+
+const isRecordListeningPlayEventUnavailable = (error: unknown) => {
+  const candidate = error as { code?: unknown; message?: unknown; status?: unknown } | null;
+  const code = typeof candidate?.code === 'string' ? candidate.code.toLowerCase() : '';
+  if (
+    code === 'pgrst202'
+    || code === '42883'
+    || code === 'rpc_not_found'
+    || code === 'function_not_found'
+    || code === 'rpc_unavailable'
+  ) {
+    return true;
+  }
+
+  const message = typeof candidate?.message === 'string' ? candidate.message.toLowerCase() : '';
+  return message.includes('record_listening_play_event')
+    && /(does not exist|not found|could not find|undefined function)/i.test(message);
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { status, user } = useAuth();
   const [songs, setSongs] = useState<Song[]>(hasSupabaseConfig ? [] : MOCK_SONGS);
@@ -109,6 +143,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   } = useCommentsController({ currentSongId: playerState.currentSongId, authStatus: status, user });
   const loadedSongsForUserRef = useRef<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
+  const recordEventUnavailableRef = useRef(false);
   const lastSongsFetchAtRef = useRef(0);
   const SONGS_CACHE_PREFIX = 'jzone_songs_cache_v1:';
   const FAVORITES_CACHE_PREFIX = 'jzone_favorites_cache_v1:';
@@ -167,9 +202,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!hasSupabaseConfig) return;
 
     const nextUserId = status === 'signed_in' && user ? user.id : null;
+    const previousUserId = activeUserIdRef.current;
+    if (previousUserId && previousUserId !== nextUserId) {
+      const clearedCount = clearListeningRecapEventOutbox(previousUserId);
+      if (clearedCount > 0) {
+        console.info('聆听回顾待同步事件已清理', { code: 'auth_changed' });
+      }
+    }
     if (activeUserIdRef.current === nextUserId) return;
 
     activeUserIdRef.current = nextUserId;
+    recordEventUnavailableRef.current = false;
     loadedSongsForUserRef.current = null;
     lastSongsFetchAtRef.current = 0;
     setSongs([]);
@@ -335,6 +378,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const playSeqRef = useRef(0);
   const playbackSessionRef = useRef({
     songId: null as string | null,
+    playSessionId: null as string | null,
+    eventId: null as string | null,
     listenedSeconds: 0,
     lastTickAt: 0,
     lastMediaTime: 0,
@@ -354,6 +399,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     favoriteSongIdsRef.current = favoriteSongIds;
   }, [favoriteSongIds]);
 
+  const deliverListeningRecapEvent = useCallback(async (
+    userId: string,
+    event: ListeningRecapEventInput,
+    context: ListeningRecapOutboxSendContext = { hasPriorAttempt: false },
+  ): Promise<ListeningRecapOutboxSendResult> => {
+    if (activeUserIdRef.current !== userId) return { acknowledged: false };
+
+    const sendLegacyCompatibilityCounters = async () => {
+      if (activeUserIdRef.current !== userId) return false;
+      const results = await Promise.allSettled([
+        Promise.resolve().then(() => supabaseApi.incrementSongPlay(event.songId)),
+        Promise.resolve().then(() => supabaseApi.incrementUserSongPlay(event.songId)),
+      ]);
+      if (results.some((result) => result.status === 'rejected')) {
+        console.warn('聆听回顾兼容累计更新失败', { code: 'legacy_counter_failed' });
+      }
+      return activeUserIdRef.current === userId;
+    };
+
+    const recordListeningPlayEvent = listeningRecapApi.recordListeningPlayEvent;
+    if (recordEventUnavailableRef.current || typeof recordListeningPlayEvent !== 'function') {
+      if (context.hasPriorAttempt) {
+        console.warn('聆听回顾事件暂不回退旧累计', { code: 'rpc_unavailable_after_attempt' });
+        throw new Error('聆听回顾记录 RPC 在不确定请求后不可用');
+      }
+      recordEventUnavailableRef.current = true;
+      const handled = await sendLegacyCompatibilityCounters();
+      return { acknowledged: handled };
+    }
+
+    try {
+      const result = await recordListeningPlayEvent.call(supabaseApi, event);
+      if (activeUserIdRef.current !== userId) return { acknowledged: false };
+      if (!result || (result.status !== 'accepted' && result.status !== 'duplicate')) {
+        throw new Error('聆听回顾事件响应无效');
+      }
+
+      return { acknowledged: true };
+    } catch (error) {
+      if (!isRecordListeningPlayEventUnavailable(error)) {
+        console.warn('聆听回顾事件暂未确认，保留待同步记录', { code: 'event_record_failed' });
+        throw error;
+      }
+
+      if (context.hasPriorAttempt) {
+        console.warn('聆听回顾事件暂不回退旧累计', { code: 'rpc_unavailable_after_attempt' });
+        throw error;
+      }
+      recordEventUnavailableRef.current = true;
+      const handled = await sendLegacyCompatibilityCounters();
+      return { acknowledged: handled };
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasSupabaseConfig || status !== 'signed_in' || !user?.id) return;
+    const userId = user.id;
+    const retryOutbox = () => {
+      if (activeUserIdRef.current !== userId) return;
+      void flushListeningRecapEventOutbox(
+        userId,
+        (event, context) => deliverListeningRecapEvent(userId, event, context),
+      ).catch(() => {
+        console.warn('聆听回顾待同步事件重试失败', { code: 'outbox_retry_failed' });
+      });
+    };
+
+    retryOutbox();
+    window.addEventListener('online', retryOutbox);
+    return () => window.removeEventListener('online', retryOutbox);
+  }, [deliverListeningRecapEvent, status, user?.id]);
+
   // Initialize Audio Logic
   useEffect(() => {
     if (!audioRef.current) {
@@ -366,6 +483,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const beginPlaybackSession = (songId: string | null) => {
       playbackSessionRef.current = {
         songId,
+        playSessionId: songId ? createRuntimeUuid() : null,
+        eventId: null,
         listenedSeconds: 0,
         lastTickAt: Date.now(),
         lastMediaTime: audio.currentTime || 0,
@@ -374,10 +493,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     };
 
-    const recordQualifiedPlay = (songId: string) => {
+    const recordQualifiedPlay = (songId: string, session: typeof playbackSessionRef.current) => {
       if (!hasSupabaseConfig) return;
-      supabaseApi.incrementSongPlay(songId).catch(() => {});
-      supabaseApi.incrementUserSongPlay(songId).catch(() => {});
+      const userId = activeUserIdRef.current;
+      if (userId && session.playSessionId && session.eventId) {
+        const currentSong = stateRef.current.songs.find((song) => song.id === songId);
+        const qualifyingSeconds = currentSong
+          ? getQualifyingPlaySeconds(currentSong, audio.duration)
+          : Number.NaN;
+        const event: ListeningRecapEventInput = {
+          eventId: session.eventId,
+          playSessionId: session.playSessionId,
+          songId,
+          metric: 'qualified_play',
+          policyVersion: 'd1-20pct-v1',
+          observedAt: new Date().toISOString(),
+          qualifyingSeconds: Number.isFinite(qualifyingSeconds) ? qualifyingSeconds : null,
+          listenedSeconds: Number.isFinite(session.listenedSeconds) ? session.listenedSeconds : null,
+        };
+        const enqueueResult = enqueueListeningRecapEvent(userId, event);
+        if (enqueueResult === 'unavailable') {
+          void deliverListeningRecapEvent(userId, event).catch(() => {});
+        } else {
+          void flushListeningRecapEventOutbox(
+            userId,
+            (queuedEvent, context) => deliverListeningRecapEvent(userId, queuedEvent, context),
+          ).catch(() => {});
+        }
+      }
       setSongs((prev) => prev.map((song) => (
         song.id === songId ? { ...song, playsCount: (song.playsCount ?? 0) + 1 } : song
       )));
@@ -388,7 +531,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const session = playbackSessionRef.current;
       if (session.songId !== songId || session.counted) return false;
       session.counted = true;
-      recordQualifiedPlay(songId);
+      session.eventId = session.eventId ?? createRuntimeUuid();
+      recordQualifiedPlay(songId, session);
       return true;
     };
 
@@ -411,21 +555,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         && (isEndSample || (!audio.paused && !audio.ended));
       if (canSample) {
         const wallDelta = Math.max(0, (now - session.lastTickAt) / 1000);
-        const mediaDelta = Math.max(0, currentMediaTime - session.lastMediaTime);
-        if (mediaDelta > wallDelta + 0.2) {
+        const mediaDelta = currentMediaTime - session.lastMediaTime;
+        const isMediaSeek = mediaDelta < 0 || mediaDelta > wallDelta + 0.2;
+        if (isMediaSeek) {
           session.lastSeekAt = now;
         } else if (mediaDelta > 0) {
           session.lastSeekAt = 0;
+          // 只累计真实媒体时间的连续推进；暂停、卡顿或无推进不补墙钟时间。
+          session.listenedSeconds += mediaDelta;
+          const qualifyingSeconds = getQualifyingPlaySeconds(currentSong, audio.duration);
+          if (session.listenedSeconds >= qualifyingSeconds) markSessionCounted(currentSong.id);
         }
-        // 结束补采样只补真实媒体推进，不把暂停或拖动到终点的时间算进去。
-        const sampledDelta = isEndSample
-          ? (mediaDelta > 0 ? Math.min(wallDelta, mediaDelta + 0.2) : 0)
-          : (mediaDelta > 0.01
-            ? Math.min(wallDelta, mediaDelta + 0.2)
-            : Math.min(wallDelta, 0.75));
-        session.listenedSeconds += sampledDelta;
-        const qualifyingSeconds = getQualifyingPlaySeconds(currentSong, audio.duration);
-        if (session.listenedSeconds >= qualifyingSeconds) markSessionCounted(currentSong.id);
       }
       session.lastTickAt = now;
       session.lastMediaTime = currentMediaTime;
@@ -561,6 +701,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     audio.pause();
     playbackSessionRef.current = {
       songId,
+      playSessionId: createRuntimeUuid(),
+      eventId: null,
       listenedSeconds: 0,
       lastTickAt: Date.now(),
       lastMediaTime: song.trimStart || 0,

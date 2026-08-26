@@ -3,8 +3,10 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../auth';
 import { Icons } from '../components/Icons';
 import { navigateWithProfileAvatarTransition } from '../components/motion/profileAvatarTransition';
+import { useListeningRecapPreview } from '../hooks/useListeningRecap';
 import { supabaseApi } from '../supabaseApi';
 import { useStore } from '../store';
+import type { ListeningRecapPeriod, ListeningRecapResponse } from '../services/supabase/listeningRecapTypes';
 import type { Song } from '../types';
 
 const RECENT_KEY = 'jzone_recent_song_ids_v1';
@@ -43,6 +45,95 @@ const writePlayStatsCache = (userId: string, rows: PlayStat[]) => {
   } catch {}
 };
 
+const getCurrentRecapPeriod = (): ListeningRecapPeriod => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+    }).formatToParts(new Date());
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    if (year && month) return { type: 'month', id: `${year}-${month}` };
+  } catch {}
+  const now = new Date();
+  return {
+    type: 'month',
+    id: `${String(now.getUTCFullYear()).padStart(4, '0')}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`,
+  };
+};
+
+const formatRecapPeriodTitle = (period?: ListeningRecapPeriod | null) => {
+  const current = period ?? getCurrentRecapPeriod();
+  if (current.type === 'year') return `${current.id} 年的声音`;
+  const [year, month] = current.id.split('-');
+  const monthNumber = Number(month);
+  return /^\d{4}$/.test(year) && monthNumber >= 1 && monthNumber <= 12
+    ? `${year} 年 ${monthNumber} 月的声音`
+    : '本期的声音';
+};
+
+const getRecapEntryCopy = (response: ListeningRecapResponse | null) => {
+  if (!response) return '查看本期回顾';
+  if (response.error || response.coverage?.status === 'error') return '回顾暂时不可用';
+  if (response.coverage?.status === 'legacy_only') return '历史累计尚不能组成这段回顾';
+  if (response.coverage?.status === 'no_event') return '本期还没有可回顾的有效播放';
+  if (response.summary && (response.coverage?.status === 'event_complete' || response.coverage?.status === 'event_partial')) {
+    if (response.summary.validPlayCount === 0 && response.coverage.status === 'event_complete') {
+      return '本期还没有可回顾的有效播放';
+    }
+    const prefix = response.coverage.status === 'event_partial' ? '覆盖段已确认' : '已确认';
+    return `${prefix} ${response.summary.listeningDayCount} 天 · ${response.summary.validPlayCount} 次有效播放`;
+  }
+  return '查看本期回顾';
+};
+
+const ListeningRecapEntry = ({
+  preview,
+  onOpen,
+}: {
+  preview: ListeningRecapResponse | null;
+  onOpen: (period?: ListeningRecapPeriod) => void;
+}) => {
+  const period = preview?.period ?? null;
+  const coverUrl = preview?.coverage?.status === 'event_complete' || preview?.coverage?.status === 'event_partial'
+    ? preview.opening?.coverSong?.coverUrl
+    : null;
+
+  return (
+    <section className="space-y-3" aria-label="聆听回顾入口">
+      <button
+        type="button"
+        onClick={() => onOpen(period ?? undefined)}
+        className="relative w-full overflow-hidden rounded-[28px] border border-white/10 bg-zinc-950 text-left shadow-xl transition active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+        data-testid="listening-recap-entry"
+        aria-label={`${formatRecapPeriodTitle(period)}，${getRecapEntryCopy(preview)}`}
+      >
+        {coverUrl ? (
+          <img
+            src={coverUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-cover opacity-45"
+          />
+        ) : null}
+        <div className="absolute inset-0 bg-gradient-to-r from-black via-black/85 to-black/45" />
+        <div className="relative flex min-h-[142px] items-end justify-between gap-4 p-5">
+          <div className="min-w-0">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.24em] text-zinc-500">聆听回顾</div>
+            <h2 className="truncate text-2xl font-extrabold text-white">{preview?.opening?.title ?? formatRecapPeriodTitle(period)}</h2>
+            <p className="mt-2 truncate text-sm text-zinc-300">{getRecapEntryCopy(preview)}</p>
+          </div>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white">
+            <Icons.ChevronRight size={20} />
+          </span>
+        </div>
+      </button>
+    </section>
+  );
+};
+
 const FocusCard = ({
   song,
   label,
@@ -62,7 +153,7 @@ const FocusCard = ({
   >
     <div className="relative mb-2">
       <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">{label}</div>
-      <div className="text-xl font-semibold text-white mb-1 truncate tracking-tight">{song.title}</div>
+      <div className="text-xl font-semibold text-white mb-1 truncate">{song.title}</div>
       <div className="text-zinc-400 text-sm mb-3 truncate">{song.artist}</div>
 
       <div className="relative aspect-square rounded-[16px] overflow-hidden bg-zinc-800 shadow-xl border border-white/5">
@@ -101,7 +192,7 @@ const FocusRail = ({
 }) => (
   <section className="space-y-4">
     <div className="flex items-center justify-between">
-      <h2 className="text-xl font-bold text-white tracking-tight">最新公开</h2>
+      <h2 className="text-xl font-bold text-white">最新公开</h2>
       <button
         type="button"
         onClick={onOpenLibrary}
@@ -148,7 +239,7 @@ const ContinueListening = ({
 
   return (
     <section className="space-y-4">
-      <h2 className="text-xl font-bold text-white tracking-tight">继续播放</h2>
+      <h2 className="text-xl font-bold text-white">继续播放</h2>
       {primary ? (
         <div className="rounded-[24px] bg-white/[0.045] border border-white/5 overflow-hidden">
           <button
@@ -174,7 +265,7 @@ const ContinueListening = ({
               <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">
                 {currentSongId === primary.id && isPlaying ? '正在播放' : '上次听到'}
               </div>
-              <div className="text-lg font-extrabold text-white truncate tracking-tight">{primary.title}</div>
+              <div className="text-lg font-extrabold text-white truncate">{primary.title}</div>
               <div className="text-sm text-zinc-400 truncate mt-0.5">{primary.artist}</div>
             </div>
 
@@ -234,7 +325,7 @@ const FrequentListening = ({
   return (
     <section className="space-y-4">
       <div className="flex items-end justify-between">
-        <h2 className="text-xl font-bold text-white tracking-tight">常听</h2>
+        <h2 className="text-xl font-bold text-white">常听</h2>
         <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">全部时间</span>
       </div>
       <div className="rounded-[24px] bg-white/[0.045] border border-white/5 px-3 py-2">
@@ -268,6 +359,7 @@ interface HomeProps {
 
 export const Home: React.FC<HomeProps> = ({ profileAvatarUrl }) => {
   const { user } = useAuth();
+  const listeningRecapPreview = useListeningRecapPreview();
 
   useEffect(() => {
     void import('./Profile');
@@ -374,7 +466,7 @@ export const Home: React.FC<HomeProps> = ({ profileAvatarUrl }) => {
   return (
     <div className="relative pb-24 pt-14 px-6 space-y-9 bg-black min-h-screen overflow-hidden">
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">现在就听</h1>
+        <h1 className="text-3xl font-extrabold text-white">现在就听</h1>
         <motion.button
           type="button"
           onClick={(event) => {
@@ -425,6 +517,15 @@ export const Home: React.FC<HomeProps> = ({ profileAvatarUrl }) => {
         isPlaying={playerState.isPlaying}
         onPlay={playLatest}
         onOpenLibrary={() => window.dispatchEvent(new CustomEvent('jzone:navigate-library'))}
+      />
+
+      <ListeningRecapEntry
+        preview={listeningRecapPreview.response}
+        onOpen={(period) => {
+          window.dispatchEvent(new CustomEvent('jzone:navigate-listening-recap', {
+            detail: period ? { period } : undefined,
+          }));
+        }}
       />
     </div>
   );

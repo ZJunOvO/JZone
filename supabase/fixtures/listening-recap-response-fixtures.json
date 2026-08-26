@@ -1,0 +1,294 @@
+{
+  "schemaVersion": "listening-recap.v1",
+  "coverageVersion": "events-v1",
+  "fixtures": {
+    "event_complete": {
+      "schemaVersion": "listening-recap.v1",
+      "coverageVersion": "events-v1",
+      "period": {
+        "type": "month",
+        "id": "2026-07",
+        "timezone": "Asia/Shanghai",
+        "start": "2026-06-30T16:00:00.000Z",
+        "end": "2026-07-31T16:00:00.000Z",
+        "asOf": "2026-08-01T00:00:01.000Z"
+      },
+      "coverage": {
+        "status": "event_complete",
+        "source": "listening_play_events",
+        "coverageStart": "2026-01-01T00:00:00.000Z",
+        "messageKey": null
+      },
+      "summary": {
+        "validPlayCount": 3,
+        "songCount": 3,
+        "listeningDayCount": 3
+      },
+      "opening": {
+        "title": "2026 年 7 月的声音",
+        "coverSong": {
+          "id": "00000000-0000-4000-8000-0000000010a3",
+          "title": "Fixture 他人公共歌曲",
+          "artist": "Fixture B",
+          "coverUrl": null,
+          "visibility": "public",
+          "validPlayCount": 1,
+          "firstAcceptedAt": "2026-07-31T15:59:59.000Z",
+          "lastAcceptedAt": "2026-07-31T15:59:59.000Z"
+        }
+      },
+      "longestCompanion": {
+        "songs": [
+          {
+            "id": "00000000-0000-4000-8000-0000000010a3",
+            "title": "Fixture 他人公共歌曲",
+            "artist": "Fixture B",
+            "coverUrl": null,
+            "visibility": "public",
+            "validPlayCount": 1,
+            "firstAcceptedAt": "2026-07-31T15:59:59.000Z",
+            "lastAcceptedAt": "2026-07-31T15:59:59.000Z"
+          },
+          {
+            "id": "00000000-0000-4000-8000-0000000010a2",
+            "title": "Fixture 私有歌曲",
+            "artist": "Fixture A",
+            "coverUrl": null,
+            "visibility": "private",
+            "validPlayCount": 1,
+            "firstAcceptedAt": "2026-07-20T12:00:00.000Z",
+            "lastAcceptedAt": "2026-07-20T12:00:00.000Z"
+          }
+        ],
+        "validPlayCount": 1,
+        "isTie": true
+      },
+      "ownedSounds": {
+        "songCount": 2,
+        "songs": [
+          {
+            "id": "00000000-0000-4000-8000-0000000010a1",
+            "title": "Fixture 公共歌曲",
+            "artist": "Fixture A",
+            "coverUrl": null,
+            "visibility": "public",
+            "validPlayCount": 1,
+            "firstAcceptedAt": "2026-06-30T16:00:00.000Z",
+            "lastAcceptedAt": "2026-06-30T16:00:00.000Z"
+          },
+          {
+            "id": "00000000-0000-4000-8000-0000000010a2",
+            "title": "Fixture 私有歌曲",
+            "artist": "Fixture A",
+            "coverUrl": null,
+            "visibility": "private",
+            "validPlayCount": 1,
+            "firstAcceptedAt": "2026-07-20T12:00:00.000Z",
+            "lastAcceptedAt": "2026-07-20T12:00:00.000Z"
+          }
+        ]
+      },
+      "queue": {
+        "songIds": [
+          "00000000-0000-4000-8000-0000000010a1",
+          "00000000-0000-4000-8000-0000000010a2",
+          "00000000-0000-4000-8000-0000000010a3"
+        ],
+        "totalCount": 3,
+        "truncated": false,
+        "order": "first_accepted_at_asc_song_id_asc"
+      },
+      "generatedAt": "2026-08-01T00:00:02.000Z",
+      "error": null
+    },
+    "event_partial": {
+      "schemaVersion": "listening-recap.v1",
+      "coverageVersion": "events-v1",
+      "period": {
+        "type": "month",
+        "id": "2026-07",
+        "timezone": "Asia/Shanghai",
+        "start": "2026-06-30T16:00:00.000Z",
+        "end": "2026-07-31T16:00:00.000Z",
+        "asOf": "2026-08-01T00:00:01.000Z"
+      },
+      "coverage": {
+        "status": "event_partial",
+        "source": "listening_play_events",
+        "coverageStart": "2026-07-14T16:00:00.000Z",
+        "messageKey": "events_coverage_starts_at"
+      },
+      "summary": {
+        "validPlayCount": 2,
+        "songCount": 2,
+        "listeningDayCount": 2
+      },
+      "opening": {
+        "title": "2026 年 7 月的声音",
+        "coverSong": {
+          "id": "00000000-0000-4000-8000-0000000010a3",
+          "title": "Fixture 他人公共歌曲",
+          "artist": "Fixture B",
+          "coverUrl": null,
+          "visibility": "public",
+          "validPlayCount": 1,
+          "firstAcceptedAt": "2026-07-31T15:59:59.000Z",
+          "lastAcceptedAt": "2026-07-31T15:59:59.000Z"
+        }
+      },
+      "longestCompanion": {
+        "songs": [
+          {
+            "id": "00000000-0000-4000-8000-0000000010a3",
+            "title": "Fixture 他人公共歌曲",
+            "artist": "Fixture B",
+            "coverUrl": null,
+            "visibility": "public",
+            "validPlayCount": 1,
+            "firstAcceptedAt": "2026-07-31T15:59:59.000Z",
+            "lastAcceptedAt": "2026-07-31T15:59:59.000Z"
+          },
+          {
+            "id": "00000000-0000-4000-8000-0000000010a2",
+            "title": "Fixture 私有歌曲",
+            "artist": "Fixture A",
+            "coverUrl": null,
+            "visibility": "private",
+            "validPlayCount": 1,
+            "firstAcceptedAt": "2026-07-20T12:00:00.000Z",
+            "lastAcceptedAt": "2026-07-20T12:00:00.000Z"
+          }
+        ],
+        "validPlayCount": 1,
+        "isTie": true
+      },
+      "ownedSounds": {
+        "songCount": 1,
+        "songs": [
+          {
+            "id": "00000000-0000-4000-8000-0000000010a2",
+            "title": "Fixture 私有歌曲",
+            "artist": "Fixture A",
+            "coverUrl": null,
+            "visibility": "private",
+            "validPlayCount": 1,
+            "firstAcceptedAt": "2026-07-20T12:00:00.000Z",
+            "lastAcceptedAt": "2026-07-20T12:00:00.000Z"
+          }
+        ]
+      },
+      "queue": {
+        "songIds": [
+          "00000000-0000-4000-8000-0000000010a2",
+          "00000000-0000-4000-8000-0000000010a3"
+        ],
+        "totalCount": 2,
+        "truncated": false,
+        "order": "first_accepted_at_asc_song_id_asc"
+      },
+      "generatedAt": "2026-08-01T00:00:02.000Z",
+      "error": null
+    },
+    "legacy_only": {
+      "schemaVersion": "listening-recap.v1",
+      "coverageVersion": "events-v1",
+      "period": {
+        "type": "month",
+        "id": "2026-06",
+        "timezone": "Asia/Shanghai",
+        "start": "2026-05-31T16:00:00.000Z",
+        "end": "2026-06-30T16:00:00.000Z",
+        "asOf": "2026-08-01T00:00:01.000Z"
+      },
+      "coverage": {
+        "status": "legacy_only",
+        "source": "user_song_plays",
+        "coverageStart": "2026-07-14T16:00:00.000Z",
+        "messageKey": "events_not_available_for_period"
+      },
+      "summary": null,
+      "opening": null,
+      "longestCompanion": null,
+      "ownedSounds": null,
+      "queue": {
+        "songIds": [],
+        "totalCount": 0,
+        "truncated": false,
+        "order": "first_accepted_at_asc_song_id_asc"
+      },
+      "generatedAt": "2026-08-01T00:00:02.000Z",
+      "error": null
+    },
+    "no_event": {
+      "schemaVersion": "listening-recap.v1",
+      "coverageVersion": "events-v1",
+      "period": {
+        "type": "month",
+        "id": "2026-08",
+        "timezone": "Asia/Shanghai",
+        "start": "2026-07-31T16:00:00.000Z",
+        "end": "2026-08-01T00:00:00.000Z",
+        "asOf": "2026-08-01T00:00:00.000Z"
+      },
+      "coverage": {
+        "status": "no_event",
+        "source": "listening_play_events",
+        "coverageStart": "2026-01-01T00:00:00.000Z",
+        "messageKey": "no_events_in_period"
+      },
+      "summary": {
+        "validPlayCount": 0,
+        "songCount": 0,
+        "listeningDayCount": 0
+      },
+      "opening": {
+        "title": "2026 年 8 月的声音",
+        "coverSong": null
+      },
+      "longestCompanion": null,
+      "ownedSounds": null,
+      "queue": {
+        "songIds": [],
+        "totalCount": 0,
+        "truncated": false,
+        "order": "first_accepted_at_asc_song_id_asc"
+      },
+      "generatedAt": "2026-08-01T00:00:02.000Z",
+      "error": null
+    },
+    "error": {
+      "schemaVersion": "listening-recap.v1",
+      "coverageVersion": "events-v1",
+      "period": {
+        "type": "month",
+        "id": "2026-08",
+        "timezone": "Asia/Shanghai",
+        "start": "2026-07-31T16:00:00.000Z",
+        "end": "2026-08-26T07:30:00.000Z",
+        "asOf": "2026-08-26T07:30:00.000Z"
+      },
+      "coverage": {
+        "status": "error",
+        "source": "listening_play_events",
+        "coverageStart": "2026-01-01T00:00:00.000Z",
+        "messageKey": "recap_unavailable"
+      },
+      "summary": null,
+      "opening": null,
+      "longestCompanion": null,
+      "ownedSounds": null,
+      "queue": {
+        "songIds": [],
+        "totalCount": 0,
+        "truncated": false,
+        "order": "first_accepted_at_asc_song_id_asc"
+      },
+      "generatedAt": "2026-08-26T07:30:01.000Z",
+      "error": {
+        "code": "network_error",
+        "retryable": true,
+        "messageKey": "recap_unavailable"
+      }
+    }
+  }
+}
