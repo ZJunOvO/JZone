@@ -338,10 +338,10 @@ export const readAudioDurationMetadata = async (audioFile: File) => {
   return extractMp4Duration(tail);
 };
 
-export const persistDraftAudio = (audioFile: File) => {
+export const persistDraftAudio = (audioFile: File, ownerId?: string | null) => {
   const maxPersistBytes = 25 * 1024 * 1024;
   if (audioFile.size > maxPersistBytes) return Promise.resolve();
-  return uploadDraftStorage.setAudio(audioFile);
+  return uploadDraftStorage.setAudio(ownerId, audioFile);
 };
 
 export const adjustRangeForDuration = (prev: [number, number], duration: number): [number, number] => {

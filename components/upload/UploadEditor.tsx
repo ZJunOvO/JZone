@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '../../auth';
 import { Icons } from '../Icons';
 import { CollectionCreatableSelect } from '../CollectionCreatableSelect';
 import { WaveformCropper } from '../WaveformCropper';
@@ -32,7 +33,8 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
   onSavingChange,
   onQueueCountChange,
 }) => {
-  const { draft, actions, status } = useUploadDraft(defaultArtist, currentArtistProfile);
+  const { user } = useAuth();
+  const { draft, actions, status } = useUploadDraft(defaultArtist, currentArtistProfile, user?.id);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [isPreparingFiles, setIsPreparingFiles] = useState(false);
   const [nextFileToLoad, setNextFileToLoad] = useState<File | null>(null);

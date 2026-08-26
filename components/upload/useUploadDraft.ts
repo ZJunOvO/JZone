@@ -88,35 +88,41 @@ const createDefaultCredits = (defaultArtist?: string, currentProfile?: CurrentAr
   return [{ profileId: currentProfile?.id ?? null, displayName, role: 'primary', sortOrder: 0 }];
 };
 
-export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentArtistProfile | null) => {
-  const [draft, setDraft] = useState<UploadDraftState>({
-    step: 1,
-    file: null,
-    previewUrl: '',
-    title: '',
-    artist: defaultArtist || '',
-    artistCredits: createDefaultCredits(defaultArtist, currentProfile),
-    album: '',
-    collectionSelection: emptySelection,
-    genre: '',
-    story: '',
-    songVisibility: 'public',
-    streamOptimizationEnabled: true,
-    coverUrl: randomCover(),
-    coverFile: null,
-    duration: 240,
-    range: [0, 240],
-    currentPreviewTime: 0,
-    previewError: null,
-    sourceWarning: null,
-    isPreviewSupported: true,
-    isPreviewPlaying: false,
-    isReadingFile: false,
-    transcodeProgress: 0,
-    transcodeMessage: '',
-    isTranscoding: false,
-    fileInputVersion: 0,
-  });
+const createInitialDraft = (
+  defaultArtist?: string,
+  currentProfile?: CurrentArtistProfile | null,
+  fileInputVersion = 0,
+): UploadDraftState => ({
+  step: 1,
+  file: null,
+  previewUrl: '',
+  title: '',
+  artist: defaultArtist || '',
+  artistCredits: createDefaultCredits(defaultArtist, currentProfile),
+  album: '',
+  collectionSelection: emptySelection,
+  genre: '',
+  story: '',
+  songVisibility: 'public',
+  streamOptimizationEnabled: true,
+  coverUrl: randomCover(),
+  coverFile: null,
+  duration: 240,
+  range: [0, 240],
+  currentPreviewTime: 0,
+  previewError: null,
+  sourceWarning: null,
+  isPreviewSupported: true,
+  isPreviewPlaying: false,
+  isReadingFile: false,
+  transcodeProgress: 0,
+  transcodeMessage: '',
+  isTranscoding: false,
+  fileInputVersion,
+});
+
+export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentArtistProfile | null, ownerId?: string | null) => {
+  const [draft, setDraft] = useState<UploadDraftState>(() => createInitialDraft(defaultArtist, currentProfile));
   const [status, setStatus] = useState<UploadDraftStatus>({ hasDraft: false, label: '暂无草稿' });
   const [isDraftRestored, setIsDraftRestored] = useState(false);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
@@ -127,6 +133,9 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
   const lastDefaultArtistRef = useRef(defaultArtist?.trim() || '');
   const fileSelectionSeqRef = useRef(0);
   const previewPlaySeqRef = useRef(0);
+  const ownerIdRef = useRef(ownerId);
+  const ownerGenerationRef = useRef(0);
+  const restoredOwnerIdRef = useRef<string | null>(null);
 
   const patchDraft = useCallback((updates: Partial<UploadDraftState>) => {
     setDraft((prev) => ({ ...prev, ...updates }));
@@ -209,86 +218,129 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
   }, [draft.file]);
 
   useEffect(() => {
+    if (ownerIdRef.current === ownerId) return;
+
+    ownerIdRef.current = ownerId;
+    ownerGenerationRef.current += 1;
+    restoredOwnerIdRef.current = null;
+    setIsDraftRestored(false);
+    fileSelectionSeqRef.current += 1;
+    durationJobRef.current += 1;
+    previewPlaySeqRef.current += 1;
+
+    audioPreviewRef.current?.pause();
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = '';
+    if (coverUrlRef.current.startsWith('blob:')) URL.revokeObjectURL(coverUrlRef.current);
+    coverUrlRef.current = '';
+    artistEditedRef.current = false;
+    lastDefaultArtistRef.current = defaultArtist?.trim() || '';
+    setDraft((prev) => createInitialDraft(defaultArtist, currentProfile, prev.fileInputVersion + 1));
+    setStatus({ hasDraft: false, label: '暂无草稿' });
+  }, [currentProfile, defaultArtist, ownerId]);
+
+  useEffect(() => {
+    if (!ownerId) return;
+
     let cancelled = false;
+    const restoreOwnerId = ownerId;
+    const restoreGeneration = ownerGenerationRef.current;
     const restoreSeq = fileSelectionSeqRef.current;
 
     const restore = async () => {
       try {
         const [draftMeta, draftAudio, draftCover] = await Promise.all([
-          uploadDraftStorage.getMeta().catch(() => null),
-          uploadDraftStorage.getAudio().catch(() => null),
-          uploadDraftStorage.getCover().catch(() => null),
+          uploadDraftStorage.getMeta(ownerId).catch(() => null),
+          uploadDraftStorage.getAudio(ownerId).catch(() => null),
+          uploadDraftStorage.getCover(ownerId).catch(() => null),
         ]);
 
-        if (cancelled) return;
-        if (fileSelectionSeqRef.current !== restoreSeq) return;
+        if (
+          cancelled
+          || ownerIdRef.current !== restoreOwnerId
+          || ownerGenerationRef.current !== restoreGeneration
+          || fileSelectionSeqRef.current !== restoreSeq
+        ) return;
 
         setDraft((prev) => {
-        if (prev.file) return prev;
-        let next = { ...prev };
+          if (
+            cancelled
+            || ownerIdRef.current !== restoreOwnerId
+            || ownerGenerationRef.current !== restoreGeneration
+            || fileSelectionSeqRef.current !== restoreSeq
+          ) return prev;
+          if (prev.file) return prev;
+          let next = { ...prev };
 
-        if (draftMeta) {
-          const normalizedMeta = normalizeUploadDraftMeta(draftMeta);
-          const metaArtist = normalizedMeta.artist.trim();
-          const normalizedDefault = defaultArtist?.trim() || '';
-          const restoredArtist =
-            normalizedDefault && looksLikeAuthFallbackArtist(metaArtist) && metaArtist !== normalizedDefault
-              ? normalizedDefault
-              : metaArtist || next.artist || normalizedDefault;
-          const restoredPrimary = normalizedMeta.artistCredits[0];
-          const restoredPrimaryIsFallback = Boolean(
-            restoredPrimary
-            && !restoredPrimary.profileId
-            && looksLikeAuthFallbackArtist(restoredPrimary.displayName)
-          );
-          const restoredCredits = restoredPrimaryIsFallback && normalizedDefault
-            ? [
-                ...createDefaultCredits(normalizedDefault, currentProfile),
-                ...normalizedMeta.artistCredits.slice(1).filter((credit) => !currentProfile?.id || credit.profileId !== currentProfile.id),
-              ].map((credit, index) => ({
-                ...credit,
-                role: index === 0 ? 'primary' as const : credit.role === 'primary' ? 'featured' as const : credit.role,
-                sortOrder: index,
-              }))
-            : normalizedMeta.artistCredits;
-          next = {
-            ...next,
-            title: normalizedMeta.title,
-            artist: restoredArtist,
-            artistCredits: restoredCredits.length
-              ? restoredCredits
-              : createDefaultCredits(restoredArtist, currentProfile),
-            album: normalizedMeta.album,
-            genre: normalizedMeta.genre,
-            story: normalizedMeta.story,
-            songVisibility: normalizedMeta.visibility,
-            streamOptimizationEnabled: normalizedMeta.streamOptimizationEnabled,
-            duration: normalizedMeta.duration ?? next.duration,
-            range: normalizedMeta.range ?? next.range,
-          };
-        }
+          if (draftMeta) {
+            const normalizedMeta = normalizeUploadDraftMeta(draftMeta);
+            const metaArtist = normalizedMeta.artist.trim();
+            const normalizedDefault = defaultArtist?.trim() || '';
+            const restoredArtist =
+              normalizedDefault && looksLikeAuthFallbackArtist(metaArtist) && metaArtist !== normalizedDefault
+                ? normalizedDefault
+                : metaArtist || next.artist || normalizedDefault;
+            const restoredPrimary = normalizedMeta.artistCredits[0];
+            const restoredPrimaryIsFallback = Boolean(
+              restoredPrimary
+              && !restoredPrimary.profileId
+              && looksLikeAuthFallbackArtist(restoredPrimary.displayName)
+            );
+            const restoredCredits = restoredPrimaryIsFallback && normalizedDefault
+              ? [
+                  ...createDefaultCredits(normalizedDefault, currentProfile),
+                  ...normalizedMeta.artistCredits.slice(1).filter((credit) => !currentProfile?.id || credit.profileId !== currentProfile.id),
+                ].map((credit, index) => ({
+                  ...credit,
+                  role: index === 0 ? 'primary' as const : credit.role === 'primary' ? 'featured' as const : credit.role,
+                  sortOrder: index,
+                }))
+              : normalizedMeta.artistCredits;
+            next = {
+              ...next,
+              title: normalizedMeta.title,
+              artist: restoredArtist,
+              artistCredits: restoredCredits.length
+                ? restoredCredits
+                : createDefaultCredits(restoredArtist, currentProfile),
+              album: normalizedMeta.album,
+              genre: normalizedMeta.genre,
+              story: normalizedMeta.story,
+              songVisibility: normalizedMeta.visibility,
+              streamOptimizationEnabled: normalizedMeta.streamOptimizationEnabled,
+              duration: normalizedMeta.duration ?? next.duration,
+              range: normalizedMeta.range ?? next.range,
+            };
+          }
 
-        if (draftAudio) {
-          next = {
-            ...next,
-            file: draftAudio,
-            previewUrl: URL.createObjectURL(makePreviewBlob(draftAudio)),
-            step: 2,
-          };
-        }
+          if (draftAudio) {
+            next = {
+              ...next,
+              file: draftAudio,
+              previewUrl: URL.createObjectURL(makePreviewBlob(draftAudio)),
+              step: 2,
+            };
+          }
 
-        if (draftCover) {
-          next = {
-            ...next,
-            coverFile: draftCover,
-            coverUrl: URL.createObjectURL(draftCover),
-          };
-        }
+          if (draftCover) {
+            next = {
+              ...next,
+              coverFile: draftCover,
+              coverUrl: URL.createObjectURL(draftCover),
+            };
+          }
 
           return next;
         });
       } finally {
-        if (!cancelled) setIsDraftRestored(true);
+        if (
+          !cancelled
+          && ownerIdRef.current === restoreOwnerId
+          && ownerGenerationRef.current === restoreGeneration
+        ) {
+          restoredOwnerIdRef.current = restoreOwnerId;
+          setIsDraftRestored(true);
+        }
       }
     };
 
@@ -296,12 +348,13 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
     return () => {
       cancelled = true;
     };
-  }, [currentProfile, defaultArtist]);
+  }, [currentProfile, defaultArtist, ownerId]);
 
   useEffect(() => {
-    if (!isDraftRestored) return;
+    if (!ownerId || !isDraftRestored || restoredOwnerIdRef.current !== ownerId) return;
     uploadDraftStorage
       .setMeta(
+        ownerId,
         createUploadDraftMeta({
           title: draft.title,
           artist: draft.artist,
@@ -316,7 +369,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
         })
       )
       .catch(() => {});
-  }, [draft.album, draft.artist, draft.artistCredits, draft.duration, draft.genre, draft.range, draft.songVisibility, draft.story, draft.streamOptimizationEnabled, draft.title, isDraftRestored]);
+  }, [draft.album, draft.artist, draft.artistCredits, draft.duration, draft.genre, draft.range, draft.songVisibility, draft.story, draft.streamOptimizationEnabled, draft.title, isDraftRestored, ownerId]);
 
   useEffect(() => {
     return () => {
@@ -326,45 +379,25 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
   }, []);
 
   const resetDraft = useCallback(() => {
-    uploadDraftStorage.clearAll().catch(() => {});
+    uploadDraftStorage.clearAll(ownerId).catch(() => {});
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     if (coverUrlRef.current.startsWith('blob:')) URL.revokeObjectURL(coverUrlRef.current);
-    setDraft((prev) => ({
-      step: 1,
-      file: null,
-      previewUrl: '',
-      title: '',
-      artist: defaultArtist || '',
-      artistCredits: createDefaultCredits(defaultArtist, currentProfile),
-      album: '',
-      collectionSelection: emptySelection,
-      genre: '',
-      story: '',
-      songVisibility: 'public',
-      streamOptimizationEnabled: true,
-      coverUrl: randomCover(),
-      coverFile: null,
-      duration: 240,
-      range: [0, 240],
-      currentPreviewTime: 0,
-      previewError: null,
-      sourceWarning: null,
-      isPreviewSupported: true,
-      isPreviewPlaying: false,
-      isReadingFile: false,
-      transcodeProgress: 0,
-      transcodeMessage: '',
-      isTranscoding: false,
-      fileInputVersion: prev.fileInputVersion + 1,
-    }));
+    setDraft((prev) => createInitialDraft(defaultArtist, currentProfile, prev.fileInputVersion + 1));
     artistEditedRef.current = false;
     lastDefaultArtistRef.current = defaultArtist?.trim() || '';
-  }, [currentProfile, defaultArtist]);
+  }, [currentProfile, defaultArtist, ownerId]);
 
   const loadFile = useCallback(
     async (rawFile: File) => {
+      const selectionOwnerId = ownerId;
+      const selectionOwnerGeneration = ownerGenerationRef.current;
       const selectionSeq = fileSelectionSeqRef.current + 1;
       fileSelectionSeqRef.current = selectionSeq;
+      const isCurrentSelection = () => (
+        fileSelectionSeqRef.current === selectionSeq
+        && ownerIdRef.current === selectionOwnerId
+        && ownerGenerationRef.current === selectionOwnerGeneration
+      );
       patchDraft({
         isReadingFile: true,
         previewError: null,
@@ -380,6 +413,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
       try {
         selectedFile = await snapshotAudioFile(rawFile);
       } catch (error) {
+        if (!isCurrentSelection()) return;
         const detail = error instanceof Error ? error.message : '浏览器没有返回可读取的音频文件。';
         patchDraft({
           file: null,
@@ -398,11 +432,12 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
         return;
       }
 
+      if (!isCurrentSelection()) return;
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       const nextPreviewUrl = URL.createObjectURL(makePreviewBlob(selectedFile));
-      await persistDraftAudio(selectedFile).catch(() => {});
+      await persistDraftAudio(selectedFile, selectionOwnerId).catch(() => {});
       const embeddedTags: { title?: string; artist?: string; recordedAt?: string } = await readEmbeddedAudioTags(selectedFile).catch(() => ({}));
-      if (fileSelectionSeqRef.current !== selectionSeq) {
+      if (!isCurrentSelection()) {
         URL.revokeObjectURL(nextPreviewUrl);
         return;
       }
@@ -450,7 +485,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
       });
 
     },
-    [currentProfile, defaultArtist, patchDraft]
+    [currentProfile, defaultArtist, ownerId, patchDraft]
   );
 
   const handleFileChange = useCallback(
@@ -470,22 +505,39 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
     const sourceFile = input.files?.[0];
     input.value = '';
     if (!sourceFile) return;
+    const coverOwnerId = ownerId;
+    const coverOwnerGeneration = ownerGenerationRef.current;
+    const isCurrentCoverOwner = () => (
+      ownerIdRef.current === coverOwnerId
+      && ownerGenerationRef.current === coverOwnerGeneration
+    );
     prepareImageForEditing(sourceFile)
       .then((prepared) => {
         const nextFile = new File([prepared], 'cover.jpg', { type: 'image/jpeg', lastModified: Date.now() });
-        if (coverUrlRef.current.startsWith('blob:')) URL.revokeObjectURL(coverUrlRef.current);
         const coverUrl = URL.createObjectURL(nextFile);
-        uploadDraftStorage.setCover(nextFile).catch(() => {});
+        if (!isCurrentCoverOwner()) {
+          URL.revokeObjectURL(coverUrl);
+          return;
+        }
+        if (coverUrlRef.current.startsWith('blob:')) URL.revokeObjectURL(coverUrlRef.current);
+        uploadDraftStorage.setCover(coverOwnerId, nextFile).catch(() => {});
         patchDraft({ coverFile: nextFile, coverUrl });
       })
       .catch((error) => {
+        if (!isCurrentCoverOwner()) return;
         patchDraft({ previewError: error instanceof Error ? `封面读取失败：${error.message}` : '封面读取失败' });
       });
-  }, [patchDraft]);
+  }, [ownerId, patchDraft]);
 
   const transcodeToMp3 = useCallback(() => {
     if (!draft.file || draft.isTranscoding) return;
     const sourceFile = draft.file;
+    const transcodeOwnerId = ownerId;
+    const transcodeOwnerGeneration = ownerGenerationRef.current;
+    const isCurrentTranscodeOwner = () => (
+      ownerIdRef.current === transcodeOwnerId
+      && ownerGenerationRef.current === transcodeOwnerGeneration
+    );
     patchDraft({
       isTranscoding: true,
       transcodeProgress: 0,
@@ -495,6 +547,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
     });
 
     transcodeAudioToMp3(sourceFile, ({ progress, message }) => {
+      if (!isCurrentTranscodeOwner()) return;
       setDraft((prev) => ({
         ...prev,
         transcodeProgress: Math.max(prev.transcodeProgress, Math.round(progress * 100)),
@@ -502,9 +555,13 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
       }));
     })
       .then((mp3File) => {
-        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
         const nextPreviewUrl = URL.createObjectURL(mp3File);
-        persistDraftAudio(mp3File).catch(() => {});
+        if (!isCurrentTranscodeOwner()) {
+          URL.revokeObjectURL(nextPreviewUrl);
+          return;
+        }
+        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+        persistDraftAudio(mp3File, transcodeOwnerId).catch(() => {});
         setDraft((prev) => ({
           ...prev,
           file: mp3File,
@@ -520,6 +577,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
         }));
       })
       .catch((error) => {
+        if (!isCurrentTranscodeOwner()) return;
         const detail = typeof error?.message === 'string' ? error.message : '未知错误';
         patchDraft({
           isTranscoding: false,
@@ -528,7 +586,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
           previewError: `音频转码失败：${detail}`,
         });
       });
-  }, [draft.file, draft.isTranscoding, patchDraft]);
+  }, [draft.file, draft.isTranscoding, ownerId, patchDraft]);
 
   const playPreviewFromStart = useCallback(() => {
     if (!audioPreviewRef.current) return;

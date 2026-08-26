@@ -19,7 +19,8 @@
     "smoke:runtime": "node scripts/smoke-runtime-compat.mjs",
     "smoke:upload-metadata": "node scripts/smoke-upload-metadata.mjs",
     "smoke:media-delivery": "node scripts/smoke-media-delivery.mjs",
-    "smoke:audio-stream-copy": "node scripts/smoke-audio-stream-copy.mjs"
+    "smoke:audio-stream-copy": "node scripts/smoke-audio-stream-copy.mjs",
+    "smoke:upload-draft-isolation": "node scripts/smoke-upload-draft-storage.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",

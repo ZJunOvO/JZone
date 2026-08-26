@@ -3,6 +3,7 @@ const DB_VERSION = 1;
 const STORE_NAME = 'upload-draft';
 
 type DraftKey = 'audio' | 'cover' | 'meta';
+type OwnerId = string | null | undefined;
 
 interface StoredFilePayload {
   blob: Blob;
@@ -11,7 +12,32 @@ interface StoredFilePayload {
   lastModified: number;
 }
 
-const memoryFiles: Partial<Record<'audio' | 'cover', File>> = {};
+type MemoryFiles = Partial<Record<'audio' | 'cover', File>>;
+
+// 旧版本在同一个 object store 中使用固定字符串 audio/cover/meta，无法证明归属账号。
+// 新逻辑只读取带 owner 的复合 key，旧键保留、不迁移也不删除，以免误归属或破坏用户数据。
+const LEGACY_FIXED_KEYS = ['audio', 'cover', 'meta'] as const;
+void LEGACY_FIXED_KEYS;
+
+const memoryFiles = new Map<string, MemoryFiles>();
+
+const normalizeOwnerKey = (ownerId: OwnerId): string | null => {
+  if (typeof ownerId !== 'string') return null;
+  const normalized = ownerId.trim();
+  if (!normalized) return null;
+  try {
+    return encodeURIComponent(normalized);
+  } catch {
+    return null;
+  }
+};
+
+const getDraftStorageKey = (ownerId: OwnerId, key: DraftKey): IDBValidKey | null => {
+  const normalizedOwnerKey = normalizeOwnerKey(ownerId);
+  if (!normalizedOwnerKey) return null;
+  // 使用 IDB 数组 key，而不是将 ownerId 与字段名直接拼接，避免分隔符歧义。
+  return ['owner-scoped-v1', normalizedOwnerKey, key];
+};
 
 const openDb = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -44,7 +70,7 @@ const withStore = async <T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore
   }
 };
 
-const idbGet = async <T>(key: DraftKey): Promise<T | null> => {
+const idbGet = async <T>(key: IDBValidKey): Promise<T | null> => {
   return withStore('readonly', (store) => {
     return new Promise<T | null>((resolve, reject) => {
       const req = store.get(key);
@@ -54,7 +80,7 @@ const idbGet = async <T>(key: DraftKey): Promise<T | null> => {
   });
 };
 
-const idbPut = async (key: DraftKey, value: any): Promise<void> => {
+const idbPut = async (key: IDBValidKey, value: unknown): Promise<void> => {
   await withStore('readwrite', (store) => {
     return new Promise<void>((resolve, reject) => {
       const req = store.put(value, key);
@@ -64,7 +90,7 @@ const idbPut = async (key: DraftKey, value: any): Promise<void> => {
   });
 };
 
-const idbDelete = async (key: DraftKey): Promise<void> => {
+const idbDelete = async (key: IDBValidKey): Promise<void> => {
   await withStore('readwrite', (store) => {
     return new Promise<void>((resolve, reject) => {
       const req = store.delete(key);
@@ -121,42 +147,88 @@ const fromStoredFilePayload = (value: unknown, fallbackName: string): File | nul
   });
 };
 
-const getStoredFile = async (key: 'audio' | 'cover', fallbackName: string) => {
-  const memory = memoryFiles[key];
+const getStoredFile = async (ownerId: OwnerId, key: 'audio' | 'cover', fallbackName: string) => {
+  const storageKey = getDraftStorageKey(ownerId, key);
+  const normalizedOwnerKey = normalizeOwnerKey(ownerId);
+  if (!storageKey || !normalizedOwnerKey) return null;
+
+  const memory = memoryFiles.get(normalizedOwnerKey)?.[key];
   if (memory?.size) return memory;
-  const stored = await idbGet<unknown>(key);
+  const stored = await idbGet<unknown>(storageKey);
   const file = fromStoredFilePayload(stored, fallbackName);
-  if (file) memoryFiles[key] = file;
+  if (file) {
+    const ownerMemory = memoryFiles.get(normalizedOwnerKey) ?? {};
+    ownerMemory[key] = file;
+    memoryFiles.set(normalizedOwnerKey, ownerMemory);
+  }
   return file;
 };
 
-const setStoredFile = async (key: 'audio' | 'cover', file: File) => {
-  memoryFiles[key] = file;
-  await idbPut(key, toStoredFilePayload(file));
+const setStoredFile = async (ownerId: OwnerId, key: 'audio' | 'cover', file: File) => {
+  const storageKey = getDraftStorageKey(ownerId, key);
+  const normalizedOwnerKey = normalizeOwnerKey(ownerId);
+  if (!storageKey || !normalizedOwnerKey) return;
+
+  const ownerMemory = memoryFiles.get(normalizedOwnerKey) ?? {};
+  ownerMemory[key] = file;
+  memoryFiles.set(normalizedOwnerKey, ownerMemory);
+  await idbPut(storageKey, toStoredFilePayload(file));
 };
 
-const deleteStoredFile = async (key: 'audio' | 'cover') => {
-  delete memoryFiles[key];
-  await idbDelete(key);
+const deleteStoredFile = async (ownerId: OwnerId, key: 'audio' | 'cover') => {
+  const storageKey = getDraftStorageKey(ownerId, key);
+  const normalizedOwnerKey = normalizeOwnerKey(ownerId);
+  if (!storageKey || !normalizedOwnerKey) return;
+
+  const ownerMemory = memoryFiles.get(normalizedOwnerKey);
+  if (ownerMemory) {
+    delete ownerMemory[key];
+    if (!ownerMemory.audio && !ownerMemory.cover) memoryFiles.delete(normalizedOwnerKey);
+  }
+  await idbDelete(storageKey);
 };
+
+function setAudio(ownerId: OwnerId, file: File): Promise<void> {
+  return setStoredFile(ownerId, 'audio', file);
+}
+
+function setCover(ownerId: OwnerId, file: File): Promise<void> {
+  return setStoredFile(ownerId, 'cover', file);
+}
 
 export const uploadDraftStorage = {
-  getAudio: () => getStoredFile('audio', 'audio'),
-  setAudio: (file: File) => setStoredFile('audio', file),
-  deleteAudio: () => deleteStoredFile('audio'),
+  getAudio: (ownerId: OwnerId) => getStoredFile(ownerId, 'audio', 'audio'),
+  setAudio,
+  deleteAudio: (ownerId: OwnerId) => deleteStoredFile(ownerId, 'audio'),
 
-  getCover: () => getStoredFile('cover', 'cover'),
-  setCover: (file: File) => setStoredFile('cover', file),
-  deleteCover: () => deleteStoredFile('cover'),
+  getCover: (ownerId: OwnerId) => getStoredFile(ownerId, 'cover', 'cover'),
+  setCover,
+  deleteCover: (ownerId: OwnerId) => deleteStoredFile(ownerId, 'cover'),
 
-  getMeta: () => idbGet<UploadDraftMeta>('meta'),
-  setMeta: (meta: UploadDraftMeta) => idbPut('meta', meta),
-  deleteMeta: () => idbDelete('meta'),
+  getMeta: async (ownerId: OwnerId) => {
+    const storageKey = getDraftStorageKey(ownerId, 'meta');
+    return storageKey ? idbGet<UploadDraftMeta>(storageKey) : null;
+  },
+  setMeta: async (ownerId: OwnerId, meta: UploadDraftMeta) => {
+    const storageKey = getDraftStorageKey(ownerId, 'meta');
+    if (!storageKey) return;
+    await idbPut(storageKey, meta);
+  },
+  deleteMeta: async (ownerId: OwnerId) => {
+    const storageKey = getDraftStorageKey(ownerId, 'meta');
+    if (!storageKey) return;
+    await idbDelete(storageKey);
+  },
 
-  clearAll: async () => {
-    delete memoryFiles.audio;
-    delete memoryFiles.cover;
-    await Promise.all([idbDelete('audio'), idbDelete('cover'), idbDelete('meta')]);
+  clearAll: async (ownerId: OwnerId) => {
+    const normalizedOwnerKey = normalizeOwnerKey(ownerId);
+    const audioKey = getDraftStorageKey(ownerId, 'audio');
+    const coverKey = getDraftStorageKey(ownerId, 'cover');
+    const metaKey = getDraftStorageKey(ownerId, 'meta');
+    if (!normalizedOwnerKey || !audioKey || !coverKey || !metaKey) return;
+
+    memoryFiles.delete(normalizedOwnerKey);
+    await Promise.all([idbDelete(audioKey), idbDelete(coverKey), idbDelete(metaKey)]);
   },
 };
 
