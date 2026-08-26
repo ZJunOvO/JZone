@@ -55,16 +55,25 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 const PLAYBACK_MODE_SEQUENCE: PlaybackMode[] = ['sequence', 'repeat-one', 'shuffle'];
 const QUALIFYING_PLAY_RATIO = 0.2;
+const PLAYBACK_END_EPSILON = 0.05;
 const SONGS_REFRESH_MS = 5 * 60 * 1000;
 
-const getQualifyingPlaySeconds = (song: Song, mediaDuration: number) => {
+const getEffectivePlaybackRange = (song: Song, mediaDuration: number) => {
   const start = Number.isFinite(song.trimStart) ? Math.max(0, song.trimStart) : 0;
-  const rawEnd = Number.isFinite(song.trimEnd)
+  const end = Number.isFinite(song.trimEnd)
     ? song.trimEnd
     : Number.isFinite(song.duration) && song.duration > 0
       ? song.duration
       : mediaDuration;
-  const playableDuration = Math.max(0, rawEnd - start);
+  return {
+    start,
+    end,
+    playableDuration: Math.max(0, end - start),
+  };
+};
+
+const getQualifyingPlaySeconds = (song: Song, mediaDuration: number) => {
+  const { playableDuration } = getEffectivePlaybackRange(song, mediaDuration);
   return Math.max(1, playableDuration * QUALIFYING_PLAY_RATIO);
 };
 
@@ -329,6 +338,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     listenedSeconds: 0,
     lastTickAt: 0,
     lastMediaTime: 0,
+    lastSeekAt: 0,
     counted: false,
   });
   
@@ -359,6 +369,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         listenedSeconds: 0,
         lastTickAt: Date.now(),
         lastMediaTime: audio.currentTime || 0,
+        lastSeekAt: 0,
         counted: false,
       };
     };
@@ -373,7 +384,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       window.dispatchEvent(new CustomEvent('jzone:play-counted', { detail: { songId } }));
     };
 
-    const samplePlaybackSession = () => {
+    const markSessionCounted = (songId: string) => {
+      const session = playbackSessionRef.current;
+      if (session.songId !== songId || session.counted) return false;
+      session.counted = true;
+      recordQualifiedPlay(songId);
+      return true;
+    };
+
+    const samplePlaybackSession = (mediaTimeAtEnd?: number) => {
       const { songs, playerState } = stateRef.current;
       const currentSong = songs.find(s => s.id === playerState.currentSongId);
       if (!currentSong) return;
@@ -385,23 +404,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
-      const currentMediaTime = audio.currentTime || 0;
-      if (playerState.isPlaying && !audio.paused && !audio.seeking && !audio.ended && audio.readyState >= 2) {
+      const endMediaTime = Number.isFinite(mediaTimeAtEnd) ? mediaTimeAtEnd : undefined;
+      const isEndSample = endMediaTime !== undefined;
+      const currentMediaTime = endMediaTime ?? (audio.currentTime || 0);
+      const canSample = playerState.isPlaying && !audio.seeking && audio.readyState >= 2
+        && (isEndSample || (!audio.paused && !audio.ended));
+      if (canSample) {
         const wallDelta = Math.max(0, (now - session.lastTickAt) / 1000);
         const mediaDelta = Math.max(0, currentMediaTime - session.lastMediaTime);
-        // seek 会让媒体时间跳跃，但不会超过真实经过时间，因此无法通过拖动进度刷次数。
-        const sampledDelta = mediaDelta > 0.01
-          ? Math.min(wallDelta, mediaDelta + 0.2)
-          : Math.min(wallDelta, 0.75);
+        if (mediaDelta > wallDelta + 0.2) {
+          session.lastSeekAt = now;
+        } else if (mediaDelta > 0) {
+          session.lastSeekAt = 0;
+        }
+        // 结束补采样只补真实媒体推进，不把暂停或拖动到终点的时间算进去。
+        const sampledDelta = isEndSample
+          ? (mediaDelta > 0 ? Math.min(wallDelta, mediaDelta + 0.2) : 0)
+          : (mediaDelta > 0.01
+            ? Math.min(wallDelta, mediaDelta + 0.2)
+            : Math.min(wallDelta, 0.75));
         session.listenedSeconds += sampledDelta;
         const qualifyingSeconds = getQualifyingPlaySeconds(currentSong, audio.duration);
-        if (!session.counted && session.listenedSeconds >= qualifyingSeconds) {
-          session.counted = true;
-          recordQualifiedPlay(currentSong.id);
-        }
+        if (session.listenedSeconds >= qualifyingSeconds) markSessionCounted(currentSong.id);
       }
       session.lastTickAt = now;
       session.lastMediaTime = currentMediaTime;
+    };
+
+    const countAtPlaybackEnd = (currentSong: Song, endMediaTime: number) => {
+      const session = playbackSessionRef.current;
+      if (session.songId !== currentSong.id || session.counted) return;
+
+      samplePlaybackSession(endMediaTime);
+      if (session.counted) return;
+      if (session.lastSeekAt !== 0) return;
+
+      const { start, end, playableDuration } = getEffectivePlaybackRange(currentSong, audio.duration);
+      if (!Number.isFinite(end) || !Number.isFinite(playableDuration) || playableDuration <= 0) return;
+
+      const currentMediaTime = audio.currentTime || 0;
+      const reachedEffectiveEnd = currentMediaTime >= end - PLAYBACK_END_EPSILON;
+      if (!reachedEffectiveEnd || currentMediaTime < start) return;
+
+      // 有效区间短于主阈值时，完整播放区间是兜底门槛；否则仍使用主阈值。
+      const qualifyingSeconds = getQualifyingPlaySeconds(currentSong, audio.duration);
+      const requiredPlayedSeconds = Math.min(qualifyingSeconds, playableDuration);
+      if (!Number.isFinite(requiredPlayedSeconds) || session.listenedSeconds < requiredPlayedSeconds) return;
+
+      markSessionCounted(currentSong.id);
+    };
+
+    const resetSamplingAnchor = () => {
+      const session = playbackSessionRef.current;
+      const now = Date.now();
+      session.lastTickAt = now;
+      session.lastMediaTime = audio.currentTime || 0;
+      session.lastSeekAt = now;
     };
 
     const handleTimeUpdate = () => {
@@ -416,6 +474,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (Number.isFinite(currentSong.trimEnd) && audio.currentTime >= currentSong.trimEnd) {
+        countAtPlaybackEnd(currentSong, currentSong.trimEnd);
         audio.currentTime = currentSong.trimStart;
         if (playerState.playbackMode === 'repeat-one') {
           beginPlaybackSession(currentSong.id);
@@ -427,20 +486,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const handleEnded = () => {
-       beginPlaybackSession(null);
-       if (nextSongRef.current) {
-           nextSongRef.current();
-       }
+      const { songs, playerState } = stateRef.current;
+      const currentSong = songs.find(s => s.id === playerState.currentSongId);
+      if (currentSong) {
+        const endMediaTime = Number.isFinite(currentSong.trimEnd)
+          ? currentSong.trimEnd
+          : Number.isFinite(audio.duration)
+            ? audio.duration
+            : audio.currentTime;
+        countAtPlaybackEnd(currentSong, endMediaTime);
+      }
+      beginPlaybackSession(null);
+      if (nextSongRef.current) {
+        nextSongRef.current();
+      }
     };
 
     const playbackSampler = window.setInterval(samplePlaybackSession, 500);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('seeking', resetSamplingAnchor);
+    audio.addEventListener('seeked', resetSamplingAnchor);
 
     return () => {
       window.clearInterval(playbackSampler);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('seeking', resetSamplingAnchor);
+      audio.removeEventListener('seeked', resetSamplingAnchor);
     };
   }, []);
 
@@ -491,6 +564,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       listenedSeconds: 0,
       lastTickAt: Date.now(),
       lastMediaTime: song.trimStart || 0,
+      lastSeekAt: 0,
       counted: false,
     };
     setPlayerState(prev => ({ ...prev, currentSongId: songId, isPlaying: false, isAudioLoading: true, currentTime: song.trimStart || 0 }));
