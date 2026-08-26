@@ -87,7 +87,7 @@ page.on('console', (message) => {
 });
 
 page.on('pageerror', (error) => {
-  pageErrors.push(error.message);
+  pageErrors.push(error.stack || error.message);
 });
 
 page.on('response', (response) => {
