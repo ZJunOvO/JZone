@@ -1,5 +1,7 @@
 import { type CSSProperties, useEffect, useState } from 'react';
 
+export type LiquidGlassLayoutMode = 'wide' | 'compact';
+
 export type LiquidGlassSettings = {
   strength: number;
   blur: number;
@@ -16,6 +18,7 @@ export type LiquidGlassSettings = {
   edgeHighlight: number;
   specular: number;
   quality: number;
+  bottomTabLayout: LiquidGlassLayoutMode;
 };
 
 const STORAGE_KEY = 'jzone.liquidGlassSettings.v6';
@@ -37,6 +40,7 @@ export const DEFAULT_LIQUID_GLASS_SETTINGS: LiquidGlassSettings = {
   edgeHighlight: 1,
   specular: 2,
   quality: 384,
+  bottomTabLayout: 'wide',
 };
 
 const clamp = (value: unknown, min: number, max: number, fallback: number) => {
@@ -63,6 +67,7 @@ const normalizeLiquidGlassSettings = (value: unknown): LiquidGlassSettings => {
     edgeHighlight: clamp(raw.edgeHighlight, 0, 1, DEFAULT_LIQUID_GLASS_SETTINGS.edgeHighlight),
     specular: clamp(raw.specular, 0, 2, DEFAULT_LIQUID_GLASS_SETTINGS.specular),
     quality: Math.round(clamp(raw.quality, 128, 768, DEFAULT_LIQUID_GLASS_SETTINGS.quality)),
+    bottomTabLayout: raw.bottomTabLayout === 'compact' ? 'compact' : 'wide',
   };
 };
 
@@ -91,7 +96,14 @@ const loadLiquidGlassSettings = (): LiquidGlassSettings => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_LIQUID_GLASS_SETTINGS;
-    return normalizeLiquidGlassSettings(JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    const normalized = normalizeLiquidGlassSettings(parsed);
+    if (parsed && typeof parsed === 'object' && !Object.prototype.hasOwnProperty.call(parsed, 'bottomTabLayout')) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+      } catch {}
+    }
+    return normalized;
   } catch {
     return DEFAULT_LIQUID_GLASS_SETTINGS;
   }

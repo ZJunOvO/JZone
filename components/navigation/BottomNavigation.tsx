@@ -4,6 +4,7 @@ import { Icons } from '../Icons';
 import {
   DEFAULT_LIQUID_GLASS_SETTINGS,
   getLiquidGlassCssVars,
+  type LiquidGlassLayoutMode,
   useLiquidGlassSettings,
 } from '../../utils/liquidGlassSettings';
 import { createLiquidGlassDisplacementMap, type LiquidGlassDisplacementMap } from '../../utils/liquidGlassDisplacement';
@@ -15,15 +16,27 @@ interface BottomNavigationProps {
   profileAvatarUrl?: string;
 }
 
+const WIDE_NAV_MAX_WIDTH = 400;
+const COMPACT_NAV_WIDTH = 220;
+const NAV_VIEWPORT_GUTTER = 12;
+
+const getInitialNavWidth = (bottomTabLayout: LiquidGlassLayoutMode) => {
+  const maxWidth = bottomTabLayout === 'compact' ? COMPACT_NAV_WIDTH : WIDE_NAV_MAX_WIDTH;
+  if (typeof window === 'undefined') return maxWidth;
+  return Math.min(maxWidth, Math.max(1, window.innerWidth - NAV_VIEWPORT_GUTTER * 2));
+};
+
 export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, setTab, profileAvatarUrl }) => {
   const liquidGlassSettings = useLiquidGlassSettings();
+  const { bottomTabLayout } = liquidGlassSettings;
+  const isCompactLayout = bottomTabLayout === 'compact';
   const effectiveNavGlass = liquidGlassSettings;
   const navGlassVars = getLiquidGlassCssVars(effectiveNavGlass);
   const navFilterId = React.useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const [lensVisible, setLensVisible] = React.useState(false);
   const [isDraggingLens, setIsDraggingLens] = React.useState(false);
   const [dragCenterX, setDragCenterX] = React.useState<number | null>(null);
-  const [navWidth, setNavWidth] = React.useState(400);
+  const [navWidth, setNavWidth] = React.useState(() => getInitialNavWidth(bottomTabLayout));
   const [navMap, setNavMap] = React.useState<LiquidGlassDisplacementMap>({ href: '', scale: 0 });
   const [lensMap, setLensMap] = React.useState<LiquidGlassDisplacementMap>({ href: '', scale: 0 });
   const navRef = React.useRef<HTMLDivElement>(null);
@@ -42,9 +55,16 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
   const navTrackPadding = 6;
   const navTrackWidth = Math.max(1, navWidth - navTrackPadding * 2);
   const itemWidth = navTrackWidth / tabs.length;
-  const lensWidth = Math.min(Math.max(72, itemWidth - 6), navTrackWidth - 12);
-  const lensExpandedWidth = Math.min(lensWidth + 8, itemWidth + 8, navTrackWidth - 12);
-  const lensCompactWidth = Math.min(Math.max(76, itemWidth - 8), itemWidth - 2);
+  const maxLensWidth = Math.max(1, navTrackWidth - navTrackPadding * 2);
+  const lensWidth = isCompactLayout
+    ? Math.min(Math.max(44, itemWidth - 6), maxLensWidth)
+    : Math.min(Math.max(72, itemWidth - 6), maxLensWidth);
+  const lensExpandedWidth = isCompactLayout
+    ? Math.min(lensWidth + 6, itemWidth, maxLensWidth)
+    : Math.min(lensWidth + 8, itemWidth + 8, maxLensWidth);
+  const lensCompactWidth = isCompactLayout
+    ? Math.min(Math.max(42, itemWidth - 8), Math.max(1, itemWidth - 2), maxLensWidth)
+    : Math.min(Math.max(76, itemWidth - 8), Math.max(1, itemWidth - 2), maxLensWidth);
   const isLensExpanded = isDraggingLens || lensVisible;
   const renderedLensWidth = isLensExpanded ? lensExpandedWidth : lensCompactWidth;
   const renderedLensHeight = isLensExpanded ? 72 : 62;
@@ -55,7 +75,9 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
   const roundedLensHeight = Math.max(1, Math.round(renderedLensHeight));
   const activeCenterX = navTrackPadding + activeIndex * itemWidth + itemWidth / 2;
   const renderedLensCenterX = dragCenterX ?? activeCenterX;
-  const renderedLensLeft = Math.min(navWidth - renderedLensWidth - navTrackPadding, Math.max(navTrackPadding, renderedLensCenterX - renderedLensWidth / 2));
+  const minLensLeft = navTrackPadding;
+  const maxLensLeft = Math.max(minLensLeft, navWidth - renderedLensWidth - navTrackPadding);
+  const renderedLensLeft = Math.min(maxLensLeft, Math.max(minLensLeft, renderedLensCenterX - renderedLensWidth / 2));
   const navStrengthRatio = Math.max(0, effectiveNavGlass.strength / DEFAULT_LIQUID_GLASS_SETTINGS.strength);
   const navFilterScale = Math.round((navMap.scale || 34) * navStrengthRatio * 0.86);
   const lensMotionBoost = isDraggingLens ? 1.38 : lensVisible ? 1.18 : 1;
@@ -128,7 +150,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
 
   const clampLensCenter = (value: number) => {
     const min = lensExpandedWidth / 2 + navTrackPadding;
-    const max = navWidth - lensExpandedWidth / 2 - navTrackPadding;
+    const max = Math.max(min, navWidth - lensExpandedWidth / 2 - navTrackPadding);
     return Math.min(max, Math.max(min, value));
   };
 
@@ -199,9 +221,12 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
 
   return (
     <div
-      className="fixed left-1/2 z-30 h-[66px] w-[min(400px,calc(100vw-24px))] -translate-x-1/2"
-      style={{ ...navDynamicVars, bottom: 'calc(env(safe-area-inset-bottom) + 14px)' }}
+      className={`fixed left-1/2 z-30 h-[66px] -translate-x-1/2 transition-[width,bottom] duration-300 ease-out ${
+        isCompactLayout ? 'w-[min(220px,calc(100vw-24px))]' : 'w-[min(400px,calc(100vw-24px))]'
+      }`}
+      style={{ ...navDynamicVars, bottom: `calc(env(safe-area-inset-bottom) + ${isCompactLayout ? 24 : 14}px)` }}
       data-liquid-control-root
+      data-layout-mode={bottomTabLayout}
       data-testid="bottom-nav-layer"
     >
       <svg className="liquid-tab-filter-defs" aria-hidden focusable="false">
@@ -299,7 +324,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
             >
               <div className={`relative z-10 transition-transform duration-300 ${isActive ? 'scale-110' : 'scale-100 group-active:scale-90'}`}>
                 <tab.icon
-                  size={28}
+                   size={isCompactLayout ? 24 : 28}
                   strokeWidth={isActive ? 2.5 : 1.8}
                   className={`transition-colors duration-300 ${
                     isActive

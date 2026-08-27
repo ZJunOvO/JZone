@@ -46,6 +46,7 @@ export const AppShell: React.FC = () => {
   const { songs, playContext } = useStore();
   const { resolvedAvatarUrl: profileAvatarUrl } = useCurrentArtistProfile();
   const liquidGlassSettings = useLiquidGlassSettings();
+  const isCompactBottomTabLayout = liquidGlassSettings.bottomTabLayout === 'compact';
   const liquidGlassCssVars = getLiquidGlassCssVars(liquidGlassSettings);
   const {
     activeTab,
@@ -349,7 +350,11 @@ export const AppShell: React.FC = () => {
               : {
                   top: 'auto',
                   // 当前导航顶部与播放器底部保持 12px，兼顾触达密度和 SVG 滤镜采样稳定性。
-                  bottom: isListeningRecap ? 'calc(env(safe-area-inset-bottom) + 14px)' : '92px',
+                  bottom: isListeningRecap
+                    ? 'calc(env(safe-area-inset-bottom) + 14px)'
+                    : isCompactBottomTabLayout
+                      ? '102px'
+                      : '92px',
                   left: '12px',
                   right: '12px',
                   width: 'min(400px, calc(100% - 24px))',
@@ -363,6 +368,7 @@ export const AppShell: React.FC = () => {
             opacity: { duration: 0.12 },
           }}
           className="fixed z-[160] mx-auto"
+          data-layout-mode={liquidGlassSettings.bottomTabLayout}
         >
         <PlayerBar onExpand={openPlayer} variant={isModalActive ? 'island' : 'dock'} settlePulse={miniSettlePulse} />
       </motion.div>

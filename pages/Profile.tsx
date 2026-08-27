@@ -439,16 +439,16 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
       const rawCover = profileData?.cover_url ?? (isCurrentUser ? (user?.user_metadata?.cover_url as string | undefined) : undefined);
       const cached = readProfileMediaCache(targetUserId);
 
-      if (cached?.avatarRaw === rawAvatar && cached.avatarUrl) setResolvedAvatarUrl(cached.avatarUrl);
+      if (cached && cached.avatarRaw === rawAvatar && cached.avatarUrl) setResolvedAvatarUrl(cached.avatarUrl);
       else if (!rawAvatar && isCurrentUser && currentArtistProfile.resolvedAvatarUrl) {
         setResolvedAvatarUrl(currentArtistProfile.resolvedAvatarUrl);
       }
-      if (cached?.coverRaw === rawCover && cached.coverUrl) setResolvedCoverUrl(cached.coverUrl);
+      if (cached && cached.coverRaw === rawCover && cached.coverUrl) setResolvedCoverUrl(cached.coverUrl);
 
-      const avatarPromise = cached?.avatarRaw === rawAvatar && cached.avatarUrl
+      const avatarPromise = cached && cached.avatarRaw === rawAvatar && cached.avatarUrl
         ? Promise.resolve(cached.avatarUrl)
         : resolve(rawAvatar, 'avatar');
-      const coverPromise = cached?.coverRaw === rawCover && cached.coverUrl
+      const coverPromise = cached && cached.coverRaw === rawCover && cached.coverUrl
         ? Promise.resolve(cached.coverUrl)
         : resolve(rawCover, 'cover');
 

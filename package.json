@@ -17,6 +17,7 @@
     "smoke:comments": "node scripts/smoke-comments.mjs",
     "smoke:cover": "node scripts/smoke-cover-fallback.mjs",
     "smoke:runtime": "node scripts/smoke-runtime-compat.mjs",
+    "smoke:bottom-tab-layout": "node scripts/smoke-bottom-tab-layout.mjs",
     "smoke:upload-metadata": "node scripts/smoke-upload-metadata.mjs",
     "smoke:media-delivery": "node scripts/smoke-media-delivery.mjs",
     "smoke:audio-stream-copy": "node scripts/smoke-audio-stream-copy.mjs",

@@ -6,6 +6,7 @@ import {
   getLiquidGlassCssVars,
   resetLiquidGlassSettings,
   saveLiquidGlassSettings,
+  type LiquidGlassLayoutMode,
   type LiquidGlassSettings,
   useLiquidGlassSettings,
 } from '../../utils/liquidGlassSettings';
@@ -20,8 +21,10 @@ interface ProfileSettingsSheetProps {
   onSignOut: () => Promise<void>;
 }
 
+type LiquidGlassNumericSettingKey = Exclude<keyof LiquidGlassSettings, 'bottomTabLayout'>;
+
 const liquidGlassControls: Array<{
-  key: keyof LiquidGlassSettings;
+  key: LiquidGlassNumericSettingKey;
   label: string;
   min: number;
   max: number;
@@ -38,6 +41,11 @@ const liquidGlassControls: Array<{
   { key: 'tint', label: '玻璃底色', min: 0, max: 0.14, step: 0.005, format: (value) => value.toFixed(3) },
   { key: 'edgeHighlight', label: '边缘高光', min: 0, max: 1, step: 0.01, format: (value) => value.toFixed(2) },
   { key: 'specular', label: '镜面强度', min: 0, max: 2, step: 0.05, format: (value) => value.toFixed(2) },
+];
+
+const bottomTabLayoutModes: Array<{ value: LiquidGlassLayoutMode; label: string; description: string }> = [
+  { value: 'wide', label: '宽屏', description: '默认' },
+  { value: 'compact', label: '紧凑', description: '约 220px' },
 ];
 
 const LiquidGlassPreview: React.FC<{ settings: LiquidGlassSettings }> = ({ settings }) => {
@@ -170,6 +178,10 @@ export const ProfileSettingsSheet: React.FC<ProfileSettingsSheetProps> = ({
     saveLiquidGlassSettings({ ...liquidGlassSettings, [key]: value });
   };
 
+  const updateBottomTabLayout = (bottomTabLayout: LiquidGlassLayoutMode) => {
+    saveLiquidGlassSettings({ ...liquidGlassSettings, bottomTabLayout });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
@@ -237,6 +249,45 @@ export const ProfileSettingsSheet: React.FC<ProfileSettingsSheetProps> = ({
                 >
                   <div className="ml-2 border-l border-white/10 pl-3">
                     <div className="space-y-4 rounded-xl bg-white/[0.035] border border-white/10 p-4">
+                      <div className="space-y-2" data-testid="bottom-tab-layout-settings">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <h4 className="text-sm font-bold text-white">底部 Tab 宽度</h4>
+                            <p className="mt-1 text-xs text-zinc-500">宽屏保留当前布局；紧凑模式收窄并上移底部导航。</p>
+                          </div>
+                          <span className="shrink-0 pt-0.5 text-xs font-bold text-zinc-400">
+                            {liquidGlassSettings.bottomTabLayout === 'compact' ? '紧凑' : '宽屏'}
+                          </span>
+                        </div>
+                        <div
+                          role="group"
+                          aria-label="底部 Tab 宽度模式"
+                          data-layout-mode={liquidGlassSettings.bottomTabLayout}
+                          className="grid grid-cols-2 gap-1 rounded-xl bg-black/20 p-1"
+                        >
+                          {bottomTabLayoutModes.map((mode) => {
+                            const isSelected = liquidGlassSettings.bottomTabLayout === mode.value;
+                            return (
+                              <button
+                                key={mode.value}
+                                type="button"
+                                aria-label={`${mode.label}底部 Tab 布局`}
+                                aria-pressed={isSelected}
+                                data-layout-mode-option={mode.value}
+                                data-testid={`bottom-tab-layout-${mode.value}`}
+                                onClick={() => updateBottomTabLayout(mode.value)}
+                                className={`flex min-h-12 flex-col items-center justify-center rounded-lg px-3 py-2 text-sm font-bold transition-colors ${
+                                  isSelected ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-400 hover:bg-white/10 hover:text-white'
+                                }`}
+                              >
+                                <span>{mode.label}</span>
+                                <span className={`mt-0.5 text-[10px] font-medium ${isSelected ? 'text-zinc-600' : 'text-zinc-500'}`}>{mode.description}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
                       <button
                         type="button"
                         aria-expanded={liquidGlassPanelOpen}
