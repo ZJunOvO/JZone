@@ -105,7 +105,7 @@ const ListeningRecapEntry = ({
       <button
         type="button"
         onClick={() => onOpen(period ?? undefined)}
-        className="relative w-full overflow-hidden rounded-[28px] border border-white/10 bg-zinc-950 text-left shadow-xl transition active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+        className="group relative min-h-[136px] w-full cursor-pointer overflow-hidden text-left transition-opacity duration-200 active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70 motion-reduce:transition-none"
         data-testid="listening-recap-entry"
         aria-label={`${formatRecapPeriodTitle(period)}，${getRecapEntryCopy(preview)}`}
       >
@@ -115,17 +115,26 @@ const ListeningRecapEntry = ({
             alt=""
             loading="lazy"
             decoding="async"
-            className="absolute inset-0 h-full w-full object-cover opacity-45"
+            className="absolute inset-y-0 right-0 h-full w-[74%] object-cover opacity-55"
+            style={{
+              WebkitMaskImage: 'linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.24) 28%, #000 68%, #000 100%)',
+              maskImage: 'linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.24) 28%, #000 68%, #000 100%)',
+            }}
           />
-        ) : null}
-        <div className="absolute inset-0 bg-gradient-to-r from-black via-black/85 to-black/45" />
-        <div className="relative flex min-h-[142px] items-end justify-between gap-4 p-5">
-          <div className="min-w-0">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.24em] text-zinc-500">聆听回顾</div>
-            <h2 className="truncate text-2xl font-extrabold text-white">{preview?.opening?.title ?? formatRecapPeriodTitle(period)}</h2>
-            <p className="mt-2 truncate text-sm text-zinc-300">{getRecapEntryCopy(preview)}</p>
+        ) : (
+          <div
+            className="pointer-events-none absolute inset-y-0 right-0 w-[74%] bg-[linear-gradient(112deg,rgba(239,68,68,0.13),rgba(37,99,235,0.1),transparent_84%)] blur-2xl"
+            aria-hidden="true"
+          />
+        )}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black via-black/85 to-black/25" />
+        <div className="relative flex min-h-[136px] items-center justify-between gap-5 px-1 py-5">
+          <div className="min-w-0 max-w-[78%]">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-normal text-red-300/65">聆听回顾</div>
+            <h2 className="truncate text-[1.65rem] font-extrabold tracking-normal text-white">{preview?.opening?.title ?? formatRecapPeriodTitle(period)}</h2>
+            <p className="mt-2 truncate text-sm text-white/55">{getRecapEntryCopy(preview)}</p>
           </div>
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors group-hover:text-white motion-reduce:transition-none">
             <Icons.ChevronRight size={20} />
           </span>
         </div>

@@ -66,24 +66,22 @@ export const ListeningRecap: React.FC<ListeningRecapPageProps> = ({
       data-testid="listening-recap-page"
       aria-busy={isLoadingWithoutResponse}
     >
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#070709]/85 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+10px)] backdrop-blur-xl sm:px-6">
-        <div className="mx-auto flex max-w-4xl flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 text-white/75 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80"
-              aria-label="返回"
-              data-testid="listening-recap-back"
-            >
-              <Icons.ChevronLeft size={20} aria-hidden="true" />
-            </button>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-extrabold text-white">聆听回顾</p>
-              <p className="mt-0.5 truncate text-[11px] font-semibold text-white/40">{selectedPeriod ? `${selectedPeriod.type === 'month' ? '按月' : '按年'}查看` : '正在准备本期'}</p>
-            </div>
-          </div>
-          <div className="min-w-0 w-full max-w-full overflow-x-auto sm:w-auto sm:shrink-0 sm:overflow-visible">
+      <header className="sticky top-0 z-30 bg-transparent px-4 pb-3 pt-[calc(env(safe-area-inset-top)+10px)] sm:px-6">
+        <div className="pointer-events-none absolute inset-x-0 -top-2 bottom-[-2.5rem] z-0" aria-hidden="true">
+          <div className="absolute inset-0 bg-[#070709]/78 backdrop-blur-xl [mask-image:linear-gradient(to_bottom,black_0%,black_54%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_54%,transparent_100%)]" />
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-[#070709]/80 via-[#070709]/35 to-transparent blur-md" />
+        </div>
+        <div className="relative z-10 mx-auto flex min-h-11 max-w-4xl items-center justify-center">
+          <button
+            type="button"
+            onClick={onBack}
+            className="absolute left-0 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80 motion-reduce:transition-none"
+            aria-label="返回"
+            data-testid="listening-recap-back"
+          >
+            <Icons.ChevronLeft size={20} aria-hidden="true" />
+          </button>
+          <div className="w-full px-14">
             <PeriodSelector
               selectedPeriod={selectedPeriod}
               referencePeriod={referencePeriod}
