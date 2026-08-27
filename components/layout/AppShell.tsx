@@ -353,7 +353,7 @@ export const AppShell: React.FC = () => {
                   bottom: isListeningRecap
                     ? 'calc(env(safe-area-inset-bottom) + 14px)'
                     : isCompactBottomTabLayout
-                      ? '102px'
+                      ? '111px'
                       : '92px',
                   left: '12px',
                   right: '12px',

@@ -1,16 +1,34 @@
 import React from 'react';
 
 const bitmapCache = new Map<string, Promise<ImageBitmap | null>>();
-const MAX_BITMAP_CACHE_SIZE = 48;
+const MAX_BITMAP_CACHE_SIZE = 16;
+const SAMPLE_BITMAP_MAX_EDGE = 64;
+const SAMPLE_CANVAS_SIZE = 8;
 const sampleCanvas = typeof document === 'undefined' ? null : document.createElement('canvas');
 const sampleContext = sampleCanvas?.getContext('2d', { willReadFrequently: true }) ?? null;
 
 if (sampleCanvas) {
-  sampleCanvas.width = 8;
-  sampleCanvas.height = 8;
+  sampleCanvas.width = SAMPLE_CANVAS_SIZE;
+  sampleCanvas.height = SAMPLE_CANVAS_SIZE;
 }
 
-const getBitmap = (source: string) => {
+const createSampleBitmap = async (blob: Blob, resizeWidth: number, resizeHeight: number) => {
+  try {
+    return await createImageBitmap(blob, {
+      resizeWidth,
+      resizeHeight,
+      resizeQuality: 'low',
+    });
+  } catch {
+    try {
+      return await createImageBitmap(blob);
+    } catch {
+      return null;
+    }
+  }
+};
+
+const getBitmap = (source: string, sourceWidth: number, sourceHeight: number) => {
   const cached = bitmapCache.get(source);
   if (cached) {
     bitmapCache.delete(source);
@@ -24,9 +42,19 @@ const getBitmap = (source: string) => {
     bitmapCache.set(source, skipped);
     return skipped;
   }
+  const maxSourceEdge = Math.max(sourceWidth, sourceHeight);
+  const resizeScale = maxSourceEdge > 0
+    ? Math.min(1, SAMPLE_BITMAP_MAX_EDGE / maxSourceEdge)
+    : 1;
+  const resizeWidth = sourceWidth > 0
+    ? Math.max(1, Math.round(sourceWidth * resizeScale))
+    : SAMPLE_BITMAP_MAX_EDGE;
+  const resizeHeight = sourceHeight > 0
+    ? Math.max(1, Math.round(sourceHeight * resizeScale))
+    : SAMPLE_BITMAP_MAX_EDGE;
   const request = fetch(source, { cache: 'force-cache', mode: 'cors' })
     .then((response) => response.ok ? response.blob() : Promise.reject(new Error('image fetch failed')))
-    .then((blob) => createImageBitmap(blob))
+    .then((blob) => createSampleBitmap(blob, resizeWidth, resizeHeight))
     .catch(() => null);
   if (bitmapCache.size >= MAX_BITMAP_CACHE_SIZE) bitmapCache.delete(bitmapCache.keys().next().value as string);
   bitmapCache.set(source, request);
@@ -41,13 +69,40 @@ const relativeLuminance = (red: number, green: number, blue: number) => {
   return 0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue);
 };
 
-const sampleImageLuminance = async (image: HTMLImageElement, clientX: number, clientY: number) => {
-  if (!sampleCanvas || !sampleContext || !image.currentSrc) return null;
-  const bitmap = await getBitmap(image.currentSrc);
-  if (!bitmap) return null;
-  const rect = image.getBoundingClientRect();
+type ImageLayout = {
+  rect: DOMRect;
+  objectFit: string;
+};
+
+const getImageLayout = (image: HTMLImageElement, layouts: Map<HTMLImageElement, ImageLayout>) => {
+  const cached = layouts.get(image);
+  if (cached) return cached;
+  const layout = {
+    rect: image.getBoundingClientRect(),
+    objectFit: getComputedStyle(image).objectFit,
+  };
+  layouts.set(image, layout);
+  return layout;
+};
+
+const sampleImageLuminance = async (
+  image: HTMLImageElement,
+  clientX: number,
+  clientY: number,
+  layouts: Map<HTMLImageElement, ImageLayout>,
+) => {
+  if (
+    !sampleCanvas
+    || !sampleContext
+    || !image.currentSrc
+    || !image.complete
+    || !image.naturalWidth
+    || !image.naturalHeight
+  ) return null;
+  const { rect, objectFit } = getImageLayout(image, layouts);
   if (!rect.width || !rect.height) return null;
-  const objectFit = getComputedStyle(image).objectFit;
+  const bitmap = await getBitmap(image.currentSrc, image.naturalWidth, image.naturalHeight);
+  if (!bitmap || !bitmap.width || !bitmap.height) return null;
   const scale = objectFit === 'contain'
     ? Math.min(rect.width / bitmap.width, rect.height / bitmap.height)
     : Math.max(rect.width / bitmap.width, rect.height / bitmap.height);
@@ -67,10 +122,10 @@ const sampleImageLuminance = async (image: HTMLImageElement, clientX: number, cl
     Math.min(bitmap.height, radius * 2),
     0,
     0,
-    8,
-    8,
+    SAMPLE_CANVAS_SIZE,
+    SAMPLE_CANVAS_SIZE,
   );
-  const pixels = sampleContext.getImageData(0, 0, 8, 8).data;
+  const pixels = sampleContext.getImageData(0, 0, SAMPLE_CANVAS_SIZE, SAMPLE_CANVAS_SIZE).data;
   let luminance = 0;
   let samples = 0;
   for (let index = 0; index < pixels.length; index += 4) {
@@ -91,21 +146,33 @@ const parseBackgroundLuminance = (element: Element) => {
   return relativeLuminance(values[0], values[1], values[2]);
 };
 
-const findImageAtPoint = (images: HTMLImageElement[], root: Element | null, clientX: number, clientY: number) => {
+const findImageAtPoint = (
+  images: HTMLImageElement[],
+  root: Element | null,
+  clientX: number,
+  clientY: number,
+  layouts: Map<HTMLImageElement, ImageLayout>,
+) => {
   for (let index = images.length - 1; index >= 0; index -= 1) {
     const image = images[index];
     if (root?.contains(image) || !image.complete || !image.naturalWidth) continue;
-    const rect = image.getBoundingClientRect();
+    const { rect } = getImageLayout(image, layouts);
     if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) return image;
   }
   return null;
 };
 
-const samplePoint = async (images: HTMLImageElement[], root: Element | null, clientX: number, clientY: number) => {
+const samplePoint = async (
+  images: HTMLImageElement[],
+  root: Element | null,
+  clientX: number,
+  clientY: number,
+  layouts: Map<HTMLImageElement, ImageLayout>,
+) => {
   const stack = document.elementsFromPoint(clientX, clientY).filter((element) => !root?.contains(element));
   const image = stack.find((element): element is HTMLImageElement => element instanceof HTMLImageElement)
-    ?? findImageAtPoint(images, root, clientX, clientY);
-  let luminance = image ? await sampleImageLuminance(image, clientX, clientY) : null;
+    ?? findImageAtPoint(images, root, clientX, clientY, layouts);
+  let luminance = image ? await sampleImageLuminance(image, clientX, clientY, layouts) : null;
   if (luminance === null) {
     for (const element of stack) {
       luminance = parseBackgroundLuminance(element);
@@ -116,20 +183,45 @@ const samplePoint = async (images: HTMLImageElement[], root: Element | null, cli
   return luminance;
 };
 
-const sampleTarget = async (target: HTMLElement | SVGElement, images: HTMLImageElement[]) => {
+const getVisibleTargetRect = (target: HTMLElement | SVGElement) => {
+  if (!target.isConnected) return null;
+  const style = getComputedStyle(target);
+  if (
+    style.display === 'none'
+    || style.visibility === 'hidden'
+    || style.visibility === 'collapse'
+    || style.contentVisibility === 'hidden'
+    || Number(style.opacity) === 0
+  ) return null;
   const rect = target.getBoundingClientRect();
-  if (!rect.width || !rect.height || rect.bottom < 0 || rect.top > window.innerHeight) return;
+  if (
+    rect.width <= 0
+    || rect.height <= 0
+    || rect.right <= 0
+    || rect.left >= window.innerWidth
+    || rect.bottom <= 0
+    || rect.top >= window.innerHeight
+  ) return null;
+  return rect;
+};
+
+const sampleTarget = async (
+  target: HTMLElement | SVGElement,
+  rect: DOMRect,
+  images: HTMLImageElement[],
+  layouts: Map<HTMLImageElement, ImageLayout>,
+) => {
   const clientX = rect.left + rect.width / 2;
   const clientY = rect.top + rect.height / 2;
   const root = target.closest('[data-liquid-control-root]');
   const offsetX = Math.min(20, rect.width * 0.34);
   const offsetY = Math.min(18, rect.height * 0.3);
   const samples = await Promise.all([
-    samplePoint(images, root, clientX, clientY),
-    samplePoint(images, root, clientX - offsetX, clientY),
-    samplePoint(images, root, clientX + offsetX, clientY),
-    samplePoint(images, root, clientX, clientY - offsetY),
-    samplePoint(images, root, clientX, clientY + offsetY),
+    samplePoint(images, root, clientX, clientY, layouts),
+    samplePoint(images, root, clientX - offsetX, clientY, layouts),
+    samplePoint(images, root, clientX + offsetX, clientY, layouts),
+    samplePoint(images, root, clientX, clientY - offsetY, layouts),
+    samplePoint(images, root, clientX, clientY + offsetY, layouts),
   ]);
   const average = samples.reduce((sum, value) => sum + value, 0) / samples.length;
   const luminance = Math.max(average, Math.max(...samples) * 0.72);
@@ -144,9 +236,11 @@ export const useLiquidGlassAdaptiveForeground = () => {
   React.useEffect(() => {
     let disposed = false;
     let timer = 0;
+    let scrollTimer = 0;
     let frame = 0;
     let updateInFlight = false;
     let rerunRequested = false;
+    let scrollPending = false;
     const update = async () => {
       if (disposed || document.visibilityState === 'hidden') return;
       if (updateInFlight) {
@@ -154,10 +248,16 @@ export const useLiquidGlassAdaptiveForeground = () => {
         return;
       }
       updateInFlight = true;
-      const targets = Array.from(document.querySelectorAll<HTMLElement | SVGElement>('[data-liquid-adaptive="true"]'));
+      const targets = Array.from(document.querySelectorAll<HTMLElement | SVGElement>('[data-liquid-adaptive="true"]'))
+        .map((target) => {
+          const rect = getVisibleTargetRect(target);
+          return rect ? { target, rect } : null;
+        })
+        .filter((entry): entry is { target: HTMLElement | SVGElement; rect: DOMRect } => entry !== null);
       const images = Array.from(document.images).filter((image) => image.complete && image.naturalWidth > 0);
+      const imageLayouts = new Map<HTMLImageElement, ImageLayout>();
       try {
-        await Promise.all(targets.map((target) => sampleTarget(target, images)));
+        await Promise.all(targets.map(({ target, rect }) => sampleTarget(target, rect, images, imageLayouts)));
       } finally {
         updateInFlight = false;
         if (rerunRequested) {
@@ -166,12 +266,43 @@ export const useLiquidGlassAdaptiveForeground = () => {
         }
       }
     };
-    function schedule() {
-      if (disposed || timer) return;
+    function scheduleWithDelay(delay: number) {
+      if (disposed || document.visibilityState === 'hidden' || scrollPending) return;
+      if (updateInFlight) {
+        rerunRequested = true;
+        return;
+      }
+      if (timer || frame) return;
       timer = window.setTimeout(() => {
         timer = 0;
-        frame = window.requestAnimationFrame(() => { void update(); });
-      }, 90);
+        if (disposed || document.visibilityState === 'hidden') return;
+        frame = window.requestAnimationFrame(() => {
+          frame = 0;
+          if (disposed || document.visibilityState === 'hidden') return;
+          void update();
+        });
+      }, delay);
+    }
+    function schedule() {
+      scheduleWithDelay(90);
+    }
+    function scheduleAfterScroll() {
+      if (disposed) return;
+      scrollPending = true;
+      if (timer) {
+        window.clearTimeout(timer);
+        timer = 0;
+      }
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      }
+      if (scrollTimer) window.clearTimeout(scrollTimer);
+      scrollTimer = window.setTimeout(() => {
+        scrollTimer = 0;
+        scrollPending = false;
+        scheduleWithDelay(0);
+      }, 140);
     }
     const handlePointerMove = (event: PointerEvent) => {
       if (event.buttons > 0) schedule();
@@ -186,7 +317,7 @@ export const useLiquidGlassAdaptiveForeground = () => {
       attributes: true,
       attributeFilter: ['src', 'data-liquid-adaptive'],
     });
-    window.addEventListener('scroll', schedule, { capture: true, passive: true });
+    window.addEventListener('scroll', scheduleAfterScroll, { capture: true, passive: true });
     window.addEventListener('resize', schedule);
     window.addEventListener('pointermove', handlePointerMove, { passive: true });
     window.addEventListener('pointerup', schedule, { passive: true });
@@ -198,8 +329,9 @@ export const useLiquidGlassAdaptiveForeground = () => {
       disposed = true;
       observer.disconnect();
       if (timer) window.clearTimeout(timer);
+      if (scrollTimer) window.clearTimeout(scrollTimer);
       if (frame) window.cancelAnimationFrame(frame);
-      window.removeEventListener('scroll', schedule, true);
+      window.removeEventListener('scroll', scheduleAfterScroll, true);
       window.removeEventListener('resize', schedule);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', schedule);

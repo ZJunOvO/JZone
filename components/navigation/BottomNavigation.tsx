@@ -17,8 +17,23 @@ interface BottomNavigationProps {
 }
 
 const WIDE_NAV_MAX_WIDTH = 400;
-const COMPACT_NAV_WIDTH = 220;
+const COMPACT_NAV_WIDTH = 240;
 const NAV_VIEWPORT_GUTTER = 12;
+const JZONE_RED = { r: 239, g: 68, b: 68 };
+const ICON_WHITE = { r: 255, g: 255, b: 255 };
+const EMPTY_LENS_MAP: LiquidGlassDisplacementMap = { href: '', scale: 0 };
+
+const smoothStep = (value: number) => value * value * (3 - 2 * value);
+
+const getDragIconColor = (pointerX: number, tabCenterX: number, itemWidth: number) => {
+  const radius = Math.max(32, itemWidth * 1.08);
+  const normalizedDistance = Math.min(1, Math.abs(pointerX - tabCenterX) / radius);
+  const proximity = 1 - smoothStep(normalizedDistance);
+  const red = Math.round(ICON_WHITE.r + (JZONE_RED.r - ICON_WHITE.r) * proximity);
+  const green = Math.round(ICON_WHITE.g + (JZONE_RED.g - ICON_WHITE.g) * proximity);
+  const blue = Math.round(ICON_WHITE.b + (JZONE_RED.b - ICON_WHITE.b) * proximity);
+  return `rgb(${red}, ${green}, ${blue})`;
+};
 
 const getInitialNavWidth = (bottomTabLayout: LiquidGlassLayoutMode) => {
   const maxWidth = bottomTabLayout === 'compact' ? COMPACT_NAV_WIDTH : WIDE_NAV_MAX_WIDTH;
@@ -35,14 +50,23 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
   const navFilterId = React.useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const [lensVisible, setLensVisible] = React.useState(false);
   const [isDraggingLens, setIsDraggingLens] = React.useState(false);
-  const [dragCenterX, setDragCenterX] = React.useState<number | null>(null);
+  const [dragVisual, setDragVisual] = React.useState<{ centerX: number; pointerX: number } | null>(null);
   const [navWidth, setNavWidth] = React.useState(() => getInitialNavWidth(bottomTabLayout));
   const [navMap, setNavMap] = React.useState<LiquidGlassDisplacementMap>({ href: '', scale: 0 });
   const [lensMap, setLensMap] = React.useState<LiquidGlassDisplacementMap>({ href: '', scale: 0 });
   const navRef = React.useRef<HTMLDivElement>(null);
   const navFeImageRef = React.useRef<SVGFEImageElement>(null);
   const lensFeImageRef = React.useRef<SVGFEImageElement>(null);
-  const dragRef = React.useRef<{ startX: number; startCenter: number; currentCenter: number; pointerId: number; moved: boolean } | null>(null);
+  const dragRef = React.useRef<{
+    startX: number;
+    startCenter: number;
+    currentCenter: number;
+    currentPointerX: number;
+    navLeft: number;
+    pointerId: number;
+    moved: boolean;
+  } | null>(null);
+  const dragFrameRef = React.useRef<number | null>(null);
   const hideLensTimerRef = React.useRef<number | null>(null);
   const suppressClickRef = React.useRef(false);
   const tabs = [
@@ -74,7 +98,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
   const roundedLensWidth = Math.max(1, Math.round(renderedLensWidth));
   const roundedLensHeight = Math.max(1, Math.round(renderedLensHeight));
   const activeCenterX = navTrackPadding + activeIndex * itemWidth + itemWidth / 2;
-  const renderedLensCenterX = dragCenterX ?? activeCenterX;
+  const renderedLensCenterX = dragVisual?.centerX ?? activeCenterX;
   const minLensLeft = navTrackPadding;
   const maxLensLeft = Math.max(minLensLeft, navWidth - renderedLensWidth - navTrackPadding);
   const renderedLensLeft = Math.min(maxLensLeft, Math.max(minLensLeft, renderedLensCenterX - renderedLensWidth / 2));
@@ -89,6 +113,8 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
     '--liquid-tab-filter': `url(#liquid-tab-${navFilterId})`,
     '--liquid-tab-lens-filter': `url(#liquid-tab-${navFilterId}-lens)`,
   } as React.CSSProperties;
+
+  const isCompactDrag = isCompactLayout && isDraggingLens && dragVisual !== null;
 
   React.useEffect(() => {
     setLensVisible(true);
@@ -125,6 +151,10 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
   }, [effectiveNavGlass.edgeRefraction, roundedNavWidth]);
 
   React.useEffect(() => {
+    if (isCompactLayout) {
+      setLensMap(EMPTY_LENS_MAP);
+      return;
+    }
     setLensMap(
       createLiquidGlassDisplacementMap(roundedLensWidth, roundedLensHeight, {
         edgeScale: Math.min(1.18, effectiveNavGlass.edgeRefraction * 1.12),
@@ -134,7 +164,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
         normalization: 0.68,
       }),
     );
-  }, [effectiveNavGlass.edgeRefraction, roundedLensHeight, roundedLensWidth]);
+  }, [effectiveNavGlass.edgeRefraction, isCompactLayout, roundedLensHeight, roundedLensWidth]);
 
   React.useEffect(() => {
     if (navFeImageRef.current && navMap.href) {
@@ -148,10 +178,34 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
     }
   }, [lensMap.href]);
 
+  React.useEffect(() => () => {
+    if (dragFrameRef.current !== null) window.cancelAnimationFrame(dragFrameRef.current);
+  }, []);
+
   const clampLensCenter = (value: number) => {
     const min = lensExpandedWidth / 2 + navTrackPadding;
     const max = Math.max(min, navWidth - lensExpandedWidth / 2 - navTrackPadding);
     return Math.min(max, Math.max(min, value));
+  };
+
+  const getPointerX = (clientX: number, navLeft: number) => {
+    if (!Number.isFinite(clientX) || !Number.isFinite(navLeft)) return activeCenterX;
+    return clientX - navLeft;
+  };
+
+  const getClosestTabIndex = (pointerX: number) => Math.min(
+    tabs.length - 1,
+    Math.max(0, Math.round((pointerX - navTrackPadding - itemWidth / 2) / itemWidth)),
+  );
+
+  const scheduleDragVisualUpdate = () => {
+    if (dragFrameRef.current !== null) return;
+    dragFrameRef.current = window.requestAnimationFrame(() => {
+      dragFrameRef.current = null;
+      const drag = dragRef.current;
+      if (!drag) return;
+      setDragVisual({ centerX: drag.currentCenter, pointerX: drag.currentPointerX });
+    });
   };
 
   const selectTab = React.useCallback((tabId: string) => {
@@ -176,16 +230,20 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
     if (tabId !== currentTab) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     if (hideLensTimerRef.current) window.clearTimeout(hideLensTimerRef.current);
+    const navLeft = navRef.current?.getBoundingClientRect().left ?? event.clientX - activeCenterX;
+    const pointerX = getPointerX(event.clientX, navLeft);
     dragRef.current = {
       startX: event.clientX,
       startCenter: activeCenterX,
       currentCenter: activeCenterX,
+      currentPointerX: pointerX,
+      navLeft,
       pointerId: event.pointerId,
       moved: false,
     };
     setIsDraggingLens(true);
     setLensVisible(true);
-    setDragCenterX(activeCenterX);
+    setDragVisual({ centerX: activeCenterX, pointerX });
   };
 
   const moveLensDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -193,19 +251,46 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
     if (!drag || drag.pointerId !== event.pointerId) return;
     const delta = event.clientX - drag.startX;
     if (Math.abs(delta) > 4) drag.moved = true;
+    drag.currentPointerX = getPointerX(event.clientX, drag.navLeft);
     drag.currentCenter = clampLensCenter(drag.startCenter + delta);
-    setDragCenterX(drag.currentCenter);
+    scheduleDragVisualUpdate();
   };
 
   const endLensDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const finalCenter = drag.currentCenter;
-    const nextIndex = Math.min(tabs.length - 1, Math.max(0, Math.round((finalCenter - navTrackPadding - itemWidth / 2) / itemWidth)));
+    if (event.type !== 'pointerup') {
+      if (dragFrameRef.current !== null) {
+        window.cancelAnimationFrame(dragFrameRef.current);
+        dragFrameRef.current = null;
+      }
+      dragRef.current = null;
+      setIsDraggingLens(false);
+      setDragVisual(null);
+      setLensVisible(true);
+      if (hideLensTimerRef.current) window.clearTimeout(hideLensTimerRef.current);
+      hideLensTimerRef.current = window.setTimeout(() => setLensVisible(false), 260);
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      return;
+    }
+    const pointerX = getPointerX(event.clientX, drag.navLeft);
+    const delta = event.clientX - drag.startX;
+    if (Math.abs(delta) > 4) drag.moved = true;
+    drag.currentPointerX = pointerX;
+    drag.currentCenter = clampLensCenter(drag.startCenter + delta);
+    if (dragFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+    const finalPointerX = drag.currentPointerX;
+    const nextIndex = getClosestTabIndex(finalPointerX);
     if (drag.moved) suppressClickRef.current = true;
     dragRef.current = null;
     setIsDraggingLens(false);
-    setDragCenterX(null);
+    setDragVisual(null);
     setLensVisible(true);
     if (tabs[nextIndex]?.id && tabs[nextIndex].id !== currentTab) {
       const tabId = tabs[nextIndex].id;
@@ -222,12 +307,13 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
   return (
     <div
       className={`fixed left-1/2 z-30 h-[66px] -translate-x-1/2 transition-[width,bottom] duration-300 ease-out ${
-        isCompactLayout ? 'w-[min(220px,calc(100vw-24px))]' : 'w-[min(400px,calc(100vw-24px))]'
+        isCompactLayout ? 'w-[min(240px,calc(100vw-24px))]' : 'w-[min(400px,calc(100vw-24px))]'
       }`}
-      style={{ ...navDynamicVars, bottom: `calc(env(safe-area-inset-bottom) + ${isCompactLayout ? 24 : 14}px)` }}
+      style={{ ...navDynamicVars, bottom: `calc(env(safe-area-inset-bottom) + ${isCompactLayout ? 33 : 14}px)` }}
       data-liquid-control-root
       data-layout-mode={bottomTabLayout}
       data-testid="bottom-nav-layer"
+      data-dragging={isDraggingLens ? 'true' : 'false'}
     >
       <svg className="liquid-tab-filter-defs" aria-hidden focusable="false">
         <filter
@@ -248,57 +334,69 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
             yChannelSelector="G"
           />
         </filter>
-        <filter
-          id={`liquid-tab-${navFilterId}-lens`}
-          x="0"
-          y="0"
-          width={roundedLensWidth}
-          height={roundedLensHeight}
-          filterUnits="userSpaceOnUse"
-          colorInterpolationFilters="sRGB"
-        >
-          <feImage ref={lensFeImageRef} href={lensMap.href} xlinkHref={lensMap.href} preserveAspectRatio="none" width={roundedLensWidth} height={roundedLensHeight} result={`${navFilterId}-lens-map`} />
-          <feDisplacementMap
-            in="SourceGraphic"
-            in2={`${navFilterId}-lens-map`}
-            scale={lensFilterScale}
-            xChannelSelector="R"
-            yChannelSelector="G"
-          />
-        </filter>
+        {!isCompactLayout && (
+          <filter
+            id={`liquid-tab-${navFilterId}-lens`}
+            x="0"
+            y="0"
+            width={roundedLensWidth}
+            height={roundedLensHeight}
+            filterUnits="userSpaceOnUse"
+            colorInterpolationFilters="sRGB"
+          >
+            <feImage ref={lensFeImageRef} href={lensMap.href} xlinkHref={lensMap.href} preserveAspectRatio="none" width={roundedLensWidth} height={roundedLensHeight} result={`${navFilterId}-lens-map`} />
+            <feDisplacementMap
+              in="SourceGraphic"
+              in2={`${navFilterId}-lens-map`}
+              scale={lensFilterScale}
+              xChannelSelector="R"
+              yChannelSelector="G"
+            />
+          </filter>
+        )}
       </svg>
       <div className="liquid-tab-surface absolute inset-0 pointer-events-none rounded-[30px]">
         <div className="liquid-tab-f-glass absolute inset-0 rounded-[30px]" />
       </div>
       <div ref={navRef} className="relative z-10 grid h-full grid-cols-4 items-center overflow-visible rounded-[30px] px-1.5">
-        <motion.div
-          className="absolute z-30 overflow-hidden rounded-[34px] pointer-events-none transform-gpu"
-          style={{ willChange: 'transform, opacity, width, height' }}
-          animate={{
-            x: renderedLensLeft,
-            y: renderedLensTop,
-            width: renderedLensWidth,
-            height: renderedLensHeight,
-            opacity: isDraggingLens ? 0.94 : lensVisible ? 0.84 : 0.52,
-            scale: isDraggingLens ? 1.1 : lensVisible ? 1.05 : 1,
-          }}
-          transition={
-            isDraggingLens
-              ? { duration: 0 }
-              : {
-                  x: { type: 'spring', stiffness: 820, damping: 46, mass: 0.66 },
-                  y: { type: 'spring', stiffness: 820, damping: 46, mass: 0.66 },
-                  width: { type: 'spring', stiffness: 820, damping: 46, mass: 0.66 },
-                  height: { type: 'spring', stiffness: 820, damping: 46, mass: 0.66 },
-                  opacity: { duration: lensVisible ? 0.07 : 0.13 },
-                  scale: { duration: lensVisible ? 0.13 : 0.1, ease: [0.22, 1, 0.36, 1] },
-                }
-          }
-        >
-          <div className="liquid-tab-lens absolute inset-0 rounded-[34px]" />
-        </motion.div>
+        {!isCompactLayout && (
+          <motion.div
+            className="absolute z-30 overflow-hidden rounded-[34px] pointer-events-none transform-gpu"
+            style={{ willChange: 'transform, opacity, width, height' }}
+            animate={{
+              x: renderedLensLeft,
+              y: renderedLensTop,
+              width: renderedLensWidth,
+              height: renderedLensHeight,
+              opacity: isDraggingLens ? 0.94 : lensVisible ? 0.84 : 0.52,
+              scale: isDraggingLens ? 1.1 : lensVisible ? 1.05 : 1,
+            }}
+            aria-hidden="true"
+            data-testid="bottom-nav-lens"
+            data-lens-visual="visible"
+            transition={
+              isDraggingLens
+                ? { duration: 0 }
+                : {
+                    x: { type: 'spring', stiffness: 820, damping: 46, mass: 0.66 },
+                    y: { type: 'spring', stiffness: 820, damping: 46, mass: 0.66 },
+                    width: { type: 'spring', stiffness: 820, damping: 46, mass: 0.66 },
+                    height: { type: 'spring', stiffness: 820, damping: 46, mass: 0.66 },
+                    opacity: { duration: lensVisible ? 0.07 : 0.13 },
+                    scale: { duration: lensVisible ? 0.13 : 0.1, ease: [0.22, 1, 0.36, 1] },
+                  }
+            }
+          >
+            <div className="liquid-tab-lens absolute inset-0 rounded-[34px]" />
+          </motion.div>
+        )}
         {tabs.map((tab) => {
           const isActive = currentTab === tab.id;
+          const tabIndex = tabs.findIndex((item) => item.id === tab.id);
+          const tabCenterX = navTrackPadding + tabIndex * itemWidth + itemWidth / 2;
+          const dragIconColor = isCompactDrag && dragVisual
+            ? getDragIconColor(dragVisual.pointerX, tabCenterX, itemWidth)
+            : undefined;
           return (
             <button
               key={tab.id}
@@ -320,18 +418,24 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
                 selectTab(tab.id);
               }}
               className="liquid-glass-interactive relative z-20 flex h-[54px] items-center justify-center rounded-[25px] transition-all duration-300 group touch-none"
-              data-liquid-adaptive={isActive ? undefined : 'true'}
+              style={dragIconColor ? { color: dragIconColor } : undefined}
+              data-liquid-adaptive={isDraggingLens || isActive ? undefined : 'true'}
             >
               <div className={`relative z-10 transition-transform duration-300 ${isActive ? 'scale-110' : 'scale-100 group-active:scale-90'}`}>
                 <tab.icon
                    size={isCompactLayout ? 24 : 28}
-                  strokeWidth={isActive ? 2.5 : 1.8}
-                  className={`transition-colors duration-300 ${
-                    isActive
-                      ? 'text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.5)]'
-                      : 'text-white/65 drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)] group-hover:text-white/85'
-                  }`}
-                  fill={isActive && tab.fillOnActive ? 'currentColor' : 'none'}
+                   strokeWidth={isActive ? 2.5 : 1.8}
+                   className={`${isCompactDrag ? 'transition-none' : 'transition-colors duration-300'} ${
+                     isCompactDrag
+                       ? 'drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)]'
+                       : isActive
+                       ? 'text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.5)]'
+                       : 'text-white/65 drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)] group-hover:text-white/85'
+                   }`}
+                   data-drag-proximity={isCompactDrag && dragVisual
+                     ? String(Math.max(0, 1 - Math.min(1, Math.abs(dragVisual.pointerX - tabCenterX) / Math.max(32, itemWidth * 1.08))))
+                     : undefined}
+                   fill={isActive && tab.fillOnActive ? 'currentColor' : 'none'}
                 />
               </div>
               <span className="sr-only">{tab.label}</span>

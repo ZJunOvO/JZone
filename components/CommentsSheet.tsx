@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { useStore } from '../store';
+import { usePlaybackTime, useStore } from '../store';
 import { Icons } from './Icons';
 import type { Comment } from '../types';
 import { useAuth } from '../auth';
@@ -39,7 +39,6 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
     commentSort,
     commentsSchemaReady,
     getCurrentSong,
-    playerState,
     addComment,
     deleteComment,
     retryComments,
@@ -48,6 +47,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
     seek,
     toggleCommentLike,
   } = useStore();
+  const playbackTime = usePlaybackTime();
   const { user } = useAuth();
   const { displayName, resolvedAvatarUrl, profile } = useCurrentArtistProfile();
   const [inputText, setInputText] = React.useState('');
@@ -107,7 +107,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
 
   const handleFocus = () => {
     setIsFocused(true);
-    if (anchorTime === null) setAnchorTime(playerState.currentTime);
+    if (anchorTime === null) setAnchorTime(playbackTime);
     window.setTimeout(() => inputWrapRef.current?.scrollIntoView({ block: 'end' }), 50);
   };
 
@@ -131,7 +131,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
       avatarFrameId: myAvatarFrameId,
       text: inputText.trim(),
       timestamp: Date.now(),
-      playbackTime: anchorTime ?? playerState.currentTime,
+      playbackTime: anchorTime ?? playbackTime,
       parentCommentId: replyTarget?.parentId ?? null,
       likes: 0,
     };
@@ -240,12 +240,12 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
                   <div className="flex items-center gap-3">
                     <span className="text-[11px] font-bold uppercase text-zinc-400">评论时间点</span>
                     <div className="flex items-center rounded-lg border border-white/5 bg-zinc-800 p-0.5">
-                      <button type="button" onClick={() => setAnchorTime(Math.max(0, (anchorTime ?? playerState.currentTime) - 1))} className="grid h-6 w-6 place-items-center rounded text-zinc-400 hover:text-white"><Icons.Minus size={12} /></button>
-                      <span className="w-12 text-center font-mono text-xs font-bold tabular-nums text-blue-400">{formatTime(anchorTime ?? playerState.currentTime)}</span>
-                      <button type="button" onClick={() => setAnchorTime((anchorTime ?? playerState.currentTime) + 1)} className="grid h-6 w-6 place-items-center rounded text-zinc-400 hover:text-white"><Icons.Plus size={12} /></button>
+                      <button type="button" onClick={() => setAnchorTime(Math.max(0, (anchorTime ?? playbackTime) - 1))} className="grid h-6 w-6 place-items-center rounded text-zinc-400 hover:text-white"><Icons.Minus size={12} /></button>
+                      <span className="w-12 text-center font-mono text-xs font-bold tabular-nums text-blue-400">{formatTime(anchorTime ?? playbackTime)}</span>
+                      <button type="button" onClick={() => setAnchorTime((anchorTime ?? playbackTime) + 1)} className="grid h-6 w-6 place-items-center rounded text-zinc-400 hover:text-white"><Icons.Plus size={12} /></button>
                     </div>
                   </div>
-                  <button type="button" onClick={() => setAnchorTime(playerState.currentTime)} className="flex items-center gap-1.5 rounded-full bg-zinc-800/50 px-2 py-1 text-[10px] font-bold text-zinc-500 hover:text-red-400"><Icons.RotateCcw size={10} />重置同步</button>
+                  <button type="button" onClick={() => setAnchorTime(playbackTime)} className="flex items-center gap-1.5 rounded-full bg-zinc-800/50 px-2 py-1 text-[10px] font-bold text-zinc-500 hover:text-red-400"><Icons.RotateCcw size={10} />重置同步</button>
                 </div>
               ) : null}
 

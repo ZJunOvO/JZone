@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useStore } from '../store';
+import { usePlaybackTime, useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { CommentsSheet } from '../components/CommentsSheet';
 import { MemoryCardModal } from '../components/MemoryCardModal';
@@ -121,6 +121,7 @@ const QueueSongRow: React.FC<{
 
 export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase, transitionOrigin, sharedOrigin }) => {
   const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, cyclePlaybackMode, seek, setVolume, playSong, removeFromQueue, reorderQueue, toggleFavorite, isFavorite } = useStore();
+  const playbackTime = usePlaybackTime();
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isQueueClosing, setIsQueueClosing] = useState(false);
   const [isQueueSorting, setIsQueueSorting] = useState(false);
@@ -274,7 +275,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   const trimStart = Number.isFinite(song.trimStart) ? song.trimStart : 0;
   const trimEnd = Number.isFinite(song.trimEnd) && song.trimEnd > trimStart ? song.trimEnd : song.duration;
   const playableDuration = Math.max(0.1, trimEnd - trimStart);
-  const currentTime = Math.max(trimStart, Math.min(trimEnd, playerState.currentTime));
+  const currentTime = Math.max(trimStart, Math.min(trimEnd, playbackTime));
   const progressPct = Math.max(0, Math.min(100, ((currentTime - trimStart) / playableDuration) * 100));
   const remainingTime = Math.max(0, trimEnd - currentTime);
   const volumePct = playerState.volume * 100;

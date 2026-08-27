@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { Song, PlayerState, PlayerSkin, PlaybackMode, Comment, CommentLoadStatus, CommentSort } from './types';
 import { MOCK_SONGS } from './constants';
 import { localLibraryStorage } from './localLibraryStorage';
@@ -63,6 +63,39 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | null>(null);
+type PlaybackTimeListener = () => void;
+
+const INITIAL_PLAYBACK_TIME = 0;
+let playbackTime = INITIAL_PLAYBACK_TIME;
+const playbackTimeListeners = new Set<PlaybackTimeListener>();
+
+const normalizePlaybackTime = (time: number) => (
+  Number.isFinite(time) ? Math.max(0, time) : INITIAL_PLAYBACK_TIME
+);
+
+const publishPlaybackTime = (time: number) => {
+  const nextTime = normalizePlaybackTime(time);
+  if (Object.is(nextTime, playbackTime)) return;
+  playbackTime = nextTime;
+  playbackTimeListeners.forEach((listener) => listener());
+};
+
+const subscribeToPlaybackTime = (listener: PlaybackTimeListener) => {
+  playbackTimeListeners.add(listener);
+  return () => {
+    playbackTimeListeners.delete(listener);
+  };
+};
+
+const getPlaybackTimeSnapshot = () => playbackTime;
+const getPlaybackTimeServerSnapshot = () => INITIAL_PLAYBACK_TIME;
+
+export const usePlaybackTime = () => useSyncExternalStore(
+  subscribeToPlaybackTime,
+  getPlaybackTimeSnapshot,
+  getPlaybackTimeServerSnapshot,
+);
+
 const PLAYBACK_MODE_SEQUENCE: PlaybackMode[] = ['sequence', 'repeat-one', 'shuffle'];
 const QUALIFYING_PLAY_RATIO = 0.2;
 const PLAYBACK_END_EPSILON = 0.05;
@@ -225,6 +258,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentTime: 0,
       queue: [],
     }));
+    publishPlaybackTime(INITIAL_PLAYBACK_TIME);
   }, [status, user?.id]);
 
   useEffect(() => {
@@ -603,7 +637,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const handleTimeUpdate = () => {
-      setPlayerState(prev => ({ ...prev, currentTime: audio.currentTime || 0 }));
+      publishPlaybackTime(audio.currentTime);
 
       const { songs, playerState } = stateRef.current;
       const currentSong = songs.find(s => s.id === playerState.currentSongId);
@@ -611,11 +645,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (Number.isFinite(currentSong.trimStart) && audio.currentTime < currentSong.trimStart - 0.05) {
         audio.currentTime = currentSong.trimStart;
+        publishPlaybackTime(audio.currentTime);
       }
 
       if (Number.isFinite(currentSong.trimEnd) && audio.currentTime >= currentSong.trimEnd) {
         countAtPlaybackEnd(currentSong, currentSong.trimEnd);
-        audio.currentTime = currentSong.trimStart;
+        const trimResetTime = normalizePlaybackTime(currentSong.trimStart);
+        audio.currentTime = trimResetTime;
+        publishPlaybackTime(trimResetTime);
         if (playerState.playbackMode === 'repeat-one') {
           beginPlaybackSession(currentSong.id);
           audio.play().catch(() => {});
@@ -669,6 +706,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const currentSong = songs.find((s) => s.id === playerState.currentSongId);
       if (currentSong && Number.isFinite(currentSong.trimStart) && audio.currentTime < currentSong.trimStart - 0.05) {
         audio.currentTime = currentSong.trimStart;
+        publishPlaybackTime(audio.currentTime);
       }
       try {
         playPromiseRef.current = audio.play();
@@ -709,7 +747,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastSeekAt: 0,
       counted: false,
     };
-    setPlayerState(prev => ({ ...prev, currentSongId: songId, isPlaying: false, isAudioLoading: true, currentTime: song.trimStart || 0 }));
+    const startTime = normalizePlaybackTime(song.trimStart);
+    setPlayerState(prev => ({ ...prev, currentSongId: songId, isPlaying: false, isAudioLoading: true, currentTime: startTime }));
+    publishPlaybackTime(startTime);
 
     const sources: string[] = [];
     if (hasSupabaseConfig) {
@@ -766,7 +806,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (seq !== playSeqRef.current) return;
 
-    audio.currentTime = song.trimStart || 0;
+    audio.currentTime = startTime;
+    publishPlaybackTime(audio.currentTime);
     
     try {
       playPromiseRef.current = audio.play();
@@ -908,6 +949,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const clamped = Math.max(min, Math.min(max, time));
       audio.currentTime = clamped;
       setPlayerState(prev => ({ ...prev, currentTime: clamped }));
+      publishPlaybackTime(clamped);
     }
   }, []);
 

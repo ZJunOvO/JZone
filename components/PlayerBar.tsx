@@ -1,6 +1,6 @@
 import React from 'react';
 import { animate, motion, useMotionValue, useReducedMotion, type AnimationPlaybackControls } from 'framer-motion';
-import { useStore } from '../store';
+import { usePlaybackTime, useStore } from '../store';
 import { Icons } from './Icons';
 import { SkeletonBlock } from './Skeletons';
 import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
@@ -16,6 +16,7 @@ interface PlayerBarProps {
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock', settlePulse = 0 }) => {
   const { playerState, getCurrentSong, togglePlay, nextSong } = useStore();
+  const playbackTime = usePlaybackTime();
   const song = getCurrentSong();
   const reduceMotion = useReducedMotion();
   const initialMapSize = React.useMemo(() => ({
@@ -41,7 +42,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
   if (!song) return null;
 
   const denom = Math.max(0.1, (song.trimEnd ?? song.duration) - (song.trimStart ?? 0));
-  const progress = Math.max(0, Math.min(1, ((playerState.currentTime - (song.trimStart ?? 0)) / denom)));
+  const progress = Math.max(0, Math.min(1, ((playbackTime - (song.trimStart ?? 0)) / denom)));
 
   return (
     <motion.div
