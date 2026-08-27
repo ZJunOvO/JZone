@@ -338,10 +338,20 @@ export const readAudioDurationMetadata = async (audioFile: File) => {
   return extractMp4Duration(tail);
 };
 
-export const persistDraftAudio = (audioFile: File, ownerId?: string | null) => {
+export type DraftAudioPersistence = 'persisted' | 'too-large';
+
+export const persistDraftAudio = async (
+  audioFile: File,
+  ownerId?: string | null,
+): Promise<DraftAudioPersistence> => {
   const maxPersistBytes = 25 * 1024 * 1024;
-  if (audioFile.size > maxPersistBytes) return Promise.resolve();
-  return uploadDraftStorage.setAudio(ownerId, audioFile);
+  if (audioFile.size > maxPersistBytes) {
+    // 新的大文件不能持久化时必须清掉上一首草稿，避免重开后出现“新标题 + 旧音频”。
+    await uploadDraftStorage.deleteAudio(ownerId);
+    return 'too-large';
+  }
+  await uploadDraftStorage.setAudio(ownerId, audioFile);
+  return 'persisted';
 };
 
 export const adjustRangeForDuration = (prev: [number, number], duration: number): [number, number] => {

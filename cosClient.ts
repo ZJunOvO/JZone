@@ -52,8 +52,16 @@ export interface CosUploadProgress {
   percent: number;
 }
 
-export const COS_AUDIO_BROWSER_CACHE_CONTROL = 'private, max-age=604800, immutable';
-export const COS_IMAGE_BROWSER_CACHE_CONTROL = 'private, max-age=2592000, immutable';
+export interface CosHeadObjectDiagnostic {
+  ok: boolean;
+  statusCode?: number;
+  code?: string;
+}
+
+export const COS_AUDIO_BROWSER_CACHE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+export const COS_IMAGE_BROWSER_CACHE_MAX_AGE_SECONDS = 31 * 24 * 60 * 60;
+export const COS_AUDIO_BROWSER_CACHE_CONTROL = `private, max-age=${COS_AUDIO_BROWSER_CACHE_MAX_AGE_SECONDS}, immutable`;
+export const COS_IMAGE_BROWSER_CACHE_CONTROL = `private, max-age=${COS_IMAGE_BROWSER_CACHE_MAX_AGE_SECONDS}, immutable`;
 
 const getMediaCacheControl = (path: string, contentType?: string) => {
   const normalizedType = contentType?.toLowerCase() ?? '';
@@ -69,32 +77,43 @@ const getMediaCacheControl = (path: string, contentType?: string) => {
 export const cosClient = {
   isEnabled: isCosEnabled,
 
-  async objectExists(path: string): Promise<boolean> {
+  async headObject(path: string): Promise<CosHeadObjectDiagnostic> {
     if (!cosInstance || !bucket || !region) throw new Error('COS 未配置');
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       cosInstance!.headObject(
         {
           Bucket: bucket,
           Region: region,
           Key: path,
         },
-        (err) => {
-          if (!err) {
-            resolve(true);
+        (err, data) => {
+          if (err) {
+            const statusCode = Number((err as any)?.statusCode ?? (err as any)?.status);
+            const code = String((err as any)?.Code ?? (err as any)?.code ?? '');
+            resolve({
+              ok: false,
+              ...(Number.isFinite(statusCode) ? { statusCode } : {}),
+              ...(code ? { code } : {}),
+            });
             return;
           }
 
-          const statusCode = Number((err as any)?.statusCode ?? (err as any)?.status);
-          const code = String((err as any)?.Code ?? (err as any)?.code ?? '');
-          if (statusCode === 404 || code === 'NoSuchKey' || code === 'NotFound') {
-            resolve(false);
-            return;
-          }
-          reject(toCosError('COS 检查对象失败', err));
+          resolve({
+            ok: true,
+            statusCode: typeof data?.statusCode === 'number' ? data.statusCode : 200,
+          });
         },
       );
     });
+  },
+
+  async objectExists(path: string): Promise<boolean> {
+    const result = await cosClient.headObject(path);
+    const code = result.code ?? '';
+    if (result.ok) return true;
+    if (result.statusCode === 404 || /^(?:NoSuchKey|NotFound|NoSuchObject)$/i.test(code)) return false;
+    throw toCosError('COS 检查对象失败', result);
   },
 
   /**
@@ -197,20 +216,41 @@ export const cosClient = {
   async getBucketUsage(): Promise<number> {
     if (!cosInstance || !bucket || !region) throw new Error('COS 未配置');
 
-    return new Promise((resolve, reject) => {
-      cosInstance!.getBucket(
-        {
-          Bucket: bucket,
-          Region: region,
-          Prefix: '',
-          MaxKeys: 1000,
-        },
-        function (err, data) {
-          if (err) return reject(err);
-          const totalSize = data.Contents?.reduce((sum, item) => sum + parseInt(item.Size, 10), 0) || 0;
-          resolve(totalSize);
-        }
-      );
-    });
+    let marker: string | undefined;
+    let totalSize = 0;
+
+    while (true) {
+      const data = await new Promise<COS.GetBucketResult>((resolve, reject) => {
+        cosInstance!.getBucket(
+          {
+            Bucket: bucket,
+            Region: region,
+            Prefix: '',
+            MaxKeys: 1000,
+            ...(marker ? { Marker: marker } : {}),
+          },
+          (err, result) => {
+            if (err) {
+              reject(toCosError('COS 读取对象列表失败', err));
+              return;
+            }
+            resolve(result);
+          },
+        );
+      });
+
+      for (const item of data.Contents ?? []) {
+        const size = Number(item.Size);
+        if (Number.isFinite(size) && size >= 0) totalSize += size;
+      }
+
+      if (String(data.IsTruncated).toLowerCase() !== 'true') return totalSize;
+
+      const nextMarker = data.NextMarker || data.Contents?.at(-1)?.Key;
+      if (!nextMarker || nextMarker === marker) {
+        throw new Error('COS 对象列表分页缺少有效的继续标记');
+      }
+      marker = nextMarker;
+    }
   }
 };

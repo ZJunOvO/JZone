@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { buildAuditReport } from './cos-history-audit.mjs';
 
 const duplicateCoverHash = 'a'.repeat(64);
@@ -59,7 +60,7 @@ const duplicateCoverCandidates = report.candidates.filter((candidate) => candida
 const missingCandidates = report.candidates.filter((candidate) => candidate.kind === 'missing-resource');
 const serializedReport = JSON.stringify(report);
 
-assert.equal(report.schemaVersion, 1, '报告必须声明 schemaVersion');
+assert.equal(report.schemaVersion, 2, '报告必须声明 schemaVersion');
 assert.equal(report.mode, 'fixture', 'fixture 输入必须标记 fixture 模式');
 assert.equal(report.generatedAt, fixture.generatedAt, 'fixture 提供时间时报告时间必须可复现');
 assert.equal(report.summary.songCount, 4, '歌曲数应来自 fixture');
@@ -93,5 +94,104 @@ const reorderedFixture = {
   objects: [...fixture.objects].reverse(),
 };
 assert.deepEqual(buildAuditReport(reorderedFixture), report, '相同 fixture 仅改变输入顺序时报告必须一致');
+
+const duplicateAudioHash = 'c'.repeat(64);
+const extendedFixture = {
+  generatedAt: '2026-08-27T00:00:00.000Z',
+  songs: [
+    {
+      id: 'song-a',
+      audio_path: 'media/song-a.mp3',
+      file_size: 1_000_000,
+      duration: 100,
+      stream_audio_path: null,
+      cover_path: null,
+    },
+    {
+      id: 'song-b',
+      audio_path: 'media/song-b.m4a',
+      file_size: 1_000_000,
+      duration: 100,
+      stream_audio_path: 'media/song-b-stream.mp3',
+      stream_file_size: 2_000_000,
+      stream_bitrate_kbps: 320,
+      cover_path: 'media/song-b-cover.jpg',
+    },
+  ],
+  albums: [
+    { id: 'album-1', cover_url: 'albums/album-1.jpg?signature=REDACTED' },
+  ],
+  profiles: [
+    {
+      id: 'profile-1',
+      avatar_url: 'profiles/profile-1/avatar.jpg',
+      cover_url: 'profiles/profile-1/background.jpg',
+    },
+  ],
+  objects: [
+    { key: 'media/song-a.mp3', size: 1_000_000, kind: 'audio', sha256: duplicateAudioHash },
+    { key: 'legacy/song-a-copy.mp3', size: 1_000_000, kind: 'audio', sha256: duplicateAudioHash },
+    { key: 'media/song-b.m4a', size: 1_000_000, kind: 'audio', sha256: 'd'.repeat(64) },
+    { key: 'media/song-b-stream.mp3', size: 2_000_000, kind: 'stream', sha256: 'e'.repeat(64) },
+    { key: 'media/song-b-cover.jpg', size: 10_000, kind: 'cover', sha256: 'f'.repeat(64) },
+    { key: 'albums/album-1.jpg', size: 11_000, kind: 'cover', sha256: '1'.repeat(64) },
+    { key: 'profiles/profile-1/avatar.jpg', size: 12_000, kind: 'image', sha256: '2'.repeat(64) },
+    { key: 'profiles/profile-1/background.jpg', size: 13_000, kind: 'cover', sha256: '3'.repeat(64) },
+    { key: 'orphan/unknown.bin', size: 14_000, kind: 'binary' },
+  ],
+  pagination: {
+    songs: { pageSize: 100, pages: [{ page: 0, offset: 0, rowCount: 2, hasMore: false }], totalRows: 2, complete: true },
+    albums: { pageSize: 100, pages: [{ page: 0, offset: 0, rowCount: 1, hasMore: false }], totalRows: 1, complete: true },
+    profiles: { pageSize: 100, pages: [{ page: 0, offset: 0, rowCount: 1, hasMore: false }], totalRows: 1, complete: true },
+    objects: { pageSize: 8, pages: [{ page: 0, offset: 0, rowCount: 8, hasMore: true }], totalRows: 9, complete: false },
+  },
+};
+
+const extendedReport = buildAuditReport(extendedFixture);
+const duplicateAudio = extendedReport.candidates.find((candidate) => candidate.kind === 'duplicate-audio');
+const abnormalStream = extendedReport.candidates.find((candidate) => candidate.kind === 'abnormal-stream-copy');
+
+assert.equal(extendedReport.summary.albumCount, 1, 'fixture 应读取 albums 行');
+assert.equal(extendedReport.summary.profileCount, 1, 'fixture 应读取 profiles 行');
+assert.deepEqual(extendedReport.summary.albumCoverPaths, ['albums/album-1.jpg'], 'album cover_url 应纳入引用');
+assert.deepEqual(extendedReport.summary.profileAvatarPaths, ['profiles/profile-1/avatar.jpg'], 'profile avatar_url 应纳入引用');
+assert.deepEqual(extendedReport.summary.profileCoverPaths, ['profiles/profile-1/background.jpg'], 'profile cover_url 应纳入引用');
+assert.equal(extendedReport.summary.unreferencedObjectCount, 2, '未引用对象应按对象快照输出');
+assert.deepEqual(extendedReport.summary.unreferencedObjectPaths, ['legacy/song-a-copy.mp3', 'orphan/unknown.bin']);
+assert.deepEqual(extendedReport.unreferencedObjects.map((object) => object.key), extendedReport.summary.unreferencedObjectPaths);
+assert.ok(duplicateAudio, '相同音频内容哈希的不同路径应形成重复音频候选');
+assert.deepEqual(duplicateAudio.paths, ['legacy/song-a-copy.mp3', 'media/song-a.mp3']);
+assert.deepEqual(duplicateAudio.references[1].songIds, ['song-a']);
+assert.ok(abnormalStream, '异常 stream 副本应形成候选');
+assert.deepEqual(abnormalStream.songIds, ['song-b']);
+assert.ok(abnormalStream.reasonCodes.includes('declared-stream-bitrate-out-of-range'));
+assert.ok(abnormalStream.reasonCodes.includes('stream-object-not-smaller-than-source'));
+assert.equal(extendedReport.streamDiagnostics[0].status, 'abnormal');
+assert.equal(extendedReport.summary.abnormalStreamCopyCandidateCount, 1);
+assert.equal(extendedReport.snapshotPagination.status, 'incomplete', '任一分页未完成时整体应标记为不完整');
+assert.equal(extendedReport.snapshotPagination.tables.songs.complete, true);
+assert.equal(extendedReport.snapshotPagination.tables.objects.complete, false);
+assert.equal(extendedReport.summary.snapshotPaginationComplete, false);
+assert.ok(extendedReport.warnings.some((warning) => warning.includes('objects') && warning.includes('分页')));
+assert.ok(
+  extendedReport.candidates.every((candidate) => candidate.candidateOnly === true && candidate.migrationReady === false),
+  '新增候选也必须保持只读审查语义',
+);
+assert.ok(extendedReport.candidates.every((candidate) => !('targetPath' in candidate)), '候选不得生成迁移目标 key');
+
+const reorderedExtendedFixture = {
+  ...extendedFixture,
+  songs: [...extendedFixture.songs].reverse(),
+  albums: [...extendedFixture.albums].reverse(),
+  profiles: [...extendedFixture.profiles].reverse(),
+  objects: [...extendedFixture.objects].reverse(),
+};
+assert.deepEqual(buildAuditReport(reorderedExtendedFixture), extendedReport, '扩展 fixture 改变输入顺序时报告必须一致');
+
+const profilesSource = await readFile(new URL('../services/supabase/profiles.ts', import.meta.url), 'utf8');
+assert.match(profilesSource, /getBlobContentHash/, '头像/背景上传必须使用内容哈希');
+assert.match(profilesSource, /uploadFileIfAbsent/, '内容寻址媒体必须使用幂等上传');
+assert.match(profilesSource, /\/\$\{bucket\}\/v1\/\$\{contentHash\}/, '头像/背景 key 必须包含类型和内容哈希');
+assert.doesNotMatch(profilesSource, /Date\.now\(\).*Math\.random|Math\.random\(\).*Date\.now\(\)/s, '头像/背景 key 不得继续使用时间戳和随机数');
 
 console.log('cos-history-audit.test.mjs: 通过');

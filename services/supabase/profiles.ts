@@ -2,6 +2,7 @@ import { cosClient } from '../../cosClient';
 import { cached, invalidateApiCache, TTL_PROFILE_MS } from './cache';
 import { ensureSupabase } from './client';
 import type { ProfileRow } from './types';
+import { getBlobContentHash } from '../../utils/sharedMedia';
 
 const getExt = (name: string) => {
   const idx = name.lastIndexOf('.');
@@ -37,11 +38,15 @@ export const createProfilesApi = () => ({
 
   async uploadProfileImage(userId: string, file: Blob, bucket: 'avatars' | 'covers', originalName?: string): Promise<string> {
     const anyFile = file as any;
-    const ext = getExt(originalName ?? (anyFile?.name as string) ?? '') || 'jpg';
-    const fileName = `${userId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const requestedExt = getExt(originalName ?? (anyFile?.name as string) ?? '') || 'jpg';
+    const ext = /^[a-z0-9]{1,8}$/i.test(requestedExt) ? requestedExt : 'jpg';
+    const contentHash = await getBlobContentHash(file);
+    // 内容寻址 key 与签名 URL/COS immutable 缓存兼容：内容不变就复用，内容变化就自然得到新缓存 key。
+    const fileName = `${userId}/${bucket}/v1/${contentHash}.${ext}`;
+    const contentType = file.type?.toLowerCase().startsWith('image/') ? file.type : 'image/jpeg';
 
     if (!cosClient.isEnabled) throw new Error('COS 未配置');
-    await cosClient.uploadFile(file, fileName);
+    await cosClient.uploadFileIfAbsent(file, fileName, contentType);
     return fileName;
   },
 

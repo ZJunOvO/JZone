@@ -198,12 +198,23 @@ const isSameEvent = (left: ListeningRecapEventInput, right: ListeningRecapEventI
   )
 );
 
+const isRetryableOutboxError = (error: unknown) => {
+  if (!error || typeof error !== 'object') return true;
+  const retryable = (error as { retryable?: unknown }).retryable;
+  return typeof retryable === 'boolean' ? retryable : true;
+};
+
 const markEventAttempted = (userId: string, event: ListeningRecapEventInput) => {
   const entries = readEntries(userId);
   const updated = entries.map((entry) => (
     isSameEvent(entry.event, event) ? { ...entry, attempted: true } : entry
   ));
   writeEntries(userId, updated);
+};
+
+const removeEvent = (userId: string, event: ListeningRecapEventInput) => {
+  const pending = readEntries(userId).filter((entry) => !isSameEvent(entry.event, event));
+  writeEntries(userId, pending);
 };
 
 const acknowledgeEvent = (userId: string, event: ListeningRecapEventInput) => {
@@ -232,8 +243,13 @@ const flushEvents = async (
       if (!result.acknowledged) break;
       acknowledgeEvent(userId, entry.event);
       acknowledged += 1;
-    } catch {
-      // 发送失败时保留事件和重试标记，避免不确定请求后误走旧累计回退。
+    } catch (error) {
+      if (!isRetryableOutboxError(error)) {
+        // 终态业务拒绝不会因重试改变结果；移除后继续发送后续事件。
+        removeEvent(userId, entry.event);
+        continue;
+      }
+      // 未确认或可重试失败保留事件和重试标记，避免不确定请求后丢失事件。
       break;
     }
   }

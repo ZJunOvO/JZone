@@ -7,6 +7,13 @@ import { hasSupabaseConfig } from '../supabaseClient';
 import { supabaseApi } from '../supabaseApi';
 import { feedback } from '../components/feedback';
 import { getFallbackAvatarUrl, getQQAvatarUrl } from '../utils/avatar';
+import {
+  getCommentsCacheKey,
+  invalidateCommentsCache,
+  readCommentsCache,
+  writeCommentsCache,
+  type CommentsCachePage,
+} from '../services/supabase/commentsCache';
 
 const COMMENT_PAGE_SIZE = 20;
 
@@ -34,6 +41,7 @@ interface UseCommentsControllerOptions {
 
 interface LoadOptions {
   append?: boolean;
+  force?: boolean;
   silent?: boolean;
   sort?: CommentSort;
 }
@@ -49,6 +57,7 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
   const commentsRef = useRef(comments);
   const pageOffsetRef = useRef(0);
   const requestSequenceRef = useRef(0);
+  const commentsRequestRef = useRef(new Map<string, { sequence: number; token: symbol }>());
 
   useEffect(() => {
     commentsRef.current = comments;
@@ -64,21 +73,42 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
     setCommentsLoadingMore(false);
     setCommentsStatus('idle');
     setCommentsSchemaReady(false);
+    commentsRequestRef.current.clear();
   }, [user?.id]);
 
   const loadComments = useCallback(async (songId: string, options: LoadOptions = {}) => {
     if (!hasSupabaseConfig || authStatus !== 'signed_in' || !user) return;
     const append = options.append ?? false;
+    const force = options.force ?? false;
     const silent = options.silent ?? false;
     const sort = options.sort ?? commentSort;
+    const cacheKey = getCommentsCacheKey({ userId: user.id, songId, sort });
+    const activeRequest = commentsRequestRef.current.get(cacheKey);
+    if (activeRequest?.sequence === requestSequenceRef.current) return;
+    if (activeRequest) commentsRequestRef.current.delete(cacheKey);
     const requestSequence = ++requestSequenceRef.current;
+    const cached = append ? undefined : readCommentsCache({ userId: user.id, songId, sort });
+
+    if (cached?.value) {
+      setComments(cached.value.rows);
+      pageOffsetRef.current = cached.value.nextOffset;
+      setCommentsSchemaReady(cached.value.schemaVersion === 'threaded');
+      setCommentsHasMore(cached.value.hasMore);
+      setCommentsError(null);
+      setCommentsLoadingMore(false);
+      setCommentsStatus('ready');
+      if (cached.status === 'fresh' && !force) return;
+    }
+
     const offset = append ? pageOffsetRef.current : 0;
-    const loadedRootCount = commentsRef.current.filter((comment) => (
+    const loadedRootCount = (cached?.value?.rows ?? commentsRef.current).filter((comment) => (
       comment.songId === songId && !comment.parentCommentId
     )).length;
     const limit = !append && silent
       ? Math.max(COMMENT_PAGE_SIZE, loadedRootCount)
       : COMMENT_PAGE_SIZE;
+    const requestToken = Symbol(cacheKey);
+    commentsRequestRef.current.set(cacheKey, { sequence: requestSequence, token: requestToken });
 
     if (append) setCommentsLoadingMore(true);
     else if (!silent) setCommentsStatus('loading');
@@ -95,14 +125,18 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
       if (requestSequence !== requestSequenceRef.current) return;
 
       const nextRows = page.rows.map(mapCommentRow);
-      setComments((previous) => {
-        const otherSongs = previous.filter((comment) => comment.songId !== songId);
-        if (!append) return [...otherSongs, ...nextRows];
-        const currentRows = previous.filter((comment) => comment.songId === songId);
-        const merged = new Map(currentRows.map((comment) => [comment.id, comment]));
-        nextRows.forEach((comment) => merged.set(comment.id, comment));
-        return [...otherSongs, ...merged.values()];
-      });
+      const currentRows = commentsRef.current.filter((comment) => comment.songId === songId);
+      const mergedRows = append
+        ? [...new Map([...currentRows, ...nextRows].map((comment) => [comment.id, comment])).values()]
+        : nextRows;
+      const cachePage: CommentsCachePage = {
+        rows: mergedRows,
+        hasMore: page.hasMore,
+        nextOffset: page.nextOffset,
+        schemaVersion: page.schemaVersion,
+      };
+      writeCommentsCache({ userId: user.id, songId, sort }, cachePage);
+      setComments(mergedRows);
       pageOffsetRef.current = page.nextOffset;
       setCommentsSchemaReady(page.schemaVersion === 'threaded');
       setCommentsHasMore(page.hasMore);
@@ -113,6 +147,9 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
       setCommentsError('评论加载失败，请检查网络后重试');
       setCommentsStatus('error');
     } finally {
+      if (commentsRequestRef.current.get(cacheKey)?.token === requestToken) {
+        commentsRequestRef.current.delete(cacheKey);
+      }
       if (requestSequence === requestSequenceRef.current) setCommentsLoadingMore(false);
     }
   }, [authStatus, commentSort, user]);
@@ -121,11 +158,17 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
     if (!currentSongId) {
       requestSequenceRef.current += 1;
       pageOffsetRef.current = 0;
+      commentsRequestRef.current.clear();
+      if (hasSupabaseConfig) setComments([]);
+      setCommentsError(null);
       setCommentsHasMore(false);
+      setCommentsLoadingMore(false);
+      setCommentsSchemaReady(false);
       setCommentsStatus(hasSupabaseConfig ? 'idle' : 'ready');
       return;
     }
     if (!hasSupabaseConfig) return;
+    pageOffsetRef.current = 0;
     void loadComments(currentSongId, { sort: commentSort });
   }, [commentSort, currentSongId, loadComments]);
 
@@ -133,7 +176,7 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
     if (!currentSongId || !hasSupabaseConfig) return;
     const refreshCurrentSong = () => {
       if (document.visibilityState === 'visible' && navigator.onLine) {
-        void loadComments(currentSongId, { silent: true, sort: commentSort });
+        void loadComments(currentSongId, { force: true, silent: true, sort: commentSort });
       }
     };
     const onVisibilityChange = () => refreshCurrentSong();
@@ -151,8 +194,17 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
     setCommentSortState(sort);
   }, [commentSort]);
 
+  const invalidateCommentsForSong = useCallback((songId: string) => {
+    if (!user?.id) return;
+    invalidateCommentsCache({ userId: user.id, songId });
+    requestSequenceRef.current += 1;
+    (['latest', 'popular'] as const).forEach((sort) => {
+      commentsRequestRef.current.delete(getCommentsCacheKey({ userId: user.id, songId, sort }));
+    });
+  }, [user?.id]);
+
   const retryComments = useCallback(() => {
-    if (currentSongId) void loadComments(currentSongId, { sort: commentSort });
+    if (currentSongId) void loadComments(currentSongId, { force: true, sort: commentSort });
   }, [commentSort, currentSongId, loadComments]);
 
   const loadMoreComments = useCallback(async () => {
@@ -212,6 +264,7 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
       setComments((previous) => previous.map((item) => (
         item.id === normalizedComment.id ? persisted : item
       )));
+      invalidateCommentsForSong(normalizedComment.songId);
       setCommentsStatus('ready');
     } catch (error) {
       console.error('Comment insert failed:', error);
@@ -219,7 +272,7 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
       feedback.error('评论发送失败，请检查网络后重试');
       throw error;
     }
-  }, [user]);
+  }, [invalidateCommentsForSong, user]);
 
   const toggleCommentLike = useCallback(async (commentId: string) => {
     if (!user) return;
@@ -236,12 +289,13 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
     try {
       if (nextLiked) await supabaseApi.addCommentLike(commentId, user.id);
       else await supabaseApi.removeCommentLike(commentId, user.id);
+      invalidateCommentsForSong(target.songId);
     } catch (error) {
       console.error('Comment like update failed:', error);
       setComments((previous) => previous.map((comment) => comment.id === commentId ? target : comment));
       feedback.error('点赞状态同步失败，已恢复原状态');
     }
-  }, [user]);
+  }, [invalidateCommentsForSong, user]);
 
   const deleteComment = useCallback(async (commentId: string) => {
     const target = commentsRef.current.find((comment) => comment.id === commentId);
@@ -257,6 +311,7 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
       setComments((previous) => result === 'soft_deleted'
         ? previous.map((comment) => comment.id === commentId ? { ...comment, text: '', isDeleted: true } : comment)
         : previous.filter((comment) => comment.id !== commentId));
+      invalidateCommentsForSong(target.songId);
       feedback.success('评论已删除');
     } catch (error) {
       console.error('Comment delete failed:', error);
@@ -269,7 +324,7 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
       feedback.error('删除评论失败，请稍后重试');
       throw error;
     }
-  }, []);
+  }, [invalidateCommentsForSong]);
 
   return {
     comments,

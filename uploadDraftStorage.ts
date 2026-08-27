@@ -2,7 +2,7 @@ const DB_NAME = 'jzone-player-upload-draft';
 const DB_VERSION = 1;
 const STORE_NAME = 'upload-draft';
 
-type DraftKey = 'audio' | 'cover' | 'meta';
+type DraftKey = 'audio' | 'cover' | 'meta' | 'pendingFiles';
 type OwnerId = string | null | undefined;
 
 interface StoredFilePayload {
@@ -20,6 +20,7 @@ const LEGACY_FIXED_KEYS = ['audio', 'cover', 'meta'] as const;
 void LEGACY_FIXED_KEYS;
 
 const memoryFiles = new Map<string, MemoryFiles>();
+const memoryPendingFiles = new Map<string, File[]>();
 
 const normalizeOwnerKey = (ownerId: OwnerId): string | null => {
   if (typeof ownerId !== 'string') return null;
@@ -147,6 +148,13 @@ const fromStoredFilePayload = (value: unknown, fallbackName: string): File | nul
   });
 };
 
+const fromStoredPendingFiles = (value: unknown): File[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => fromStoredFilePayload(item, `audio-${index + 1}`))
+    .filter((file): file is File => Boolean(file));
+};
+
 const getStoredFile = async (ownerId: OwnerId, key: 'audio' | 'cover', fallbackName: string) => {
   const storageKey = getDraftStorageKey(ownerId, key);
   const normalizedOwnerKey = normalizeOwnerKey(ownerId);
@@ -188,6 +196,43 @@ const deleteStoredFile = async (ownerId: OwnerId, key: 'audio' | 'cover') => {
   await idbDelete(storageKey);
 };
 
+const getPendingFiles = async (ownerId: OwnerId): Promise<File[]> => {
+  const storageKey = getDraftStorageKey(ownerId, 'pendingFiles');
+  const normalizedOwnerKey = normalizeOwnerKey(ownerId);
+  if (!storageKey || !normalizedOwnerKey) return [];
+
+  const memory = memoryPendingFiles.get(normalizedOwnerKey);
+  if (memory) return [...memory];
+
+  const stored = await idbGet<unknown>(storageKey);
+  const files = fromStoredPendingFiles(stored);
+  memoryPendingFiles.set(normalizedOwnerKey, files);
+  return [...files];
+};
+
+const setPendingFiles = async (ownerId: OwnerId, files: File[]): Promise<void> => {
+  const storageKey = getDraftStorageKey(ownerId, 'pendingFiles');
+  const normalizedOwnerKey = normalizeOwnerKey(ownerId);
+  if (!storageKey || !normalizedOwnerKey) return;
+
+  const nextFiles = files.filter((file) => file.size > 0);
+  memoryPendingFiles.set(normalizedOwnerKey, [...nextFiles]);
+  if (!nextFiles.length) {
+    await idbDelete(storageKey);
+    return;
+  }
+  await idbPut(storageKey, nextFiles.map(toStoredFilePayload));
+};
+
+const deletePendingFiles = async (ownerId: OwnerId): Promise<void> => {
+  const storageKey = getDraftStorageKey(ownerId, 'pendingFiles');
+  const normalizedOwnerKey = normalizeOwnerKey(ownerId);
+  if (!storageKey || !normalizedOwnerKey) return;
+
+  memoryPendingFiles.delete(normalizedOwnerKey);
+  await idbDelete(storageKey);
+};
+
 function setAudio(ownerId: OwnerId, file: File): Promise<void> {
   return setStoredFile(ownerId, 'audio', file);
 }
@@ -220,6 +265,10 @@ export const uploadDraftStorage = {
     await idbDelete(storageKey);
   },
 
+  getPendingFiles,
+  setPendingFiles,
+  deletePendingFiles,
+
   clearAll: async (ownerId: OwnerId) => {
     const normalizedOwnerKey = normalizeOwnerKey(ownerId);
     const audioKey = getDraftStorageKey(ownerId, 'audio');
@@ -227,6 +276,7 @@ export const uploadDraftStorage = {
     const metaKey = getDraftStorageKey(ownerId, 'meta');
     if (!normalizedOwnerKey || !audioKey || !coverKey || !metaKey) return;
 
+    // 这里只清理当前编辑草稿；pendingFiles 是独立的待编辑队列，保存或重置当前曲目时必须保留。
     memoryFiles.delete(normalizedOwnerKey);
     await Promise.all([idbDelete(audioKey), idbDelete(coverKey), idbDelete(metaKey)]);
   },

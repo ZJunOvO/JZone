@@ -1,7 +1,8 @@
 -- 聆听回顾一期隔离 fixture。
 --
--- 运行前提：先在本地/隔离 Supabase Postgres 中按顺序执行既有迁移和
--- 021_listening_recap_mvp.sql，再以可创建 auth.users 的数据库角色执行本文件。
+-- 运行前提：先在本地/隔离 Supabase Postgres 中按顺序执行既有迁移、
+-- 021_listening_recap_mvp.sql 和 022_listening_recap_event_compatibility.sql，
+-- 再以可创建 auth.users 的数据库角色执行本文件。
 -- 全部数据都在事务中创建并在末尾回滚，不连接远端，也不保留 fixture 数据。
 
 begin;
@@ -452,6 +453,9 @@ declare
   v_count bigint;
   v_song_play_count bigint;
   v_user_song_play_count bigint;
+  v_global_before bigint;
+  v_global_after bigint;
+  v_compat jsonb;
   v_accepted_at text;
   v_message text;
 begin
@@ -578,6 +582,47 @@ begin
   if v_user_song_play_count <> 9 then
     raise exception 'fixture assertion failed: user counter counted more than once: %', v_user_song_play_count;
   end if;
+
+  -- 兼容修正：模拟 songs 全局累计溢出。该旁路失败时，事件和个人累计仍须确认。
+  select plays_count into v_global_before
+  from public.songs
+  where id = '00000000-0000-4000-8000-0000000010a1'::uuid;
+  update public.songs
+  set plays_count = 9223372036854775807
+  where id = '00000000-0000-4000-8000-0000000010a1'::uuid;
+
+  select public.record_listening_play_event(
+    '30000000-0000-4000-8000-0000000000b1'::uuid,
+    '40000000-0000-4000-8000-0000000000b1'::uuid,
+    '00000000-0000-4000-8000-0000000010a1'::uuid,
+    'qualified_play',
+    'd1-20pct-v1'
+  ) into v_compat;
+  if v_compat->>'status' <> 'accepted'
+    or v_compat->>'isNew' <> 'true'
+    or v_compat->>'userSongPlayCount' <> '10' then
+    raise exception 'fixture assertion failed: global counter compatibility response %', v_compat;
+  end if;
+
+  select plays_count into v_global_after
+  from public.songs
+  where id = '00000000-0000-4000-8000-0000000010a1'::uuid;
+  select plays_count into v_user_song_play_count
+  from public.user_song_plays
+  where user_id = '00000000-0000-4000-8000-0000000000a1'::uuid
+    and song_id = '00000000-0000-4000-8000-0000000010a1'::uuid;
+  select count(*) into v_count
+  from public.listening_play_events
+  where event_id = '30000000-0000-4000-8000-0000000000b1'::uuid;
+  if v_global_after <> 9223372036854775807
+    or v_user_song_play_count <> 10
+    or v_count <> 1 then
+    raise exception 'fixture assertion failed: global counter must not block accepted event %/%/%',
+      v_global_after, v_user_song_play_count, v_count;
+  end if;
+  update public.songs
+  set plays_count = v_global_before
+  where id = '00000000-0000-4000-8000-0000000010a1'::uuid;
 
   -- 不可见歌曲、非法指标、非法诊断秒数和 event payload 冲突均拒绝。
   begin

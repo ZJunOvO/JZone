@@ -9,6 +9,17 @@ import { feedback } from './components/feedback';
 import { useCommentsController } from './hooks/useCommentsController';
 import { getSongCoverFallback } from './utils/cover';
 import { createRuntimeUuid } from './utils/runtimeId';
+import {
+  diagnoseAudioPath,
+  invalidateSignedAudioUrlCache,
+} from './services/supabase/storageApi';
+import {
+  classifyMediaFailure,
+  getMediaFailureMessage,
+  isRetryableMediaFailure,
+  summarizeMediaFailure,
+  type MediaFailureCategory,
+} from './utils/mediaFailure';
 import type { ListeningRecapRecordEventResult } from './services/supabase/listeningRecapTypes';
 import {
   clearListeningRecapEventOutbox,
@@ -409,6 +420,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
+  const playSongRef = useRef<(songId: string) => void>(() => {});
   const playSeqRef = useRef(0);
   const playbackSessionRef = useRef({
     songId: null as string | null,
@@ -751,14 +763,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPlayerState(prev => ({ ...prev, currentSongId: songId, isPlaying: false, isAudioLoading: true, currentTime: startTime }));
     publishPlaybackTime(startTime);
 
+    const remotePaths = hasSupabaseConfig
+      ? Array.from(new Set([song.audioPath, song.sourceAudioPath].filter(Boolean))) as string[]
+      : [];
     const sources: string[] = [];
     if (hasSupabaseConfig) {
-      const remotePaths = Array.from(new Set([song.audioPath, song.sourceAudioPath].filter(Boolean))) as string[];
       for (const path of remotePaths) {
         try {
-          sources.push(await supabaseApi.createSignedAudioUrl(path));
+          const signedUrl = await supabaseApi.createSignedAudioUrl(path);
+          if (seq !== playSeqRef.current) return;
+          sources.push(signedUrl);
         } catch (error) {
-          console.warn('音频签名地址生成失败，尝试下一音源:', path, error);
+          if (seq !== playSeqRef.current) return;
+          console.warn('音频签名地址生成失败，尝试下一音源', {
+            category: classifyMediaFailure(error),
+          });
         }
       }
     }
@@ -782,7 +801,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         audio.load();
       });
 
-    let loadError: any = null;
+    let loadError: unknown = null;
     let sourceLoaded = false;
     for (const source of sources) {
       try {
@@ -792,19 +811,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (error) {
         loadError = error;
         if (seq !== playSeqRef.current) return;
-        console.warn('音源加载失败，尝试回退音源:', error);
+        console.warn('音源加载失败，尝试回退音源', {
+          category: classifyMediaFailure(error),
+        });
       }
     }
-    setPlayerState(prev => ({ ...prev, isAudioLoading: false }));
 
     if (!sourceLoaded) {
-      const code = audio.error?.code ? `MediaError(${audio.error.code})` : 'unknown';
-      const detail = typeof loadError?.message === 'string' ? loadError.message : code;
-      feedback.error(`音频加载失败：${detail}`);
-      return;
+      if (seq !== playSeqRef.current) return;
+
+      let failureCategory: MediaFailureCategory = classifyMediaFailure(loadError ?? audio.error);
+      const diagnostics = remotePaths.length > 0
+        ? await Promise.all(remotePaths.map(async (path) => ({
+            path,
+            ...(await diagnoseAudioPath(path)),
+          })))
+        : [];
+
+      if (seq !== playSeqRef.current) return;
+
+      failureCategory = summarizeMediaFailure([
+        failureCategory,
+        ...diagnostics.map((diagnostic) => diagnostic.category),
+      ]);
+
+      const availablePath = diagnostics.find((diagnostic) => diagnostic.category === 'available')?.path;
+      if (availablePath) {
+        // 失败路径才精确清掉该音频的签名缓存，并且整个播放尝试最多重签重载一次。
+        invalidateSignedAudioUrlCache(availablePath);
+        try {
+          const refreshedUrl = await supabaseApi.createSignedAudioUrl(availablePath);
+          if (seq !== playSeqRef.current) return;
+          await loadAudioSource(refreshedUrl);
+          sourceLoaded = true;
+        } catch (error) {
+          loadError = error;
+          if (seq !== playSeqRef.current) return;
+          console.warn('音频对象可用，但刷新播放链接失败', {
+            category: 'available' satisfies MediaFailureCategory,
+          });
+        }
+      }
+
+      if (!sourceLoaded) {
+        setPlayerState(prev => ({ ...prev, isAudioLoading: false }));
+        const feedbackOptions = isRetryableMediaFailure(failureCategory)
+          ? {
+              action: {
+                label: '重新尝试',
+                onClick: () => {
+                  void playSongRef.current(songId);
+                },
+              },
+            }
+          : {};
+        feedback.error(getMediaFailureMessage(failureCategory), {
+          id: `audio-failure:${songId}`,
+          ...feedbackOptions,
+        });
+        return;
+      }
     }
 
     if (seq !== playSeqRef.current) return;
+
+    setPlayerState(prev => ({ ...prev, isAudioLoading: false }));
 
     audio.currentTime = startTime;
     publishPlaybackTime(audio.currentTime);
@@ -827,10 +898,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Expected when src changes rapidly
         console.debug("Playback interrupted by new load request");
       } else {
-        console.error("Playback failed:", error);
+        console.error("Playback failed:", { category: classifyMediaFailure(error) });
       }
     }
   }, [togglePlay]);
+
+  playSongRef.current = playSong;
 
   const playContext = useCallback(
     (songIds: string[], startSongId: string, context?: { collectionId?: string; collectionType?: 'album' | 'playlist' }) => {

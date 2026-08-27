@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../auth';
 import { Icons } from '../Icons';
 import { CollectionCreatableSelect } from '../CollectionCreatableSelect';
@@ -9,6 +9,7 @@ import { ArtistPicker } from './ArtistPicker';
 import type { CurrentArtistProfile } from '../../hooks/useCurrentArtistProfile';
 import { snapshotAudioFile } from '../../utils/uploadAudio';
 import { analyzeAudioDelivery } from '../../utils/audioDelivery';
+import { uploadDraftStorage } from '../../uploadDraftStorage';
 
 const AUDIO_FILE_ACCEPT = 'audio/*,video/mp4,application/octet-stream,.mp3,.m4a,.mp4,.wav,.flac,.amr,.3gp';
 
@@ -34,15 +35,65 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
   onQueueCountChange,
 }) => {
   const { user } = useAuth();
+  const ownerId = user?.id;
   const { draft, actions, status } = useUploadDraft(defaultArtist, currentArtistProfile, user?.id);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [isPendingFilesRestored, setIsPendingFilesRestored] = useState(false);
   const [isPreparingFiles, setIsPreparingFiles] = useState(false);
   const [nextFileToLoad, setNextFileToLoad] = useState<File | null>(null);
   const selectionSeqRef = useRef(0);
+  const pendingRestoreSeqRef = useRef(0);
+  const pendingRestorePromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const restoredPendingOwnerRef = useRef<string | null>(null);
+  const pendingPersistTailRef = useRef<Promise<void>>(Promise.resolve());
+
+  const persistPendingFiles = useCallback((persistOwnerId: string | undefined, files: File[]) => {
+    if (!persistOwnerId) return;
+    const operation = pendingPersistTailRef.current
+      .catch(() => {})
+      .then(() => files.length
+        ? uploadDraftStorage.setPendingFiles(persistOwnerId, files)
+        : uploadDraftStorage.deletePendingFiles(persistOwnerId));
+    pendingPersistTailRef.current = operation;
+    void operation.catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const restoreOwnerId = ownerId;
+    const restoreSeq = pendingRestoreSeqRef.current + 1;
+    pendingRestoreSeqRef.current = restoreSeq;
+    let cancelled = false;
+    restoredPendingOwnerRef.current = null;
+    setIsPendingFilesRestored(false);
+    setPendingFiles([]);
+
+    const restore = (async () => {
+      if (!restoreOwnerId) {
+        if (!cancelled && pendingRestoreSeqRef.current === restoreSeq) setIsPendingFilesRestored(true);
+        return;
+      }
+
+      const restored = await uploadDraftStorage.getPendingFiles(restoreOwnerId).catch(() => []);
+      if (cancelled || pendingRestoreSeqRef.current !== restoreSeq) return;
+      setPendingFiles(restored);
+      restoredPendingOwnerRef.current = restoreOwnerId;
+      setIsPendingFilesRestored(true);
+    })();
+    pendingRestorePromiseRef.current = restore;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerId]);
+
+  useEffect(() => {
+    if (!ownerId || !isPendingFilesRestored || restoredPendingOwnerRef.current !== ownerId) return;
+    persistPendingFiles(ownerId, pendingFiles);
+  }, [isPendingFilesRestored, ownerId, pendingFiles, persistPendingFiles]);
+
   const handleSaved = () => {
     const nextFile = pendingFiles[0];
     if (nextFile) {
-      setPendingFiles((previous) => previous.slice(1));
       setNextFileToLoad(nextFile);
     }
     onSaved?.();
@@ -81,7 +132,10 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
     if (!nextFileToLoad || draft.step !== 1 || draft.file || draft.isReadingFile) return;
     const file = nextFileToLoad;
     setNextFileToLoad(null);
-    void actions.loadFile(file);
+    void actions.loadFile(file).then((loaded) => {
+      if (!loaded) return;
+      setPendingFiles((previous) => previous[0] === file ? previous.slice(1) : previous);
+    });
   }, [actions, draft.file, draft.isReadingFile, draft.step, nextFileToLoad]);
 
   const handleAudioSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -95,6 +149,14 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
     const prepared: File[] = [];
     const failures: string[] = [];
     try {
+      const pendingRestoreSeq = pendingRestoreSeqRef.current;
+      await pendingRestorePromiseRef.current;
+      if (
+        selectionSeqRef.current !== selectionSeq
+        || pendingRestoreSeqRef.current !== pendingRestoreSeq
+        || (ownerId && restoredPendingOwnerRef.current !== ownerId)
+      ) return;
+
       // 手机媒体提供器的 File 可能在 input 清空后立即失效，因此必须在这里完成字节快照。
       for (const file of files) {
         try {
@@ -106,8 +168,8 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
 
       if (selectionSeqRef.current !== selectionSeq) return;
       if (draft.step === 1 && !draft.file && prepared.length) {
-        await actions.loadFile(prepared[0]);
-        setPendingFiles((previous) => [...previous, ...prepared.slice(1)]);
+        const loaded = await actions.loadFile(prepared[0]);
+        setPendingFiles((previous) => [...previous, ...(loaded ? prepared.slice(1) : prepared)]);
       } else if (prepared.length) {
         setPendingFiles((previous) => [...previous, ...prepared]);
       }
@@ -118,31 +180,78 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
     }
   };
 
+  const handleDiscard = useCallback(() => {
+    selectionSeqRef.current += 1;
+    pendingRestoreSeqRef.current += 1;
+    restoredPendingOwnerRef.current = ownerId ?? null;
+    setIsPendingFilesRestored(true);
+    setIsPreparingFiles(false);
+    setNextFileToLoad(null);
+    setPendingFiles([]);
+    persistPendingFiles(ownerId, []);
+    actions.resetDraft();
+  }, [actions, ownerId, persistPendingFiles]);
+
+  const pendingQueue = pendingFiles.length ? (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs font-bold text-zinc-200">等待编辑 · {pendingFiles.length}</div>
+        <div className="flex items-center gap-1">
+          <label htmlFor={`audio-queue-${inputSuffix}`} className="min-h-11 px-3 flex items-center cursor-pointer text-xs font-bold text-red-400">
+            继续添加
+          </label>
+          <button type="button" onClick={handleDiscard} className="min-h-11 px-2 text-xs font-bold text-zinc-500 hover:text-white">
+            弃置队列
+          </button>
+        </div>
+      </div>
+      <div className="space-y-1 max-h-32 overflow-y-auto no-scrollbar">
+        {pendingFiles.map((file, index) => (
+          <div key={`${file.name}-${file.lastModified}-${index}`} className="min-h-11 flex items-center gap-3 rounded-xl px-3 bg-black/25">
+            <Icons.Music2 size={15} className="text-zinc-500 shrink-0" />
+            <span className="min-w-0 flex-1 truncate text-xs text-zinc-300">{file.name}</span>
+            <button
+              type="button"
+              onClick={() => setPendingFiles((previous) => previous.filter((_, itemIndex) => itemIndex !== index))}
+              className="w-11 h-11 flex items-center justify-center text-zinc-600 hover:text-white"
+              aria-label={`从等待队列移除 ${file.name}`}
+            >
+              <Icons.X size={15} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
   if (draft.step === 1) {
     return (
-      <div className="border-2 border-dashed border-zinc-800 rounded-[28px] p-8 flex flex-col items-center justify-center h-56 bg-zinc-900/30 hover:bg-zinc-900/50 transition group">
-        <input
-          key={draft.fileInputVersion}
-          type="file"
-          multiple
-          accept={AUDIO_FILE_ACCEPT}
-          onChange={handleAudioSelection}
-          className="hidden"
-          id={`audio-upload-${inputSuffix}`}
-        />
-        <label htmlFor={`audio-upload-${inputSuffix}`} className="flex flex-col items-center cursor-pointer w-full h-full justify-center">
-          <div className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center mb-4 shadow-lg shadow-red-600/20 group-hover:scale-110 transition-transform">
-            <Icons.Upload className="text-white" size={24} />
-          </div>
-          <span className="text-zinc-300 font-bold">{draft.isReadingFile || isPreparingFiles ? '正在读取音频文件…' : '点击选择音频文件'}</span>
-          <span className="text-zinc-500 text-[11px] mt-1">{draft.isReadingFile || isPreparingFiles ? '请保持页面开启，读取完成后会自动进入编辑' : '支持一次选择多首并依次编辑'}</span>
-          <span className="text-zinc-500 text-[11px] mt-2 font-medium tracking-wide">MP3 / M4A / MP4 / WAV / FLAC / AMR</span>
-          {draft.previewError ? (
-            <span className="mt-4 max-w-[280px] text-center text-[11px] font-semibold leading-relaxed text-red-300">
-              {draft.previewError}
-            </span>
-          ) : null}
-        </label>
+      <div className="space-y-4">
+        {pendingQueue}
+        <div className="border-2 border-dashed border-zinc-800 rounded-[28px] p-8 flex flex-col items-center justify-center h-56 bg-zinc-900/30 hover:bg-zinc-900/50 transition group">
+          <input
+            key={draft.fileInputVersion}
+            type="file"
+            multiple
+            accept={AUDIO_FILE_ACCEPT}
+            onChange={handleAudioSelection}
+            className="hidden"
+            id={`audio-upload-${inputSuffix}`}
+          />
+          <label htmlFor={`audio-upload-${inputSuffix}`} className="flex flex-col items-center cursor-pointer w-full h-full justify-center">
+            <div className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center mb-4 shadow-lg shadow-red-600/20 group-hover:scale-110 transition-transform">
+              <Icons.Upload className="text-white" size={24} />
+            </div>
+            <span className="text-zinc-300 font-bold">{draft.isReadingFile || isPreparingFiles ? '正在读取音频文件…' : '点击选择音频文件'}</span>
+            <span className="text-zinc-500 text-[11px] mt-1">{draft.isReadingFile || isPreparingFiles ? '请保持页面开启，读取完成后会自动进入编辑' : '支持一次选择多首并依次编辑'}</span>
+            <span className="text-zinc-500 text-[11px] mt-2 font-medium tracking-wide">MP3 / M4A / MP4 / WAV / FLAC / AMR</span>
+            {draft.previewError ? (
+              <span className="mt-4 max-w-[280px] text-center text-[11px] font-semibold leading-relaxed text-red-300">
+                {draft.previewError}
+              </span>
+            ) : null}
+          </label>
+        </div>
       </div>
     );
   }
@@ -157,32 +266,7 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
         className="hidden"
         id={`audio-queue-${inputSuffix}`}
       />
-      {pendingFiles.length ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3 space-y-2">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-xs font-bold text-zinc-200">等待编辑 · {pendingFiles.length}</div>
-            <label htmlFor={`audio-queue-${inputSuffix}`} className="min-h-11 px-3 flex items-center cursor-pointer text-xs font-bold text-red-400">
-              继续添加
-            </label>
-          </div>
-          <div className="space-y-1 max-h-32 overflow-y-auto no-scrollbar">
-            {pendingFiles.map((file, index) => (
-              <div key={`${file.name}-${file.lastModified}-${index}`} className="min-h-11 flex items-center gap-3 rounded-xl px-3 bg-black/25">
-                <Icons.Music2 size={15} className="text-zinc-500 shrink-0" />
-                <span className="min-w-0 flex-1 truncate text-xs text-zinc-300">{file.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setPendingFiles((previous) => previous.filter((_, itemIndex) => itemIndex !== index))}
-                  className="w-11 h-11 flex items-center justify-center text-zinc-600 hover:text-white"
-                  aria-label={`从等待队列移除 ${file.name}`}
-                >
-                  <Icons.X size={15} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
+      {pendingQueue ?? (
         <div className="flex justify-end">
           <label htmlFor={`audio-queue-${inputSuffix}`} className="min-h-11 px-3 flex items-center gap-2 cursor-pointer text-xs font-bold text-zinc-400 hover:text-white">
             <Icons.PlusCircle size={15} />继续添加文件
@@ -448,7 +532,7 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
         >
           {isSaving ? (saveProgress?.message ?? '上传中...') : '确认保存至资料库'}
         </button>
-        <button onClick={() => { setPendingFiles([]); actions.resetDraft(); }} className="w-full text-zinc-500 text-[11px] font-bold py-2 hover:text-white transition uppercase tracking-widest">
+        <button onClick={handleDiscard} className="w-full text-zinc-500 text-[11px] font-bold py-2 hover:text-white transition uppercase tracking-widest">
           弃置并重新选择
         </button>
       </div>

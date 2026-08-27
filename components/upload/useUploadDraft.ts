@@ -52,7 +52,7 @@ export interface UploadDraftActions {
   setStreamOptimizationEnabled: (value: boolean) => void;
   setRange: React.Dispatch<React.SetStateAction<[number, number]>>;
   setPreviewError: (value: string | null) => void;
-  loadFile: (file: File) => Promise<void>;
+  loadFile: (file: File) => Promise<boolean>;
   handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleCoverUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   playPreviewSection: () => void;
@@ -413,7 +413,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
       try {
         selectedFile = await snapshotAudioFile(rawFile);
       } catch (error) {
-        if (!isCurrentSelection()) return;
+        if (!isCurrentSelection()) return false;
         const detail = error instanceof Error ? error.message : '浏览器没有返回可读取的音频文件。';
         patchDraft({
           file: null,
@@ -429,17 +429,17 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
           isTranscoding: false,
           fileInputVersion: Date.now(),
         });
-        return;
+        return false;
       }
 
-      if (!isCurrentSelection()) return;
+      if (!isCurrentSelection()) return false;
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       const nextPreviewUrl = URL.createObjectURL(makePreviewBlob(selectedFile));
-      await persistDraftAudio(selectedFile, selectionOwnerId).catch(() => {});
+      const persistence = await persistDraftAudio(selectedFile, selectionOwnerId).catch(() => 'failed' as const);
       const embeddedTags: { title?: string; artist?: string; recordedAt?: string } = await readEmbeddedAudioTags(selectedFile).catch(() => ({}));
       if (!isCurrentSelection()) {
         URL.revokeObjectURL(nextPreviewUrl);
-        return;
+        return false;
       }
 
       setDraft((prev) => {
@@ -476,14 +476,18 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
           artist: nextArtist,
           genre: nextGenre,
           artistCredits: shouldReplaceCredits ? createDefaultCredits(nextArtist, currentProfile) : prev.artistCredits,
-          sourceWarning:
-            embeddedTags.title && fileTitle && embeddedTags.title !== fileTitle
-              ? `音频内嵌标题是「${embeddedTags.title}」${embeddedTags.artist ? ` / ${embeddedTags.artist}` : ''}，请确认你选择的是正确音频。`
-              : null,
+          sourceWarning: persistence === 'too-large'
+            ? '文件超过 25MB，本次编辑可继续，但关闭页面后需要重新选择原音频。'
+            : persistence === 'failed'
+              ? '浏览器未能保存音频草稿，本次编辑可继续，但关闭页面后可能需要重新选择原音频。'
+              : embeddedTags.title && fileTitle && embeddedTags.title !== fileTitle
+                ? `音频内嵌标题是「${embeddedTags.title}」${embeddedTags.artist ? ` / ${embeddedTags.artist}` : ''}，请确认你选择的是正确音频。`
+                : null,
           fileInputVersion: prev.fileInputVersion + 1,
         };
       });
 
+      return true;
     },
     [currentProfile, defaultArtist, ownerId, patchDraft]
   );

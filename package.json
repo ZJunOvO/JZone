@@ -21,7 +21,12 @@
     "smoke:upload-metadata": "node scripts/smoke-upload-metadata.mjs",
     "smoke:media-delivery": "node scripts/smoke-media-delivery.mjs",
     "smoke:audio-stream-copy": "node scripts/smoke-audio-stream-copy.mjs",
-    "smoke:upload-draft-isolation": "node scripts/smoke-upload-draft-storage.mjs"
+    "smoke:upload-draft-isolation": "node scripts/smoke-upload-draft-storage.mjs",
+    "smoke:listening-recap-api": "node scripts/smoke-listening-recap-api.mjs",
+    "smoke:listening-recap-outbox": "node scripts/smoke-listening-recap-outbox.mjs",
+    "smoke:listening-recap-browser": "node scripts/smoke-listening-recap-browser.mjs",
+    "smoke:cos-history-live-snapshot": "node scripts/smoke-cos-history-live-snapshot.mjs",
+    "audit:cos-history-live": "node scripts/cos-history-live-snapshot.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
@@ -40,6 +45,7 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.21",
+    "cos-nodejs-sdk-v5": "^3.0.0",
     "playwright": "^1.61.1",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",

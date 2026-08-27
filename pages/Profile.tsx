@@ -93,6 +93,10 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
   React.useLayoutEffect(() => {
     if (!targetUserId) return;
     let cancelled = false;
+    const handlePageHide = () => {
+      cancelled = true;
+    };
+    window.addEventListener('pagehide', handlePageHide);
     let timer: number | undefined;
     let hadCache = false;
     try {
@@ -123,6 +127,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
           }
         } catch {}
       } catch (error) {
+        if (cancelled) return;
         console.error('Error loading profile:', error);
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -141,6 +146,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
       cancelled = true;
       if (timer) window.clearInterval(timer);
       window.removeEventListener('jzone:profile-changed', refresh);
+      window.removeEventListener('pagehide', handlePageHide);
     };
   }, [targetUserId]);
 
@@ -235,8 +241,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
 
     try {
       setIsBackgroundManagerOpen(false);
-      // 1. Upload to COS
-      // Upload
+      // 1. 上传到 COS；接口返回内容寻址 key，不能再拼接时间戳或随机缓存参数。
       const publicUrl = await supabaseApi.uploadProfileImage(targetUserId, blob, 'covers', 'background.jpg');
 
       // 2. Update DB
@@ -328,6 +333,7 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
     try {
         let avatarUrl = undefined;
         if (data.avatarBlob) {
+            // 内容变化会生成新 key，配合现有签名 URL 缓存和 immutable 图片缓存，不会复用旧图。
             avatarUrl = await supabaseApi.uploadProfileImage(targetUserId, data.avatarBlob, 'avatars', 'avatar.jpg');
         }
 
