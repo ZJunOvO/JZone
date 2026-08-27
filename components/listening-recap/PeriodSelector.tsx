@@ -1,5 +1,4 @@
 import React, { useMemo } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
 import { LiquidGlassSurface } from '../LiquidGlassSurface';
 import { createPeriodPresets, formatPeriodLabel } from './formatters';
 import type { ListeningRecapPeriod } from './types';
@@ -12,7 +11,6 @@ interface PeriodSelectorProps {
 
 export const PeriodSelector: React.FC<PeriodSelectorProps> = ({ selectedPeriod, referencePeriod, onPeriodChange }) => {
   const presets = useMemo(() => createPeriodPresets(referencePeriod), [referencePeriod?.type, referencePeriod?.id]);
-  const prefersReducedMotion = useReducedMotion();
 
   if (!presets.length) {
     return (
@@ -45,9 +43,9 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({ selectedPeriod, 
                 }}
                 aria-current={isSelected ? 'page' : undefined}
                 aria-label={preset.disabled ? `${preset.label}暂不可用` : `查看${preset.label}`}
-                className={`relative min-h-11 shrink-0 overflow-hidden rounded-full px-2.5 text-[11px] font-extrabold leading-none transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80 motion-reduce:transition-none ${
+                className={`min-h-11 shrink-0 rounded-full px-2.5 text-[11px] font-extrabold leading-none transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80 motion-reduce:transition-none ${
                   isSelected
-                    ? 'text-red-50'
+                    ? 'text-red-300'
                     : preset.disabled
                       ? 'cursor-not-allowed text-white/30 opacity-70'
                       : 'text-white/60 hover:bg-white/[0.08] hover:text-white'
@@ -57,17 +55,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({ selectedPeriod, 
                 title={preset.disabled ? '待服务端提供有覆盖的历史年份' : undefined}
                 data-testid={`listening-recap-period-${preset.key}`}
               >
-                {isSelected ? (
-                  <motion.span
-                    layoutId="listening-recap-period-active"
-                    className="pointer-events-none absolute inset-0 rounded-full bg-red-500/20 shadow-[inset_0_0_0_1px_rgba(248,113,113,0.2),0_2px_14px_rgba(239,68,68,0.16)]"
-                    transition={prefersReducedMotion
-                      ? { duration: 0 }
-                      : { type: 'spring', stiffness: 420, damping: 38, mass: 0.72 }}
-                    aria-hidden="true"
-                  />
-                ) : null}
-                <span className="relative z-10">{preset.label}</span>
+                {preset.label}
               </button>
             );
           })}
