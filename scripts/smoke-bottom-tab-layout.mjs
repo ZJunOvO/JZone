@@ -122,6 +122,12 @@ const readLayout = (page) => page.evaluate(() => {
     miniArtist: rect(miniArtist),
     miniControls: miniControls.map(rect),
     miniLayoutMode: miniPlayer?.getAttribute('data-layout-mode') ?? null,
+    compactPlayerState: miniPlayer?.getAttribute('data-compact-player-state') ?? null,
+    compactPresentation: nav?.getAttribute('data-compact-presentation') ?? null,
+    compactExpanded: mini?.getAttribute('data-compact-player-expanded') ?? null,
+    playbackProgress: Number.parseFloat(miniPlayer?.getAttribute('data-playback-progress') ?? 'NaN'),
+    hasEqualizer: Boolean(miniPlayer?.querySelector('[data-testid="compact-player-equalizer"]')),
+    hasProgressRing: Boolean(miniPlayer?.querySelector('[data-testid="compact-player-progress-ring"]')),
     miniRadius: miniPlayer ? Number.parseFloat(getComputedStyle(miniPlayer).borderRadius) : null,
     navRadius: nav ? Number.parseFloat(getComputedStyle(nav.querySelector('.liquid-tab-surface')).borderRadius) : null,
     miniBottom: mini ? getComputedStyle(mini).bottom : null,
@@ -144,25 +150,27 @@ const assertLayout = (layout, mode) => {
   const expectedBottom = mode === 'compact' ? 33 : 14;
   assert(Math.abs(nav.width - expectedWidth) <= 1, `${mode} 宽度错误：${JSON.stringify(layout)}`);
   assert(Math.abs(viewport.height - nav.bottom - expectedBottom) <= 1, `${mode} 底部间距错误：${JSON.stringify(layout)}`);
-  assert(Math.abs(nav.left - (viewport.width - nav.width) / 2) <= 1, `${mode} 未居中：${JSON.stringify(layout)}`);
+  const expectedNavLeft = mode === 'compact' ? (viewport.width - 314) / 2 : (viewport.width - nav.width) / 2;
+  assert(Math.abs(nav.left - expectedNavLeft) <= 1, `${mode} 横向位置错误：${JSON.stringify(layout)}`);
   assert(layout.navInlineBottom.includes('safe-area-inset-bottom'), `${mode} Tab 未纳入底部安全区：${JSON.stringify(layout)}`);
-  const expectedMiniBottom = mode === 'compact' ? 111 : 92;
+  const expectedMiniBottom = mode === 'compact' ? 34 : 92;
   assert(Math.abs(Number.parseFloat(layout.miniBottom) - expectedMiniBottom) <= 1, `${mode} Mini 播放器定位错误：${JSON.stringify(layout)}`);
   assert(layout.miniInlineBottom.includes('safe-area-inset-bottom'), `${mode} Mini 播放器未纳入底部安全区：${JSON.stringify(layout)}`);
   if (mini.height > 0) {
-    const visualGap = nav.top - mini.bottom;
-    assert(visualGap >= 12 - 1 && visualGap <= 15 + 1, `${mode} Mini 播放器间距错误：${JSON.stringify(layout)}`);
     assert(miniPlayer && Math.abs(miniPlayer.width - mini.width) <= 1, `${mode} Mini 内容未填满容器：${JSON.stringify(layout)}`);
-    assert(layout.miniLayoutMode === mode, `${mode} Mini 内部模式不一致：${JSON.stringify(layout)}`);
     if (mode === 'compact') {
-      assert(Math.abs(mini.width - nav.width) <= 1, `紧凑 Mini 与 Tab 宽度不一致：${JSON.stringify(layout)}`);
-      assert(Math.abs((mini.left + mini.width / 2) - (nav.left + nav.width / 2)) <= 1, `紧凑 Mini 与 Tab 中心不一致：${JSON.stringify(layout)}`);
-      assert(Math.abs(layout.miniRadius - layout.navRadius) <= 3, `紧凑 Mini 与 Tab 圆角语言不一致：${JSON.stringify(layout)}`);
-      assert(layout.miniTitle?.width >= 56, `紧凑 Mini 标题区域不可读：${JSON.stringify(layout)}`);
+      assert(Math.abs(mini.width - 64) <= 1, `紧凑收起态 Mini 不是圆形入口：${JSON.stringify(layout)}`);
+      assert(Math.abs(mini.left - nav.right - 10) <= 1, `紧凑收起态横向间距错误：${JSON.stringify(layout)}`);
+      assert(Math.abs((mini.top + mini.height / 2) - (nav.top + nav.height / 2)) <= 1, `紧凑 Dock 未在同一基线：${JSON.stringify(layout)}`);
+      assert(layout.miniLayoutMode === 'compact-circle' && layout.compactPlayerState === 'circle', `紧凑 Mini 未进入圆形态：${JSON.stringify(layout)}`);
+      assert(layout.compactPresentation === 'full' && layout.compactExpanded === 'false', `紧凑 Tab 默认状态错误：${JSON.stringify(layout)}`);
+      assert(layout.hasProgressRing && Number.isFinite(layout.playbackProgress), `圆形 Mini 缺少真实进度环：${JSON.stringify(layout)}`);
       assert(layout.miniCover && layout.miniCover.left >= miniPlayer.left - 1 && layout.miniCover.right <= miniPlayer.right + 1, `紧凑 Mini 封面越界：${JSON.stringify(layout)}`);
-      assert(layout.miniArtist && layout.miniArtist.left >= miniPlayer.left - 1 && layout.miniArtist.right <= miniPlayer.right + 1, `紧凑 Mini 艺人区域越界：${JSON.stringify(layout)}`);
-      assert(layout.miniControls.length === 2, `紧凑 Mini 播放控制数量异常：${JSON.stringify(layout)}`);
-      assert(layout.miniControls.every((control) => control.left >= miniPlayer.left - 1 && control.right <= miniPlayer.right + 1), `紧凑 Mini 播放控制越界：${JSON.stringify(layout)}`);
+      assert(layout.miniControls.length === 0, `圆形 Mini 不应暴露内部控制：${JSON.stringify(layout)}`);
+    } else {
+      const visualGap = nav.top - mini.bottom;
+      assert(visualGap >= 12 - 1 && visualGap <= 15 + 1, `${mode} Mini 播放器间距错误：${JSON.stringify(layout)}`);
+      assert(layout.miniLayoutMode === mode, `${mode} Mini 内部模式不一致：${JSON.stringify(layout)}`);
     }
   }
   assert(buttonRects.length === 4, `${mode} Tab 项数量错误：${JSON.stringify(layout)}`);
@@ -182,6 +190,21 @@ const assertLayout = (layout, mode) => {
     `${mode} 图标尺寸错误：${JSON.stringify(layout)}`,
   );
   assert(layout.overflow <= 0, `${mode} 页面横向溢出：${JSON.stringify(layout)}`);
+};
+
+const assertCompactExpandedLayout = (layout) => {
+  const { nav, mini, miniPlayer, viewport, buttonRects } = layout;
+  assert(nav && mini && miniPlayer, `紧凑展开态缺少 Dock：${JSON.stringify(layout)}`);
+  assert(Math.abs(nav.width - 64) <= 1 && Math.abs(mini.width - 240) <= 1, `紧凑展开态没有互换宽度：${JSON.stringify(layout)}`);
+  assert(Math.abs(nav.left - (viewport.width - 314) / 2) <= 1, `紧凑展开态整体未居中：${JSON.stringify(layout)}`);
+  assert(Math.abs(mini.left - nav.right - 10) <= 1, `紧凑展开态横向间距错误：${JSON.stringify(layout)}`);
+  assert(Math.abs((mini.top + mini.height / 2) - (nav.top + nav.height / 2)) <= 1, `紧凑展开态未在同一基线：${JSON.stringify(layout)}`);
+  assert(layout.compactPresentation === 'home' && layout.compactExpanded === 'true', `紧凑展开态状态标记错误：${JSON.stringify(layout)}`);
+  assert(layout.miniLayoutMode === 'compact-expanded' && layout.compactPlayerState === 'expanded', `横向 Mini 表现错误：${JSON.stringify(layout)}`);
+  assert(layout.miniTitle?.width >= 44 && layout.miniArtist?.width >= 44, `横向 Mini 文本区域不可读：${JSON.stringify(layout)}`);
+  assert(layout.miniControls.length === 2, `横向 Mini 播放控制数量异常：${JSON.stringify(layout)}`);
+  assert(buttonRects[0]?.width >= 50 && buttonRects.slice(1).every((rect) => rect.width <= 1), `首页圆钮没有收拢其他入口：${JSON.stringify(layout)}`);
+  assert(layout.overflow <= 0, `紧凑展开态横向溢出：${JSON.stringify(layout)}`);
 };
 
 const parseColor = (value) => {
@@ -301,6 +324,42 @@ const verifyCompactDrag = async (page) => {
 };
 
 const verifyLiveMiniOrigin = async (page) => {
+  const circle = page.getByTestId('mini-player');
+  const circleState = await readLayout(page);
+  assert(circleState.compactPlayerState === 'circle', `交互测试起点不是圆形态：${JSON.stringify(circleState)}`);
+
+  await circle.click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'expanded');
+  let expandedLayout = await readLayout(page);
+  assertCompactExpandedLayout(expandedLayout);
+  const playButton = page.getByTestId('mini-player').locator('button').first();
+  await playButton.click();
+  assert(!(await page.getByTestId('player-view-close').isVisible().catch(() => false)), '横向 Mini 内部播放按钮误开全屏播放器');
+
+  await page.getByTestId('bottom-nav-home').click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'circle');
+  const pausedCircle = await readLayout(page);
+  assert(!pausedCircle.hasEqualizer, `暂停圆形 Mini 仍显示播放音阶：${JSON.stringify(pausedCircle)}`);
+
+  await page.getByTestId('mini-player').click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'expanded');
+  const startedButtonLabel = await page.getByTestId('mini-player').locator('button').first().getAttribute('aria-label');
+  assert(startedButtonLabel?.startsWith('暂停'), `暂停时点击圆形 Mini 没有先开始播放：${startedButtonLabel}`);
+  await page.getByTestId('bottom-nav-home').click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'circle');
+  const playingCircle = await readLayout(page);
+  assert(playingCircle.hasEqualizer, `播放中圆形 Mini 缺少跳动音阶：${JSON.stringify(playingCircle)}`);
+
+  await page.getByTestId('mini-player').click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'expanded');
+  expandedLayout = await readLayout(page);
+  assertCompactExpandedLayout(expandedLayout);
+  const stillPlayingLabel = await page.getByTestId('mini-player').locator('button').first().getAttribute('aria-label');
+  assert(stillPlayingLabel?.startsWith('暂停'), `播放中点击圆形 Mini 意外暂停：${stillPlayingLabel}`);
+  if (page.viewportSize()?.width === 390) {
+    await page.screenshot({ path: 'output/playwright/bottom-tab-compact-expanded-390.png' });
+  }
+
   const source = await page.evaluate(() => {
     const rect = (element) => {
       const value = element?.getBoundingClientRect();
@@ -337,7 +396,9 @@ const verifyLiveMiniOrigin = async (page) => {
   await page.getByTestId('player-view-close').waitFor({ state: 'visible', timeout: 5000 });
   await page.getByTestId('player-view-close').click();
   await page.getByTestId('player-transition-shell').waitFor({ state: 'detached', timeout: 5000 });
-  return { source, captured };
+  await page.getByTestId('bottom-nav-home').click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'circle');
+  return { circleState, pausedCircle, playingCircle, expandedLayout, source, captured };
 };
 
 const browser = await chromium.launch({ headless: true });

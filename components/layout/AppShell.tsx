@@ -52,7 +52,7 @@ const PageFallback = () => (
 );
 
 export const AppShell: React.FC = () => {
-  const { songs, playerState, playContext } = useStore();
+  const { songs, playerState, playContext, togglePlay } = useStore();
   const { resolvedAvatarUrl: profileAvatarUrl } = useCurrentArtistProfile();
   const liquidGlassSettings = useLiquidGlassSettings();
   const isCompactBottomTabLayout = liquidGlassSettings.bottomTabLayout === 'compact';
@@ -77,6 +77,7 @@ export const AppShell: React.FC = () => {
   const [playerSharedOrigin, setPlayerSharedOrigin] = useState<PlayerSharedOrigin | null>(null);
   const playerTransitionTimerRef = React.useRef<number | null>(null);
   const [modalCount, setModalCount] = useState(0);
+  const [isCompactPlayerExpanded, setIsCompactPlayerExpanded] = useState(false);
   const [uploadMounted, setUploadMounted] = useState(activeTab === 'upload');
   const [profileMounted, setProfileMounted] = useState(activeTab === 'profile');
   const sharedSongHandledRef = React.useRef<string | null>(null);
@@ -324,6 +325,26 @@ export const AppShell: React.FC = () => {
   }, [playContext]);
 
   const isModalActive = modalCount > 0;
+  const currentSong = songs.find((song) => song.id === playerState.currentSongId);
+  const isCompactDockPair = isCompactBottomTabLayout
+    && !isListeningRecap
+    && !isModalActive
+    && Boolean(currentSong);
+
+  React.useEffect(() => {
+    if (!isCompactDockPair) setIsCompactPlayerExpanded(false);
+  }, [isCompactDockPair]);
+
+  const expandCompactPlayer = React.useCallback(() => {
+    if (!playerState.isPlaying) togglePlay();
+    setIsCompactPlayerExpanded(true);
+  }, [playerState.isPlaying, togglePlay]);
+
+  const collapseCompactPlayerToHome = React.useCallback(() => {
+    setActiveTab('home');
+    setProfileUserId(undefined);
+    setIsCompactPlayerExpanded(false);
+  }, [setActiveTab, setProfileUserId]);
 
   return (
     <div className="jzone-app-shell max-w-md mx-auto bg-black h-screen overflow-hidden relative shadow-2xl flex flex-col" style={liquidGlassCssVars}>
@@ -403,6 +424,20 @@ export const AppShell: React.FC = () => {
                   x: '0%',
                   opacity: 1,
                 }
+              : isCompactDockPair
+                ? {
+                    top: 'auto',
+                    bottom: `calc(env(safe-area-inset-bottom) + ${BOTTOM_DOCK_GEOMETRY.compactNavBottom + 1}px)`,
+                    left: isCompactPlayerExpanded
+                      ? `calc(50% - ${BOTTOM_DOCK_GEOMETRY.compactPairWidth / 2 - BOTTOM_DOCK_GEOMETRY.compactCircleSize - BOTTOM_DOCK_GEOMETRY.compactPairGap}px)`
+                      : `calc(50% + ${BOTTOM_DOCK_GEOMETRY.compactPairWidth / 2 - BOTTOM_DOCK_GEOMETRY.compactCircleSize}px)`,
+                    right: 'auto',
+                    width: isCompactPlayerExpanded
+                      ? `${BOTTOM_DOCK_GEOMETRY.compactMaxWidth}px`
+                      : `${BOTTOM_DOCK_GEOMETRY.compactCircleSize}px`,
+                    x: '0%',
+                    opacity: 1,
+                  }
               : {
                   top: 'auto',
                   // 当前导航顶部与播放器底部保持 12px，兼顾触达密度和 SVG 滤镜采样稳定性。
@@ -421,20 +456,23 @@ export const AppShell: React.FC = () => {
           transition={{
             top: { type: 'spring', damping: 26, stiffness: 320 },
             bottom: { type: 'spring', damping: 26, stiffness: 320 },
+            left: { type: 'spring', damping: 30, stiffness: 380, mass: 0.78 },
             width: { type: 'spring', damping: 26, stiffness: 320 },
             x: { duration: 0.3, ease: [0.22, 0.74, 0.22, 1] },
             opacity: { duration: 0.12 },
           }}
           className="fixed z-[160] mx-auto"
           data-layout-mode={liquidGlassSettings.bottomTabLayout}
+          data-compact-player-expanded={isCompactDockPair ? String(isCompactPlayerExpanded) : undefined}
           data-player-transition-origin={playerTransitionOrigin ? JSON.stringify(playerTransitionOrigin) : undefined}
           data-player-shared-origin={playerSharedOrigin ? JSON.stringify(playerSharedOrigin) : undefined}
         >
         <PlayerBar
-          onExpand={openPlayer}
+          onExpand={isCompactDockPair && !isCompactPlayerExpanded ? expandCompactPlayer : openPlayer}
           variant={isModalActive ? 'island' : 'dock'}
           settlePulse={miniSettlePulse}
           compact={isCompactBottomTabLayout && !isListeningRecap}
+          compactMode={isCompactDockPair ? (isCompactPlayerExpanded ? 'expanded' : 'circle') : undefined}
         />
       </motion.div>
 
@@ -442,6 +480,9 @@ export const AppShell: React.FC = () => {
         <BottomNavigation
           currentTab={activeTab}
           profileAvatarUrl={profileAvatarUrl}
+          compactMode={isCompactDockPair && isCompactPlayerExpanded ? 'home' : 'full'}
+          compactDocked={isCompactDockPair}
+          onCompactHomeClick={collapseCompactPlayerToHome}
           setTab={(tab) => {
             setActiveTab(tab);
             if (tab === 'profile') setProfileUserId(undefined);

@@ -15,6 +15,9 @@ interface BottomNavigationProps {
   currentTab: string;
   setTab: (tab: string) => void;
   profileAvatarUrl?: string;
+  compactMode?: 'full' | 'home';
+  compactDocked?: boolean;
+  onCompactHomeClick?: () => void;
 }
 
 const JZONE_RED = { r: 239, g: 68, b: 68 };
@@ -41,10 +44,18 @@ const getInitialNavWidth = (bottomTabLayout: LiquidGlassLayoutMode) => {
   return Math.min(maxWidth, Math.max(1, window.innerWidth - BOTTOM_DOCK_GEOMETRY.viewportGutter * 2));
 };
 
-export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, setTab, profileAvatarUrl }) => {
+export const BottomNavigation: React.FC<BottomNavigationProps> = ({
+  currentTab,
+  setTab,
+  profileAvatarUrl,
+  compactMode = 'full',
+  compactDocked = false,
+  onCompactHomeClick,
+}) => {
   const liquidGlassSettings = useLiquidGlassSettings();
   const { bottomTabLayout } = liquidGlassSettings;
   const isCompactLayout = bottomTabLayout === 'compact';
+  const isCompactHomeOnly = isCompactLayout && compactMode === 'home';
   const effectiveNavGlass = liquidGlassSettings;
   const navGlassVars = getLiquidGlassCssVars(effectiveNavGlass);
   const navFilterId = React.useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -78,7 +89,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
   const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.id === currentTab));
   const navTrackPadding = 6;
   const navTrackWidth = Math.max(1, navWidth - navTrackPadding * 2);
-  const itemWidth = navTrackWidth / tabs.length;
+  const itemWidth = navTrackWidth / (isCompactHomeOnly ? 1 : tabs.length);
   const maxLensWidth = Math.max(1, navTrackWidth - navTrackPadding * 2);
   const lensWidth = isCompactLayout
     ? Math.min(Math.max(44, itemWidth - 6), maxLensWidth)
@@ -180,7 +191,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
 
   React.useEffect(() => () => {
     if (dragFrameRef.current !== null) window.cancelAnimationFrame(dragFrameRef.current);
-  }, []);
+  }, [compactMode]);
 
   const clampLensCenter = (value: number) => {
     const min = lensExpandedWidth / 2 + navTrackPadding;
@@ -227,6 +238,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
   }, [currentTab, profileAvatarUrl, setTab]);
 
   const startLensDrag = (event: React.PointerEvent<HTMLButtonElement>, tabId: string) => {
+    if (isCompactHomeOnly) return;
     if (tabId !== currentTab) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     if (hideLensTimerRef.current) window.clearTimeout(hideLensTimerRef.current);
@@ -306,16 +318,23 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
 
   return (
     <div
-      className="fixed left-1/2 z-30 h-[66px] -translate-x-1/2 transition-[width,bottom] duration-300 ease-out"
+      className="fixed z-30 h-[66px] transition-[width,left,bottom,transform] duration-300 ease-out"
       style={{
         ...navDynamicVars,
-        width: `min(${isCompactLayout ? BOTTOM_DOCK_GEOMETRY.compactMaxWidth : BOTTOM_DOCK_GEOMETRY.wideMaxWidth}px, calc(100vw - ${BOTTOM_DOCK_GEOMETRY.viewportGutter * 2}px))`,
+        left: compactDocked
+          ? `calc(50% - ${BOTTOM_DOCK_GEOMETRY.compactPairWidth / 2}px)`
+          : '50%',
+        transform: compactDocked ? 'none' : 'translateX(-50%)',
+        width: isCompactHomeOnly
+          ? `${BOTTOM_DOCK_GEOMETRY.compactCircleSize}px`
+          : `min(${isCompactLayout ? BOTTOM_DOCK_GEOMETRY.compactMaxWidth : BOTTOM_DOCK_GEOMETRY.wideMaxWidth}px, calc(100vw - ${BOTTOM_DOCK_GEOMETRY.viewportGutter * 2}px))`,
         bottom: `calc(env(safe-area-inset-bottom) + ${isCompactLayout ? BOTTOM_DOCK_GEOMETRY.compactNavBottom : BOTTOM_DOCK_GEOMETRY.wideNavBottom}px)`,
       }}
       data-liquid-control-root
       data-layout-mode={bottomTabLayout}
       data-testid="bottom-nav-layer"
       data-dragging={isDraggingLens ? 'true' : 'false'}
+      data-compact-presentation={isCompactHomeOnly ? 'home' : 'full'}
     >
       <svg className="liquid-tab-filter-defs" aria-hidden focusable="false">
         <filter
@@ -360,7 +379,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
       <div className="liquid-tab-surface absolute inset-0 pointer-events-none rounded-[30px]">
         <div className="liquid-tab-f-glass absolute inset-0 rounded-[30px]" />
       </div>
-      <div ref={navRef} className="relative z-10 grid h-full grid-cols-4 items-center overflow-visible rounded-[30px] px-1.5">
+      <div ref={navRef} className="relative z-10 flex h-full items-center overflow-visible rounded-[30px] px-1.5">
         {!isCompactLayout && (
           <motion.div
             className="absolute z-30 overflow-hidden rounded-[34px] pointer-events-none transform-gpu"
@@ -394,17 +413,21 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
         )}
         {tabs.map((tab) => {
           const isActive = currentTab === tab.id;
+          const isVisible = !isCompactHomeOnly || tab.id === 'home';
+          const isHighlighted = isActive || (isCompactHomeOnly && tab.id === 'home');
           const tabIndex = tabs.findIndex((item) => item.id === tab.id);
           const tabCenterX = navTrackPadding + tabIndex * itemWidth + itemWidth / 2;
           const dragIconColor = isCompactDrag && dragVisual
             ? getDragIconColor(dragVisual.pointerX, tabCenterX, itemWidth)
             : undefined;
           return (
-            <button
+            <motion.button
               key={tab.id}
               type="button"
               aria-label={tab.label}
               aria-current={isActive ? 'page' : undefined}
+              aria-hidden={!isVisible}
+              tabIndex={isVisible ? 0 : -1}
               title={tab.label}
               data-tab={tab.id}
               data-testid={`bottom-nav-${tab.id}`}
@@ -417,31 +440,41 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
                   event.preventDefault();
                   return;
                 }
+                if (isCompactHomeOnly && tab.id === 'home') {
+                  onCompactHomeClick?.();
+                  return;
+                }
                 selectTab(tab.id);
               }}
-              className="liquid-glass-interactive relative z-20 flex h-[54px] items-center justify-center rounded-[25px] transition-all duration-300 group touch-none"
+              className={`liquid-glass-interactive relative z-20 flex h-[54px] min-w-0 items-center justify-center overflow-hidden rounded-[25px] group touch-none ${isVisible ? '' : 'pointer-events-none'}`}
               style={dragIconColor ? { color: dragIconColor } : undefined}
-              data-liquid-adaptive={isDraggingLens || isActive ? undefined : 'true'}
+              animate={{
+                width: isVisible ? (isCompactHomeOnly ? 52 : `${100 / tabs.length}%`) : 0,
+                opacity: isVisible ? 1 : 0,
+                scale: isVisible ? 1 : 0.72,
+              }}
+              transition={{ type: 'spring', stiffness: 430, damping: 38, mass: 0.72 }}
+              data-liquid-adaptive={isDraggingLens || isHighlighted ? undefined : 'true'}
             >
-              <div className={`relative z-10 transition-transform duration-300 ${isActive ? 'scale-110' : 'scale-100 group-active:scale-90'}`}>
+              <div className={`relative z-10 transition-transform duration-300 ${isHighlighted ? 'scale-110' : 'scale-100 group-active:scale-90'}`}>
                 <tab.icon
                    size={isCompactLayout ? 24 : 28}
-                   strokeWidth={isActive ? 2.5 : 1.8}
+                   strokeWidth={isHighlighted ? 2.5 : 1.8}
                    className={`${isCompactDrag ? 'transition-none' : 'transition-colors duration-300'} ${
                      isCompactDrag
                        ? 'drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)]'
-                       : isActive
+                       : isHighlighted
                        ? 'text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.5)]'
                        : 'text-white/65 drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)] group-hover:text-white/85'
                    }`}
                    data-drag-proximity={isCompactDrag && dragVisual
                      ? String(Math.max(0, 1 - Math.min(1, Math.abs(dragVisual.pointerX - tabCenterX) / Math.max(32, itemWidth * 1.08))))
                      : undefined}
-                   fill={isActive && tab.fillOnActive ? 'currentColor' : 'none'}
+                   fill={isHighlighted && tab.fillOnActive ? 'currentColor' : 'none'}
                 />
               </div>
               <span className="sr-only">{tab.label}</span>
-            </button>
+            </motion.button>
           );
         })}
       </div>

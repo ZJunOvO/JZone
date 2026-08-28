@@ -14,30 +14,47 @@ interface PlayerBarProps {
   variant?: 'dock' | 'island';
   settlePulse?: number;
   compact?: boolean;
+  compactMode?: 'circle' | 'expanded';
 }
 
-export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock', settlePulse = 0, compact = false }) => {
+export const PlayerBar: React.FC<PlayerBarProps> = ({
+  onExpand,
+  variant = 'dock',
+  settlePulse = 0,
+  compact = false,
+  compactMode,
+}) => {
   const { playerState, getCurrentSong, togglePlay, nextSong } = useStore();
   const playbackTime = usePlaybackTime();
   const song = getCurrentSong();
   const reduceMotion = useReducedMotion();
   const isCompactDock = compact && variant === 'dock';
+  const isCompactCircle = isCompactDock && compactMode === 'circle';
+  const isCompactExpanded = isCompactDock && compactMode === 'expanded';
   const playerRadiusClass = variant === 'island'
     ? 'rounded-full'
-    : isCompactDock
-      ? 'rounded-[28px]'
+    : isCompactCircle
+      ? 'rounded-full'
+      : isCompactDock
+        ? 'rounded-[32px]'
       : 'rounded-[18px]';
   const initialMapSize = React.useMemo(() => ({
     width: Math.min(
       variant === 'island'
         ? 320
+        : isCompactCircle
+          ? BOTTOM_DOCK_GEOMETRY.compactCircleSize
         : isCompactDock
           ? BOTTOM_DOCK_GEOMETRY.compactMaxWidth
           : BOTTOM_DOCK_GEOMETRY.wideMaxWidth,
       Math.max(1, (typeof window === 'undefined' ? 390 : window.innerWidth) - BOTTOM_DOCK_GEOMETRY.viewportGutter * 2),
     ),
-    height: variant === 'island' ? 48 : 56,
-  }), [isCompactDock, variant]);
+    height: variant === 'island'
+      ? 48
+      : isCompactDock
+        ? BOTTOM_DOCK_GEOMETRY.compactCircleSize
+        : 56,
+  }), [isCompactCircle, isCompactDock, variant]);
   const settleScale = useMotionValue(1);
   const settleAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
 
@@ -61,8 +78,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
 
   return (
     <motion.div
-      className={`liquid-mini-player relative flex h-[56px] min-w-0 items-center cursor-pointer ${playerRadiusClass} ${
-        variant === 'island' ? 'h-[48px]' : ''
+      className={`liquid-mini-player relative flex min-w-0 items-center cursor-pointer ${playerRadiusClass} ${
+        variant === 'island' ? 'h-[48px]' : isCompactDock ? 'h-16' : 'h-[56px]'
       }`}
       onClick={onExpand}
       onKeyDown={(event) => {
@@ -73,19 +90,77 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
       }}
       role="button"
       tabIndex={0}
-      aria-label={`展开播放器：${song.title}`}
+      aria-label={isCompactCircle ? `展开迷你播放器：${song.title}` : `展开播放器：${song.title}`}
       data-liquid-control-root
       data-testid="mini-player"
-      data-layout-mode={variant === 'island' ? 'island' : isCompactDock ? 'compact' : 'wide'}
+      data-layout-mode={variant === 'island' ? 'island' : isCompactDock ? `compact-${compactMode ?? 'expanded'}` : 'wide'}
+      data-compact-player-state={isCompactCircle ? 'circle' : isCompactExpanded ? 'expanded' : undefined}
+      data-playback-progress={progress.toFixed(4)}
       data-liquid-settle-surface
       style={{ scale: settleScale, transformOrigin: '50% 50%' }}
     >
       <LiquidGlassMotionContent
         profile="player"
         borderRadiusClass={playerRadiusClass}
-        className="flex h-full w-full min-w-0 items-center"
+        className="flex h-full w-full min-w-0 items-center overflow-hidden"
         initialMapSize={initialMapSize}
       >
+      {isCompactCircle ? (
+        <div className="relative h-full w-full p-[5px]" data-testid="compact-player-circle">
+          <div
+            className="relative h-full w-full overflow-hidden rounded-full bg-zinc-800"
+            data-shared-element="song-cover"
+            data-player-shared-source="cover"
+          >
+            <img
+              src={song.coverUrl}
+              alt=""
+              decoding="async"
+              className="h-full w-full object-cover"
+            />
+            {playerState.isPlaying && (
+              <div
+                className="absolute inset-0 flex items-center justify-center gap-[3px] bg-black/18"
+                aria-hidden="true"
+                data-testid="compact-player-equalizer"
+              >
+                {[0, 1, 2, 3].map((index) => (
+                  <motion.span
+                    key={index}
+                    className="w-[3px] rounded-full bg-white shadow-[0_1px_6px_rgba(0,0,0,0.45)]"
+                    animate={reduceMotion ? { height: 15 } : { height: [8, 22 - index * 2, 11, 18 + index] }}
+                    transition={reduceMotion ? { duration: 0 } : {
+                      duration: 0.72 + index * 0.08,
+                      delay: index * 0.07,
+                      repeat: Infinity,
+                      repeatType: 'mirror',
+                      ease: 'easeInOut',
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+          <svg className="pointer-events-none absolute inset-0 -rotate-90" viewBox="0 0 64 64" aria-hidden="true">
+            <circle cx="32" cy="32" r="29.5" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="2" />
+            <circle
+              cx="32"
+              cy="32"
+              r="29.5"
+              fill="none"
+              stroke="rgba(255,255,255,0.92)"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              pathLength="1"
+              strokeDasharray="1"
+              strokeDashoffset={1 - progress}
+              className="transition-[stroke-dashoffset] duration-200"
+              data-testid="compact-player-progress-ring"
+            />
+          </svg>
+        </div>
+      ) : (
+      <>
       {/* Album Art */}
       <div
         className={`h-full shrink-0 aspect-square p-1.5 ${variant === 'island' ? 'hidden' : ''}`}
@@ -152,6 +227,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
             ></div>
          )}
       </div>
+      </>
+      )}
       </LiquidGlassMotionContent>
     </motion.div>
   );
