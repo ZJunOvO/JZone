@@ -128,7 +128,6 @@ export interface LyricsSourcePanelProps {
   onSourcePaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onApply: () => void;
-  onCreateBlank: () => void;
 }
 
 export interface LyricsTimingPanelProps {

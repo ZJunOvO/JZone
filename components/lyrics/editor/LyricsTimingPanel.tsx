@@ -109,7 +109,17 @@ export const LyricsTimingPanel = ({
             data-testid="lyrics-editor-seek"
           />
           <div className="-mt-2 flex justify-between text-[11px] font-bold tabular-nums text-white/40">
-            <span>{formatClock(effectiveCurrentTime)}</span>
+            <button
+              type="button"
+              onClick={onMarkCurrentLine}
+              disabled={saving}
+              className="min-h-9 cursor-pointer rounded-full px-1 text-left transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-not-allowed disabled:opacity-45"
+              aria-label={`在 ${formatClock(effectiveCurrentTime)} 标记当前行`}
+              title="标记当前行"
+              data-testid="lyrics-editor-time-mark"
+            >
+              {formatClock(effectiveCurrentTime)}
+            </button>
             <span>{formatClock(effectiveDuration)}</span>
           </div>
         </div>

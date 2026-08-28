@@ -369,15 +369,6 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setChangedMessage();
   }, [setChangedMessage, setContent, sourceText]);
 
-  const createBlankLyrics = useCallback(() => {
-    setSourceText('');
-    setSourceKind('editor');
-    setLines([], { content: '', format: 'plain', timing: 'none' });
-    setLastMark(null);
-    setSelectedIndex(0);
-    setChangedMessage();
-  }, [setChangedMessage, setLines]);
-
   const updateLineText = useCallback((index: number, text: string) => {
     const nextLines = lines.map((line, lineIndex) => (
       lineIndex === index ? { ...line, text } : line
@@ -507,7 +498,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
       await onSave(payload);
       if (clearDraftOnSave) {
         clearDraft();
-        setSaveMessage('歌词已保存，本地草稿已清除。');
+        setSaveMessage('歌词已保存。');
       } else {
         setSaveMessage('歌词已暂存，保存歌曲后会同步。');
       }
@@ -576,7 +567,6 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
         onSourcePaste={handleSourcePaste}
         onFileChange={handleFileChange}
         onApply={applySourceText}
-        onCreateBlank={createBlankLyrics}
       />
 
       <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/10 py-3" role="tablist" aria-label="歌词编辑视图">

@@ -251,6 +251,7 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
         const lyricsPanel = readRect('[data-testid="player-lyrics-panel"]');
         const progress = readRect('[data-testid="player-progress"]');
         const introDots = document.querySelector('[data-testid="lyrics-intro-dots"]');
+        const edgeFade = document.querySelector('[data-testid="lyrics-edge-fade"]');
         const smallState = {
           cover: smallCover,
           info: lyricsInfo,
@@ -259,6 +260,8 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
           ariaLabel: coverButton.getAttribute('aria-label'),
           visibleText: coverButton.textContent?.trim() ?? '',
           introFirstLineTimeMs: Number(introDots?.dataset.firstLineTimeMs),
+          introTop: introDots?.getBoundingClientRect().top ?? null,
+          edgeFade: Boolean(edgeFade),
           sharedCoverCount: document.querySelectorAll('[data-player-shared-target="cover"]').length,
         };
 
@@ -291,9 +294,11 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
         await new Promise((resolve) => setTimeout(resolve, 4_500));
         const lowerControls = document.querySelector('[data-testid="player-lower-controls"]');
         const controlsAfterIdle = lowerControls?.dataset.controlsVisible ?? null;
+        const introTopAfterIdle = document.querySelector('[data-testid="lyrics-intro-dots"]')?.getBoundingClientRect().top ?? null;
         document.querySelector('[data-testid="player-transition-shell"]')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
         await settle();
         const controlsAfterActivity = lowerControls?.dataset.controlsVisible ?? null;
+        const introTopAfterActivity = document.querySelector('[data-testid="lyrics-intro-dots"]')?.getBoundingClientRect().top ?? null;
         readyLayout = {
           smallState,
           largeCover,
@@ -305,6 +310,8 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
           lyricsRestored: Boolean(document.querySelector('[data-testid="player-lyrics-panel"]')),
           controlsAfterIdle,
           controlsAfterActivity,
+          introTopAfterIdle,
+          introTopAfterActivity,
         };
       }
 
@@ -379,10 +386,11 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
     } else if (initialMode === 'error') {
       assert.equal(result.retryRecovered, true, '歌词失败状态必须支持重试并恢复空状态');
     } else {
-      const { smallState, largeCover, rendererAfterClose, coverStateLabel, openingWidths, reopenedCover, songInfoReturnedCover, lyricsRestored, controlsAfterIdle, controlsAfterActivity } = result.readyLayout;
+      const { smallState, largeCover, rendererAfterClose, coverStateLabel, openingWidths, reopenedCover, songInfoReturnedCover, lyricsRestored, controlsAfterIdle, controlsAfterActivity, introTopAfterIdle, introTopAfterActivity } = result.readyLayout;
       assert.equal(smallState.ariaLabel, '查看封面', '歌词态小封面必须提供返回名称');
       assert.equal(smallState.visibleText, '', '封面切换入口不能显示“查看歌词/查看封面”文字');
       assert.equal(smallState.introFirstLineTimeMs, 8_000, '播放器必须按第一句有效时间显示前奏三点');
+      assert.equal(smallState.edgeFade, true, '歌词上下边缘必须挂载柔化遮罩');
       assert.equal(smallState.sharedCoverCount, 1, '封面往返必须复用同一个共享目标');
       assert(smallState.cover && smallState.info && smallState.lyricsPanel && smallState.progress && largeCover && reopenedCover, '必须能读取封面、信息区、歌词与进度条几何');
       assert(largeCover.width > smallState.cover.width * 2.5, `大封面没有显著缩至顶部：${JSON.stringify({ largeCover, small: smallState.cover })}`);
@@ -398,6 +406,8 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
       assert.equal(result.lyricsFetchSongIds.filter((songId) => songId === 'smoke-lyrics-player-song').length, 1, '同一歌曲反复开关歌词视图不得重复拉取');
       assert.equal(controlsAfterIdle, 'false', '播放中的歌词页停留后必须自动淡出下方控制区');
       assert.equal(controlsAfterActivity, 'true', '触摸歌词页后必须立即恢复下方控制区');
+      assert(smallState.introTop !== null && introTopAfterIdle !== null && introTopAfterActivity !== null, '前奏三点在控制区切换期间不得卸载');
+      assert(Math.abs(introTopAfterIdle - smallState.introTop) <= 1 && Math.abs(introTopAfterActivity - smallState.introTop) <= 1, `控制区收放导致前奏三点错位：${JSON.stringify({ initial: smallState.introTop, introTopAfterIdle, introTopAfterActivity })}`);
       assert(openingWidths.length >= 5, '必须采集到封面缩放动画帧');
       assert(openingWidths.some((width) => width < largeCover.width - 8 && width > smallState.cover.width + 8), `封面缩放缺少中间动画帧：${JSON.stringify(openingWidths)}`);
     }

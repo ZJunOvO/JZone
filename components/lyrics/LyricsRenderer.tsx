@@ -1,5 +1,6 @@
 import React from 'react';
 import { LyricPlayer as AmllLyricPlayer } from '@applemusic-like-lyrics/react';
+import type { LyricPlayerRef } from '@applemusic-like-lyrics/react';
 import type { LyricLineMouseEvent } from '@applemusic-like-lyrics/core';
 import '@applemusic-like-lyrics/core/style.css';
 import {
@@ -150,7 +151,7 @@ const LyricsIntroDots: React.FC<LyricsIntroDotsProps> = ({
 
   return (
     <div
-      className={`pointer-events-none absolute inset-x-4 top-[34%] z-10 flex -translate-y-2 ${align === 'right' ? 'justify-end' : 'justify-start'} ${animate ? 'transition-opacity duration-150' : 'transition-none'}`}
+      className={`pointer-events-none absolute inset-x-4 top-10 z-20 flex ${align === 'right' ? 'justify-end' : 'justify-start'} ${animate ? 'transition-opacity duration-150' : 'transition-none'}`}
       style={{ opacity: exitOpacity }}
       aria-hidden="true"
       data-testid="lyrics-intro-dots"
@@ -159,7 +160,7 @@ const LyricsIntroDots: React.FC<LyricsIntroDotsProps> = ({
       data-first-line-time-ms={firstLineTimeMs}
       data-intro-state={remainingMs <= INTRO_DOTS_FADE_MS ? 'ending' : 'active'}
     >
-      <span className="flex items-center gap-2 rounded-full bg-black/10 px-4 py-3 backdrop-blur-sm">
+      <span className="flex items-center gap-2 px-1 py-2">
         {[0.08, 0.36, 0.64].map((start, index) => {
           const dotProgress = getDotProgress(start);
           return (
@@ -200,7 +201,7 @@ const LightweightLyrics: React.FC<LightweightLyricsProps> = ({
     if (activeIndex < 0) return;
     const activeElement = lineRefs.current[activeIndex];
     activeElement?.scrollIntoView({
-      block: 'center',
+      block: 'start',
       behavior: animate ? 'smooth' : 'auto',
     });
   }, [activeIndex, animate]);
@@ -258,7 +259,7 @@ const LightweightLyrics: React.FC<LightweightLyricsProps> = ({
       <div
         key={line.id}
         ref={(element) => { lineRefs.current[index] = element; }}
-        className="scroll-mt-[45%] scroll-mb-[45%]"
+        className="scroll-mt-[24%] scroll-mb-[38%]"
         role="listitem"
         data-testid={`lyrics-line-${index}`}
         data-lyrics-role={role}
@@ -322,6 +323,15 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
     if (!onSeek || !Number.isFinite(timeMs)) return;
     onSeek(clampSeekTimeSeconds(timeMs, safeDuration));
   }, [onSeek, safeDuration]);
+  const amllPlayerRef = React.useRef<LyricPlayerRef>(null);
+  const handleAmllLineClick = React.useCallback((event: LyricLineMouseEvent) => {
+    const lyricPlayer = amllPlayerRef.current?.lyricPlayer;
+    lyricPlayer?.resetScroll();
+    seekToMs(event.line.getLine().startTime);
+    window.requestAnimationFrame(() => {
+      void lyricPlayer?.calcLayout(false, false);
+    });
+  }, [seekToMs]);
   const animationReduced = reducedMotion || lowPerformance || prefersReducedMotion;
   const amllAvailable = typeof window !== 'undefined'
     && typeof document !== 'undefined'
@@ -393,12 +403,17 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
           animate={!animationReduced}
         />
       )}
+      <div
+        className="h-full w-full [mask-image:linear-gradient(to_bottom,transparent_0,black_7%,black_88%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,black_7%,black_88%,transparent_100%)]"
+        data-testid="lyrics-edge-fade"
+      >
       {useLightweight || amllLines.length === 0 ? lightweight : (
         <AmllErrorBoundary
           resetKey={`${parsedLyrics.format}:${parsedLyrics.rawContent}`}
           fallback={lightweight}
         >
           <AmllLyricPlayer
+            ref={amllPlayerRef}
             className="jzone-lyrics-amll h-full w-full"
             lyricLines={amllLines}
             currentTime={currentTimeMs}
@@ -407,8 +422,10 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
             enableSpring={!animationReduced}
             enableScale={!animationReduced}
             enableBlur={!animationReduced}
+            alignAnchor="top"
+            alignPosition={0.28}
             wordFadeWidth={parsedLyrics.timing === 'word' ? 0.5 : 0.0001}
-            onLyricLineClick={(event: LyricLineMouseEvent) => seekToMs(event.line.getLine().startTime)}
+            onLyricLineClick={handleAmllLineClick}
             style={{
               '--amll-lp-font-size': 'clamp(24px, 6.5vw, 42px)',
               '--amll-lp-color': 'rgba(255, 255, 255, 0.94)',
@@ -420,6 +437,7 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
           />
         </AmllErrorBoundary>
       )}
+      </div>
     </div>
   );
 };

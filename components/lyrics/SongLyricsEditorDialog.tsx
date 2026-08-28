@@ -106,7 +106,6 @@ export const SongLyricsEditorDialog: React.FC<SongLyricsEditorDialogProps> = ({
       });
       setLyrics(saved);
       setLoadState('ready');
-      setOperationMessage('歌词已保存，当前播放页会自动刷新。');
       dispatchSongLyricsUpdated({ songId: song.id, action: 'saved' });
     } catch (error) {
       const message = getOperationErrorMessage(error, '歌词保存失败，请检查网络后重试。');

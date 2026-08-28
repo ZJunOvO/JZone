@@ -115,8 +115,10 @@ try {
     const timelineFlow = {
       timeline: Boolean(mount.querySelector('[data-testid="lyrics-editor-timeline"]')),
       seek: Boolean(mount.querySelector('[data-testid="lyrics-editor-seek"]')),
+      timeMark: Boolean(mount.querySelector('[data-testid="lyrics-editor-time-mark"]')),
       restartedAt: seekCalls.at(-1),
       addButtonRemoved: !mount.querySelector('[data-testid="lyrics-editor-add-line"]'),
+      newBlankRemoved: !mount.querySelector('[data-testid="lyrics-editor-new"]'),
     };
 
     await render({
@@ -134,7 +136,7 @@ try {
     await changeSelect('lyrics-editor-line-role-0', 'duet');
     await changeSelect('lyrics-editor-line-role-1', 'background');
     await click('lyrics-editor-line-0');
-    await click('lyrics-editor-mark');
+    await click('lyrics-editor-time-mark');
     const draftKeyA = draftApi.createLyricsDraftStorageKey({ songId: 'smoke-song-mark' });
     const storedAfterMark = JSON.parse(localStorage.getItem(draftKeyA) || 'null');
     const afterMark = {
@@ -304,7 +306,6 @@ try {
     await pasteSource('<tt>');
     const malformedFeedback = mount.querySelector('[data-testid="lyrics-editor-parse-error"]')?.textContent || '';
 
-    await click('lyrics-editor-new');
     await click('lyrics-editor-mark');
     const blankCreationLineCount = mount.querySelectorAll('[data-lyrics-line-index]').length;
     await click('lyrics-editor-save');
@@ -364,8 +365,10 @@ try {
   assert.deepEqual(result.timelineFlow, {
     timeline: true,
     seek: true,
+    timeMark: true,
     restartedAt: 0,
     addButtonRemoved: true,
+    newBlankRemoved: true,
   }, '逐行标记必须提供时间轴与从头试听，并移除独立新增按钮');
   assert.equal(result.afterMark.format, 'lrc');
   assert.notEqual(result.afterMark.firstTime, '--:--.--', '标记当前行后必须出现行级时间');

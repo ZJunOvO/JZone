@@ -2,7 +2,6 @@ import {
   AlertCircle,
   ClipboardPaste,
   FileText,
-  ListPlus,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Icons } from '../../Icons';
@@ -19,7 +18,6 @@ export const LyricsSourcePanel = ({
   onSourcePaste,
   onFileChange,
   onApply,
-  onCreateBlank,
 }: LyricsSourcePanelProps) => {
   const [expanded, setExpanded] = useState(() => !sourceText.trim());
 
@@ -78,15 +76,6 @@ export const LyricsSourcePanel = ({
       >
         <ClipboardPaste size={16} aria-hidden="true" />
         载入歌词
-      </button>
-      <button
-        type="button"
-        data-testid="lyrics-editor-new"
-        onClick={onCreateBlank}
-        className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-white/15 px-3 text-sm font-bold text-white/75 transition-colors hover:border-white/30 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60"
-      >
-        <ListPlus size={16} aria-hidden="true" />
-        新建空白
       </button>
     </div>
     <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/45" data-testid="lyrics-editor-detected-format">
