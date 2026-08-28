@@ -9,6 +9,10 @@ import { useAppRoute } from '../../hooks/useAppRoute';
 import { BottomNavigation } from '../navigation/BottomNavigation';
 import { useStore } from '../../store';
 import { feedback } from '../feedback';
+import {
+  PLAYER_LYRICS_REQUEST_EVENT,
+  type PlayerLyricsRequestEvent,
+} from '../../utils/lyrics/events';
 import { useLiquidGlassAdaptiveForeground } from '../../hooks/useLiquidGlassAdaptiveForeground';
 import { SharedElementLayer } from '../motion/SharedElementLayer';
 import { ProfileAvatarRouteTransition } from '../motion/ProfileAvatarRouteTransition';
@@ -43,7 +47,7 @@ const PageFallback = () => (
 );
 
 export const AppShell: React.FC = () => {
-  const { songs, playContext } = useStore();
+  const { songs, playerState, playContext } = useStore();
   const { resolvedAvatarUrl: profileAvatarUrl } = useCurrentArtistProfile();
   const liquidGlassSettings = useLiquidGlassSettings();
   const isCompactBottomTabLayout = liquidGlassSettings.bottomTabLayout === 'compact';
@@ -62,6 +66,7 @@ export const AppShell: React.FC = () => {
   } = useAppRoute();
   const currentRoute = isListeningRecap ? 'listening-recap' : activeTab;
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+  const [playerLyricsRequest, setPlayerLyricsRequest] = useState<{ songId: string; nonce: number } | null>(null);
   const [playerTransitionPhase, setPlayerTransitionPhase] = useState<PlayerTransitionPhase>('open');
   const [playerTransitionOrigin, setPlayerTransitionOrigin] = useState<PlayerTransitionOrigin | null>(null);
   const [playerSharedOrigin, setPlayerSharedOrigin] = useState<PlayerSharedOrigin | null>(null);
@@ -70,6 +75,7 @@ export const AppShell: React.FC = () => {
   const [uploadMounted, setUploadMounted] = useState(activeTab === 'upload');
   const [profileMounted, setProfileMounted] = useState(activeTab === 'profile');
   const sharedSongHandledRef = React.useRef<string | null>(null);
+  const playerLyricsRequestNonceRef = React.useRef(0);
   const miniPlayerLayerRef = React.useRef<HTMLDivElement>(null);
   const profileRouteRef = React.useRef<HTMLDivElement>(null);
   const [miniSettlePulse, setMiniSettlePulse] = useState(0);
@@ -201,6 +207,7 @@ export const AppShell: React.FC = () => {
 
   const closePlayer = React.useCallback(() => {
     if (!isPlayerOpen || playerTransitionPhase === 'closing') return;
+    setPlayerLyricsRequest(null);
     if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
     const origin = capturePlayerOrigin();
     setPlayerTransitionOrigin(origin);
@@ -221,8 +228,35 @@ export const AppShell: React.FC = () => {
     }, PLAYER_SHELL_EXIT_DURATION * 1000 + 20);
   }, [capturePlayerOrigin, capturePlayerSharedOrigin, isPlayerOpen, playerTransitionPhase]);
 
+  const handlePlayerLyricsRequest = React.useCallback((event: Event) => {
+    const detail = (event as PlayerLyricsRequestEvent).detail;
+    if (!detail?.songId || detail.source !== 'song-menu') return;
+    const targetSong = songs.find((item) => item.id === detail.songId);
+    if (!targetSong) {
+      feedback.error('这首歌曲不存在，或当前账号没有访问权限');
+      return;
+    }
+
+    playerLyricsRequestNonceRef.current += 1;
+    setPlayerLyricsRequest({ songId: targetSong.id, nonce: playerLyricsRequestNonceRef.current });
+    if (playerState.currentSongId !== targetSong.id) {
+      playContext([targetSong.id], targetSong.id);
+    }
+    openPlayer();
+  }, [openPlayer, playerState.currentSongId, playContext, songs]);
+
+  React.useEffect(() => {
+    window.addEventListener(PLAYER_LYRICS_REQUEST_EVENT, handlePlayerLyricsRequest);
+    return () => window.removeEventListener(PLAYER_LYRICS_REQUEST_EVENT, handlePlayerLyricsRequest);
+  }, [handlePlayerLyricsRequest]);
+
+  const handlePlayerLyricsRequestHandled = React.useCallback((nonce: number) => {
+    setPlayerLyricsRequest((current) => current?.nonce === nonce ? null : current);
+  }, []);
+
   React.useEffect(() => {
     if (collectionId) {
+      setPlayerLyricsRequest(null);
       setIsPlayerOpen(false);
       setPlayerTransitionPhase('open');
     }
@@ -230,6 +264,7 @@ export const AppShell: React.FC = () => {
 
   React.useEffect(() => {
     if (profileUserId) {
+      setPlayerLyricsRequest(null);
       setIsPlayerOpen(false);
       setPlayerTransitionPhase('open');
     }
@@ -391,6 +426,8 @@ export const AppShell: React.FC = () => {
             transitionPhase={playerTransitionPhase}
             transitionOrigin={playerTransitionOrigin ?? getDefaultPlayerOrigin()}
             sharedOrigin={playerSharedOrigin ?? getDefaultPlayerSharedOrigin(playerTransitionOrigin ?? getDefaultPlayerOrigin())}
+            lyricsRequest={playerLyricsRequest}
+            onLyricsRequestHandled={handlePlayerLyricsRequestHandled}
           />
         </Suspense>
       )}

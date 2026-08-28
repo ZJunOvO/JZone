@@ -10,6 +10,8 @@ import type { UploadDraftState } from './useUploadDraft';
 import { feedback } from '../feedback';
 import { analyzeAudioDelivery, STREAM_COPY_BITRATE_KBPS } from '../../utils/audioDelivery';
 import { transcodeAudioForStreaming } from '../../utils/audioTranscode';
+import type { LyricsEditorSavePayload } from '../lyrics';
+import type { SongLyricsNormalizedContent } from '../../services/supabase/types';
 
 export interface UploadSaveProgress {
   percent: number;
@@ -21,11 +23,13 @@ export const useUploadSave = ({
   defaultArtist,
   resetDraft,
   onSaved,
+  lyrics,
 }: {
   draft: UploadDraftState;
   defaultArtist?: string;
   resetDraft: () => void;
   onSaved?: () => void;
+  lyrics?: LyricsEditorSavePayload | null;
 }) => {
   const { addSong } = useStore();
   const { user } = useAuth();
@@ -106,6 +110,24 @@ export const useUploadSave = ({
         setSaveProgress({ percent: 98, message: '正在同步到本地资料库' });
         addSong(createUploadedSongFromRow({ row, coverUrl: signedCoverUrl, visibility: draft.songVisibility }));
 
+        let lyricsSyncFailed = false;
+        if (lyrics) {
+          try {
+            setSaveProgress({ percent: 98, message: '正在同步歌词' });
+            await supabaseApi.upsertSongLyrics(row.id, {
+              format: lyrics.format,
+              source: lyrics.source,
+              rawContent: lyrics.rawContent,
+              normalizedContent: lyrics.normalizedContent as unknown as SongLyricsNormalizedContent,
+              offsetMs: lyrics.offsetMs,
+              version: lyrics.version,
+            });
+          } catch (error) {
+            lyricsSyncFailed = true;
+            console.warn('歌曲已保存，但歌词同步失败:', error);
+          }
+        }
+
         try {
           const artistCredits = draft.artistCredits.length
             ? draft.artistCredits
@@ -144,7 +166,11 @@ export const useUploadSave = ({
         }
 
         setSaveProgress({ percent: 100, message: '保存完成' });
-        feedback.success('歌曲已保存到资料库');
+        if (lyricsSyncFailed) {
+          feedback.info('歌曲已保存，歌词可稍后补录', { duration: 7000 });
+        } else {
+          feedback.success('歌曲已保存到资料库');
+        }
         resetDraft();
         onSaved?.();
         return;
@@ -191,7 +217,11 @@ export const useUploadSave = ({
 
       addSong(newSong);
       setSaveProgress({ percent: 100, message: '保存完成' });
-      feedback.success('歌曲已保存到资料库');
+      if (lyrics) {
+        feedback.info('歌曲已保存，歌词可稍后补录', { duration: 7000 });
+      } else {
+        feedback.success('歌曲已保存到资料库');
+      }
       resetDraft();
       onSaved?.();
     } catch (e: any) {
@@ -205,7 +235,7 @@ export const useUploadSave = ({
       setIsSaving(false);
       window.setTimeout(() => setSaveProgress(null), 600);
     }
-  }, [addSong, defaultArtist, draft, isSaving, onSaved, resetDraft, user]);
+  }, [addSong, defaultArtist, draft, isSaving, lyrics, onSaved, resetDraft, user]);
 
   return { save, isSaving, saveError, setSaveError, saveProgress };
 };

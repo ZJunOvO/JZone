@@ -10,8 +10,16 @@ import type { CurrentArtistProfile } from '../../hooks/useCurrentArtistProfile';
 import { snapshotAudioFile } from '../../utils/uploadAudio';
 import { analyzeAudioDelivery } from '../../utils/audioDelivery';
 import { uploadDraftStorage } from '../../uploadDraftStorage';
+import { LyricsEditor } from '../lyrics';
+import type { LyricsEditorSavePayload } from '../lyrics';
 
 const AUDIO_FILE_ACCEPT = 'audio/*,video/mp4,application/octet-stream,.mp3,.m4a,.mp4,.wav,.flac,.amr,.3gp';
+
+const createUploadLyricsDraftKey = (ownerId: string | undefined, file: File | null) => {
+  if (!file) return null;
+  const fileIdentity = [file.name, file.size, file.lastModified, file.type].join('|');
+  return `upload:${ownerId ?? 'anonymous'}:${fileIdentity}`;
+};
 
 type UploadEditorVariant = 'page' | 'modal';
 
@@ -41,11 +49,18 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
   const [isPendingFilesRestored, setIsPendingFilesRestored] = useState(false);
   const [isPreparingFiles, setIsPreparingFiles] = useState(false);
   const [nextFileToLoad, setNextFileToLoad] = useState<File | null>(null);
+  const [isLyricsOpen, setIsLyricsOpen] = useState(false);
+  const [stagedLyrics, setStagedLyrics] = useState<{ draftKey: string; payload: LyricsEditorSavePayload } | null>(null);
   const selectionSeqRef = useRef(0);
   const pendingRestoreSeqRef = useRef(0);
   const pendingRestorePromiseRef = useRef<Promise<void>>(Promise.resolve());
   const restoredPendingOwnerRef = useRef<string | null>(null);
   const pendingPersistTailRef = useRef<Promise<void>>(Promise.resolve());
+  const lyricsDraftKey = useMemo(
+    () => createUploadLyricsDraftKey(ownerId, draft.file),
+    [draft.file, ownerId],
+  );
+  const activeStagedLyrics = stagedLyrics?.draftKey === lyricsDraftKey ? stagedLyrics.payload : null;
 
   const persistPendingFiles = useCallback((persistOwnerId: string | undefined, files: File[]) => {
     if (!persistOwnerId) return;
@@ -96,6 +111,8 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
     if (nextFile) {
       setNextFileToLoad(nextFile);
     }
+    setStagedLyrics(null);
+    setIsLyricsOpen(false);
     onSaved?.();
   };
   const { save, isSaving, saveError, saveProgress } = useUploadSave({
@@ -103,6 +120,7 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
     defaultArtist,
     resetDraft: actions.resetDraft,
     onSaved: handleSaved,
+    lyrics: activeStagedLyrics,
   });
   const [moreOpen, setMoreOpen] = useState(false);
   const inputSuffix = variant === 'modal' ? 'modal' : 'page';
@@ -137,6 +155,10 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
       setPendingFiles((previous) => previous[0] === file ? previous.slice(1) : previous);
     });
   }, [actions, draft.file, draft.isReadingFile, draft.step, nextFileToLoad]);
+
+  useEffect(() => {
+    setStagedLyrics((previous) => previous && previous.draftKey === lyricsDraftKey ? previous : null);
+  }, [lyricsDraftKey]);
 
   const handleAudioSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
@@ -188,9 +210,16 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
     setIsPreparingFiles(false);
     setNextFileToLoad(null);
     setPendingFiles([]);
+    setStagedLyrics(null);
+    setIsLyricsOpen(false);
     persistPendingFiles(ownerId, []);
     actions.resetDraft();
   }, [actions, ownerId, persistPendingFiles]);
+
+  const stageLyrics = useCallback((payload: LyricsEditorSavePayload) => {
+    if (!lyricsDraftKey) throw new Error('请先选择音频文件。');
+    setStagedLyrics({ draftKey: lyricsDraftKey, payload });
+  }, [lyricsDraftKey]);
 
   const pendingQueue = pendingFiles.length ? (
     <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3 space-y-2">
@@ -403,6 +432,44 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
           </div>
         ) : null}
       </div>
+
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-white/5 bg-black/30">
+        <button
+          type="button"
+          aria-expanded={isLyricsOpen}
+          data-testid="upload-lyrics-toggle"
+          onClick={() => setIsLyricsOpen((previous) => !previous)}
+          className="flex min-h-14 w-full min-w-0 cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <Icons.Music2 size={17} className="shrink-0 text-red-300" aria-hidden="true" />
+            <span className="truncate text-xs font-bold uppercase tracking-widest text-zinc-200">歌词</span>
+            <span
+              className="truncate text-[11px] text-zinc-500"
+              data-testid="upload-lyrics-status"
+              data-lyrics-source={activeStagedLyrics?.source ?? ''}
+            >
+              {activeStagedLyrics ? '已暂存' : '可选'}
+            </span>
+          </span>
+          <Icons.ChevronRight size={17} className={`shrink-0 text-zinc-500 transition-transform ${isLyricsOpen ? 'rotate-90' : ''}`} aria-hidden="true" />
+        </button>
+        {isLyricsOpen ? (
+          <div className="min-w-0 border-t border-white/5 px-3 py-4 sm:px-4">
+            <p className="mb-3 text-xs leading-5 text-zinc-500">歌词会先暂存到当前音频，歌曲保存成功后再同步到资料库。</p>
+            <LyricsEditor
+              key={lyricsDraftKey ?? 'upload-lyrics'}
+              draftKey={lyricsDraftKey}
+              duration={draft.duration}
+              audioUrl={draft.previewUrl || undefined}
+              clearDraftOnSave={false}
+              source="upload"
+              onSave={stageLyrics}
+              className="min-w-0"
+            />
+          </div>
+        ) : null}
+      </section>
 
       <div className="space-y-4">
         <div className="grid grid-cols-1 gap-4">

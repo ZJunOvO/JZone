@@ -2,6 +2,43 @@ export type SongVisibility = 'private' | 'public';
 export type CollectionType = 'album' | 'playlist';
 export type CollectionVisibility = 'private' | 'public';
 export type SongArtistRole = 'primary' | 'featured' | 'producer' | 'other';
+export type SongLyricsFormat = 'plain' | 'lrc' | 'ttml';
+export type SongLyricsSource = 'upload' | 'embedded' | 'editor';
+
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+export type SongLyricsNormalizedContent = JsonValue | null;
+
+export interface SongLyricsRow {
+  song_id: string;
+  format: SongLyricsFormat;
+  source: SongLyricsSource;
+  raw_content: string;
+  normalized_content: SongLyricsNormalizedContent;
+  offset_ms: number;
+  checksum: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SongLyricsInput {
+  format: SongLyricsFormat;
+  source: SongLyricsSource;
+  rawContent: string;
+  normalizedContent?: SongLyricsNormalizedContent;
+  offsetMs?: number;
+  checksum?: string;
+  version?: number;
+}
+
+export type SongLyricsUpsertInput = SongLyricsInput;
 
 export interface SongArtistRow {
   song_id: string;

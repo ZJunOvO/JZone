@@ -9,6 +9,7 @@ import { Song } from '../types';
 import { AddSongToCollectionDialog } from '../components/AddSongToCollectionDialog';
 import { SongRowSkeleton } from '../components/Skeletons';
 import { useCurrentArtistProfile } from '../hooks/useCurrentArtistProfile';
+import { LyricsWorkbenchDialog } from '../components/lyrics';
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
@@ -25,6 +26,7 @@ export const Upload: React.FC = () => {
   const [draftStatus, setDraftStatus] = useState<UploadDraftStatus>({ hasDraft: false, label: '暂无草稿' });
   const [collectionTarget, setCollectionTarget] = useState<Song | null>(null);
   const [isUploadSaving, setIsUploadSaving] = useState(false);
+  const [isLyricsWorkbenchOpen, setIsLyricsWorkbenchOpen] = useState(false);
 
   const myUploads = useMemo(
     () => songs.filter((s) => (s.ownerId ? s.ownerId === user?.id : s.uploadedBy === 'Me')),
@@ -79,9 +81,21 @@ export const Upload: React.FC = () => {
       </section>
 
       <section className="space-y-5">
-        <div className="flex items-center justify-between px-1">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-1">
           <h2 className="text-xl font-bold text-white tracking-tight">我的上传</h2>
-          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{myUploads.length} 首</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{myUploads.length} 首</span>
+            <button
+              type="button"
+              data-testid="lyrics-workbench-open"
+              onClick={() => setIsLyricsWorkbenchOpen(true)}
+              disabled={myUploads.length === 0}
+              className="inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/15 px-3 text-xs font-bold text-zinc-300 transition-colors hover:border-white/30 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70 disabled:cursor-not-allowed disabled:opacity-35"
+            >
+              <Icons.Music2 size={14} aria-hidden="true" />
+              歌词制作
+            </button>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -178,6 +192,12 @@ export const Upload: React.FC = () => {
         isOpen={!!collectionTarget}
         song={collectionTarget}
         onClose={() => setCollectionTarget(null)}
+      />
+
+      <LyricsWorkbenchDialog
+        isOpen={isLyricsWorkbenchOpen}
+        songs={myUploads}
+        onClose={() => setIsLyricsWorkbenchOpen(false)}
       />
     </div>
   );

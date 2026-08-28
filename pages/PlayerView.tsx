@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { usePlaybackTime, useStore } from '../store';
+import { useAuth } from '../auth';
 import { Icons } from '../components/Icons';
 import { CommentsSheet } from '../components/CommentsSheet';
 import { MemoryCardModal } from '../components/MemoryCardModal';
 import { UniversalContextMenu } from '../components/UniversalContextMenu';
+import { LyricsEmptyState } from '../components/lyrics/LyricsEmptyState';
+import { LyricsRenderer } from '../components/lyrics/LyricsRenderer';
 import { useModalPresence } from '../modalPresence';
 import { SkeletonBlock } from '../components/Skeletons';
 import {
@@ -19,6 +22,9 @@ import {
   type AnimationPlaybackControls,
 } from 'framer-motion';
 import type { Song } from '../types';
+import { supabaseApi, type SongLyricsRow } from '../supabaseApi';
+import { parseLyrics, type LyricsInput, type ParsedLyrics } from '../utils/lyrics';
+import { SONG_LYRICS_UPDATED_EVENT, type SongLyricsUpdatedEvent } from '../utils/lyrics/events';
 import { PlayerSharedElement } from '../components/motion/PlayerSharedElement';
 import { PlayerArtworkTransition } from '../components/motion/PlayerArtworkTransition';
 import {
@@ -31,12 +37,59 @@ import {
   type PlayerSharedOrigin,
 } from '../components/motion/playerTransition';
 
+const SongLyricsEditorDialog = React.lazy(() => import('../components/lyrics/SongLyricsEditorDialog').then(({ SongLyricsEditorDialog: Component }) => ({
+  default: Component,
+})));
+
 interface PlayerViewProps {
   onClose: () => void;
   transitionPhase: PlayerTransitionPhase;
   transitionOrigin: PlayerTransitionOrigin;
   sharedOrigin: PlayerSharedOrigin;
+  lyricsRequest?: PlayerLyricsRequest | null;
+  onLyricsRequestHandled?: (nonce: number) => void;
 }
+
+interface PlayerLyricsRequest {
+  songId: string;
+  nonce: number;
+}
+
+type PlayerLyricsLoadState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
+
+const shiftLyricsTime = (timeMs: number | null, offsetMs: number) => (
+  timeMs === null ? null : Math.max(0, timeMs + offsetMs)
+);
+
+const getPlayerLyricsInput = (row: SongLyricsRow): LyricsInput | ParsedLyrics => {
+  const input: LyricsInput = { format: row.format, content: row.raw_content };
+  if (!row.offset_ms) return input;
+
+  try {
+    const parsed = parseLyrics(input);
+    return {
+      ...parsed,
+      lines: parsed.lines.map((line) => ({
+        ...line,
+        startTimeMs: shiftLyricsTime(line.startTimeMs, row.offset_ms),
+        endTimeMs: shiftLyricsTime(line.endTimeMs, row.offset_ms),
+        words: line.words.map((word) => ({
+          ...word,
+          startTimeMs: Math.max(0, word.startTimeMs + row.offset_ms),
+          endTimeMs: Math.max(0, word.endTimeMs + row.offset_ms),
+        })),
+      })),
+    };
+  } catch {
+    return input;
+  }
+};
+
+const getLyricsErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  return '歌词加载失败，请检查网络后重试。';
+};
 
 const formatTime = (time: number) => {
   const min = Math.floor(time / 60);
@@ -119,7 +172,15 @@ const QueueSongRow: React.FC<{
   );
 };
 
-export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase, transitionOrigin, sharedOrigin }) => {
+export const PlayerView: React.FC<PlayerViewProps> = ({
+  onClose,
+  transitionPhase,
+  transitionOrigin,
+  sharedOrigin,
+  lyricsRequest,
+  onLyricsRequestHandled,
+}) => {
+  const { user } = useAuth();
   const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, cyclePlaybackMode, seek, setVolume, playSong, removeFromQueue, reorderQueue, toggleFavorite, isFavorite } = useStore();
   const playbackTime = usePlaybackTime();
   const [isQueueOpen, setIsQueueOpen] = useState(false);
@@ -133,6 +194,12 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [contextMenuOpenNonce, setContextMenuOpenNonce] = useState(0);
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | undefined>(undefined);
+  const [isLyricsViewOpen, setIsLyricsViewOpen] = useState(false);
+  const [lyricsLoadState, setLyricsLoadState] = useState<PlayerLyricsLoadState>('idle');
+  const [lyricsRow, setLyricsRow] = useState<SongLyricsRow | null>(null);
+  const [lyricsError, setLyricsError] = useState<string | null>(null);
+  const [lyricsRetryNonce, setLyricsRetryNonce] = useState(0);
+  const [isLyricsEditorOpen, setIsLyricsEditorOpen] = useState(false);
   const reduceMotion = useReducedMotion();
   const initialInsets = getPlayerOriginInsets(transitionOrigin);
   const originInsetsRef = React.useRef(initialInsets);
@@ -150,6 +217,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   const clipPhaseRef = React.useRef<PlayerTransitionPhase | null>(null);
   const queueCloseTimerRef = React.useRef<number | null>(null);
   const previousArtworkSongIdRef = React.useRef<string | null>(null);
+  const currentSongIdRef = React.useRef<string | null>(null);
+  const lyricsTouchStartRef = React.useRef<{ x: number; y: number } | null>(null);
 
   useModalPresence(isMemoryOpen);
   useModalPresence(isQueueOpen);
@@ -184,6 +253,63 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   }, []);
   
   const song = getCurrentSong();
+  currentSongIdRef.current = song?.id ?? null;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!song?.id) {
+      setLyricsLoadState('idle');
+      setLyricsRow(null);
+      setLyricsError(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setLyricsLoadState('loading');
+    setLyricsRow(null);
+    setLyricsError(null);
+    void supabaseApi.fetchSongLyrics(song.id).then((row) => {
+      if (cancelled) return;
+      setLyricsRow(row);
+      setLyricsLoadState(row ? 'ready' : 'empty');
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      setLyricsRow(null);
+      setLyricsLoadState('error');
+      setLyricsError(getLyricsErrorMessage(error));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lyricsRetryNonce, song?.id]);
+
+  React.useEffect(() => {
+    const handleLyricsUpdated = (event: Event) => {
+      const detail = (event as SongLyricsUpdatedEvent).detail;
+      if (!detail?.songId || detail.songId !== currentSongIdRef.current) return;
+      setLyricsRetryNonce((value) => value + 1);
+    };
+    window.addEventListener(SONG_LYRICS_UPDATED_EVENT, handleLyricsUpdated);
+    return () => window.removeEventListener(SONG_LYRICS_UPDATED_EVENT, handleLyricsUpdated);
+  }, []);
+
+  React.useEffect(() => {
+    if (!lyricsRequest || lyricsRequest.songId !== song?.id) return;
+    setIsLyricsViewOpen(true);
+    onLyricsRequestHandled?.(lyricsRequest.nonce);
+  }, [lyricsRequest, onLyricsRequestHandled, song?.id]);
+
+  React.useEffect(() => {
+    setIsLyricsEditorOpen(false);
+  }, [song?.id]);
+
+  const playerLyricsInput = React.useMemo(
+    () => lyricsRow ? getPlayerLyricsInput(lyricsRow) : null,
+    [lyricsRow?.format, lyricsRow?.raw_content, lyricsRow?.offset_ms],
+  );
+
   const previousArtworkSongId = previousArtworkSongIdRef.current;
   const previousArtworkIndex = previousArtworkSongId ? playerState.queue.indexOf(previousArtworkSongId) : -1;
   const currentArtworkIndex = song ? playerState.queue.indexOf(song.id) : -1;
@@ -283,6 +409,71 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
   // Only show songs that are in the queue
   const queueSongs = songs.filter(s => playerState.queue.includes(s.id))
     .sort((a, b) => playerState.queue.indexOf(a.id) - playerState.queue.indexOf(b.id));
+  const isOwner = Boolean(user?.id && song.ownerId === user.id);
+  const lyricsContent = lyricsLoadState === 'loading' ? (
+    <div className="flex h-full min-h-[240px] flex-col items-center justify-center px-6 text-center" data-testid="player-lyrics-loading" role="status" aria-live="polite">
+      <Icons.RotateCcw size={24} className="animate-spin text-white/55" aria-hidden="true" />
+      <p className="mt-4 text-sm font-bold text-white/75">正在加载歌词…</p>
+      <p className="mt-2 text-xs leading-5 text-white/40">正在读取当前歌曲的歌词。</p>
+    </div>
+  ) : lyricsLoadState === 'error' ? (
+    <div className="flex h-full min-h-[240px] flex-col items-center justify-center px-6 text-center" data-testid="player-lyrics-error" role="alert">
+      <p className="text-base font-bold text-red-200">歌词加载失败</p>
+      <p className="mt-2 max-w-xs text-sm leading-6 text-white/55">{lyricsError}</p>
+      <button
+        type="button"
+        onClick={() => setLyricsRetryNonce((value) => value + 1)}
+        className="mt-5 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-white px-5 text-sm font-black text-black transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70"
+        data-testid="player-lyrics-retry"
+      >
+        <Icons.RotateCcw size={16} aria-hidden="true" />
+        重新加载
+      </button>
+    </div>
+  ) : lyricsLoadState === 'empty' ? (
+    <div className="flex h-full min-h-[240px] flex-col items-center justify-center px-4 text-center" data-testid="player-lyrics-empty">
+      <LyricsEmptyState className="min-h-0 flex-1" />
+      {isOwner && (
+        <button
+          type="button"
+          onClick={() => setIsLyricsEditorOpen(true)}
+          className="mb-5 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-white/15 bg-white/10 px-5 text-sm font-bold text-white transition-colors hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70"
+          data-testid="player-lyrics-add"
+        >
+          <Icons.Edit size={16} aria-hidden="true" />
+          添加歌词
+        </button>
+      )}
+    </div>
+  ) : playerLyricsInput ? (
+    <LyricsRenderer
+      lyrics={playerLyricsInput}
+      currentTime={currentTime}
+      duration={Math.max(0, trimEnd)}
+      playing={playerState.isPlaying}
+      onSeek={seek}
+      reducedMotion={Boolean(reduceMotion)}
+      className="h-full min-h-0"
+      data-testid="player-lyrics-renderer"
+    />
+  ) : (
+    <LyricsEmptyState />
+  );
+  const handleCoverTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    const touch = event.changedTouches[0];
+    lyricsTouchStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  };
+  const handleCoverTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const start = lyricsTouchStartRef.current;
+    lyricsTouchStartRef.current = null;
+    if (!start) return;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY)) return;
+    setIsLyricsViewOpen(deltaX < 0);
+  };
 
   return (
     <motion.div
@@ -346,34 +537,70 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
         )}
 
         {/* Core Cover Area */}
-        <div className="flex items-center justify-center flex-grow-[2] py-4">
+        <div
+          className="relative flex flex-grow-[2] items-center justify-center py-4"
+          data-testid="player-cover-area"
+          onTouchStart={handleCoverTouchStart}
+          onTouchEnd={handleCoverTouchEnd}
+          onTouchCancel={() => { lyricsTouchStartRef.current = null; }}
+        >
           <PlayerSharedElement
             className="w-[96%] max-w-[400px] aspect-square relative transition-all duration-500 ease-out"
             sourceRect={sharedOrigin.cover}
             phase={transitionPhase}
             name="cover"
           >
-            <div
-              className={`pointer-events-none absolute inset-[7%] translate-y-[8%] rounded-[24px] bg-black/65 transition-[transform,opacity,filter] duration-500 ease-out ${
-                playerState.isPlaying ? 'scale-100 opacity-[0.55] blur-[32px]' : 'scale-[0.84] opacity-[0.42] blur-[36px]'
-              }`}
-              data-testid="player-cover-soft-shadow"
-              aria-hidden
-            />
-            <PlayerArtworkTransition artworkKey={song.id} direction={artworkDirection}>
-              <div
-                className={`relative h-full w-full transition-[transform,opacity] duration-500 ease-out ${playerState.isPlaying ? 'scale-100 opacity-100' : 'scale-[0.88] opacity-80'}`}
-                data-testid="player-cover-visual"
-              >
-                <img
-                  src={song.coverUrl}
-                  alt="Album Cover"
-                  className="h-full w-full rounded-[14px] border border-white/10 object-cover shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)]"
-                  data-testid="player-cover-image"
-                />
+            {isLyricsViewOpen ? (
+              <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[14px] border border-white/10 bg-black/35 shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)]" data-testid="player-lyrics-panel">
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Icons.Music2 size={15} className="shrink-0 text-white/65" aria-hidden="true" />
+                    <span className="truncate text-sm font-bold text-white/80">歌词</span>
+                  </div>
+                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
+                    {lyricsRow?.format === 'plain' ? '纯文本' : lyricsRow?.format === 'lrc' ? 'LRC' : lyricsRow?.format === 'ttml' ? 'TTML' : '当前歌曲'}
+                  </span>
+                </div>
+                <div className="min-h-0 flex-1">
+                  {lyricsContent}
+                </div>
               </div>
-            </PlayerArtworkTransition>
+            ) : (
+              <>
+                <div
+                  className={`pointer-events-none absolute inset-[7%] translate-y-[8%] rounded-[24px] bg-black/65 transition-[transform,opacity,filter] duration-500 ease-out ${
+                    playerState.isPlaying ? 'scale-100 opacity-[0.55] blur-[32px]' : 'scale-[0.84] opacity-[0.42] blur-[36px]'
+                  }`}
+                  data-testid="player-cover-soft-shadow"
+                  aria-hidden
+                />
+                <PlayerArtworkTransition artworkKey={song.id} direction={artworkDirection}>
+                  <div
+                    className={`relative h-full w-full transition-[transform,opacity] duration-500 ease-out ${playerState.isPlaying ? 'scale-100 opacity-100' : 'scale-[0.88] opacity-80'}`}
+                    data-testid="player-cover-visual"
+                  >
+                    <img
+                      src={song.coverUrl}
+                      alt="Album Cover"
+                      className="h-full w-full rounded-[14px] border border-white/10 object-cover shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)]"
+                      data-testid="player-cover-image"
+                    />
+                  </div>
+                </PlayerArtworkTransition>
+              </>
+            )}
           </PlayerSharedElement>
+          <button
+            type="button"
+            onClick={() => setIsLyricsViewOpen((value) => !value)}
+            className="absolute bottom-7 left-1/2 z-20 inline-flex min-h-10 -translate-x-1/2 cursor-pointer items-center gap-2 rounded-full border border-white/15 bg-black/45 px-4 text-xs font-bold text-white/80 shadow-lg backdrop-blur-md transition-colors hover:bg-black/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80"
+            aria-pressed={isLyricsViewOpen}
+            aria-label={isLyricsViewOpen ? '查看封面' : '查看歌词'}
+            data-testid="player-cover-lyrics-toggle"
+          >
+            {isLyricsViewOpen ? <Icons.Image size={15} aria-hidden="true" /> : <Icons.Music2 size={15} aria-hidden="true" />}
+            {isLyricsViewOpen ? '查看封面' : '查看歌词'}
+          </button>
         </div>
 
         {/* Song Info & Action Buttons */}
@@ -648,6 +875,23 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
       {/* Comments Sheet Overlay */}
       <CommentsSheet isOpen={isCommentsOpen} onClose={() => setIsCommentsOpen(false)} />
 
+      {isLyricsEditorOpen && (
+        <React.Suspense fallback={null}>
+          <SongLyricsEditorDialog
+            isOpen
+            song={song}
+            onClose={() => setIsLyricsEditorOpen(false)}
+            audioControls={{
+              currentTime,
+              duration: trimEnd,
+              playing: playerState.isPlaying,
+              onTogglePlay: togglePlay,
+              onSeek: seek,
+            }}
+          />
+        </React.Suspense>
+      )}
+
       {/* More Menu */}
       <UniversalContextMenu 
           isOpen={contextMenuOpen} 
@@ -656,6 +900,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ onClose, transitionPhase
           type="song"
           anchorPosition={menuAnchor}
           openNonce={contextMenuOpenNonce}
+          onOpenLyricsEditor={() => setIsLyricsEditorOpen(true)}
       />
     </motion.div>
   );
