@@ -18,6 +18,12 @@ import type {
 
 export type LyricsEditorSaveSource = 'upload' | 'embedded' | 'editor';
 export type LyricsEditorAudioAction = () => void | Promise<void>;
+export type LyricsEditorLineRole = 'lead' | 'duet' | 'background';
+
+export interface LyricsEditorFocusRequest {
+  id: number;
+  index: number;
+}
 
 export interface LyricsEditorAudioControls {
   currentTime?: number | null;
@@ -140,6 +146,7 @@ export interface LyricsTimingPanelProps {
   validationVisible: boolean;
   validationIssues: readonly LyricsValidationIssue[];
   audioError: string | null;
+  focusRequest: LyricsEditorFocusRequest | null;
   onPrevious: () => void;
   onNext: () => void;
   onMarkCurrentLine: () => void;
@@ -149,6 +156,7 @@ export interface LyricsTimingPanelProps {
   onSeekLine: (index: number) => void;
   onSelectLine: (index: number) => void;
   onLineTextChange: (index: number, text: string) => void;
+  onLineRoleChange: (index: number, role: LyricsEditorLineRole) => void;
   onClearLineTime: (index: number) => void;
   onRemoveLine: (index: number) => void;
   onAddLine: () => void;

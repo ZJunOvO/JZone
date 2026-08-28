@@ -4,6 +4,8 @@ import { chromium } from 'playwright';
 const baseUrl = process.env.JZONE_BASE_URL || 'http://localhost:3000';
 const email = process.env.JZONE_TEST_EMAIL;
 const password = process.env.JZONE_TEST_PASSWORD;
+const settingsKey = 'jzone.liquidGlassSettings.v6';
+const compactMigrationKey = 'jzone.liquidGlassSettings.compactDockMigration.v1';
 const viewports = [
   { width: 390, height: 844 },
   { width: 360, height: 800 },
@@ -29,20 +31,79 @@ const loginIfNeeded = async (page) => {
 };
 
 const setLayoutMode = async (page, mode) => {
-  await page.evaluate((nextMode) => {
-    const key = 'jzone.liquidGlassSettings.v6';
+  await page.evaluate(({ nextMode, key }) => {
     const current = JSON.parse(localStorage.getItem(key) || '{}');
     const next = { ...current, bottomTabLayout: nextMode };
     localStorage.setItem(key, JSON.stringify(next));
     window.dispatchEvent(new CustomEvent('jzone:liquid-glass-settings-changed', { detail: next }));
-  }, mode);
+  }, { nextMode: mode, key: settingsKey });
   await page.locator(`[data-testid="bottom-nav-layer"][data-layout-mode="${mode}"]`).waitFor({ timeout: 5000 });
   await page.waitForTimeout(420);
+};
+
+const verifyDefaultAndMigration = async (page, { verifyMigration }) => {
+  await page.locator('[data-testid="bottom-nav-layer"][data-layout-mode="compact"]').waitFor({ timeout: 5000 });
+  const defaultState = await page.evaluate(({ key, migrationKey }) => ({
+    mode: document.querySelector('[data-testid="bottom-nav-layer"]')?.getAttribute('data-layout-mode'),
+    migration: localStorage.getItem(migrationKey),
+    stored: localStorage.getItem(key),
+  }), { key: settingsKey, migrationKey: compactMigrationKey });
+  assert(defaultState.mode === 'compact', `新用户默认布局不是紧凑模式：${JSON.stringify(defaultState)}`);
+  assert(defaultState.migration === '1', `新用户未记录紧凑布局迁移状态：${JSON.stringify(defaultState)}`);
+
+  if (!verifyMigration) return { defaultState };
+
+  await page.evaluate(({ key, migrationKey }) => {
+    localStorage.setItem(key, JSON.stringify({
+      strength: 0.031,
+      blur: 2,
+      bottomTabLayout: 'wide',
+    }));
+    localStorage.removeItem(migrationKey);
+  }, { key: settingsKey, migrationKey: compactMigrationKey });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await loginIfNeeded(page);
+  await page.locator('[data-testid="bottom-nav-layer"][data-layout-mode="compact"]').waitFor({ timeout: 5000 });
+  const migratedState = await page.evaluate(({ key, migrationKey }) => ({
+    settings: JSON.parse(localStorage.getItem(key) || '{}'),
+    migration: localStorage.getItem(migrationKey),
+  }), { key: settingsKey, migrationKey: compactMigrationKey });
+  assert(migratedState.settings.bottomTabLayout === 'compact', `旧设置未一次迁移到紧凑模式：${JSON.stringify(migratedState)}`);
+  assert(Math.abs(migratedState.settings.strength - 0.031) < 0.0001, `布局迁移覆盖了旧材质设置：${JSON.stringify(migratedState)}`);
+  assert(migratedState.migration === '1', `旧设置迁移未写入一次性标记：${JSON.stringify(migratedState)}`);
+
+  await setLayoutMode(page, 'wide');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await loginIfNeeded(page);
+  await page.locator('[data-testid="bottom-nav-layer"][data-layout-mode="wide"]').waitFor({ timeout: 5000 });
+  const persistedWideState = await page.evaluate(({ key, migrationKey }) => ({
+    settings: JSON.parse(localStorage.getItem(key) || '{}'),
+    migration: localStorage.getItem(migrationKey),
+  }), { key: settingsKey, migrationKey: compactMigrationKey });
+  assert(persistedWideState.settings.bottomTabLayout === 'wide', `用户切回宽屏后被重复迁移：${JSON.stringify(persistedWideState)}`);
+  assert(persistedWideState.migration === '1', `宽屏回归时迁移标记丢失：${JSON.stringify(persistedWideState)}`);
+  return { defaultState, migratedState, persistedWideState };
+};
+
+const ensureMiniPlayer = async (page) => {
+  if (await page.getByTestId('mini-player').isVisible().catch(() => false)) return;
+  await page.getByTestId('bottom-nav-library').click();
+  const firstSong = page.locator('[data-library-song="true"]').first();
+  await firstSong.waitFor({ state: 'visible', timeout: 15000 });
+  await firstSong.evaluate((element) => element.click());
+  await page.getByTestId('mini-player').waitFor({ state: 'visible', timeout: 15000 });
+  await page.getByTestId('bottom-nav-home').click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="bottom-nav-home"]')?.getAttribute('aria-current') === 'page');
 };
 
 const readLayout = (page) => page.evaluate(() => {
   const nav = document.querySelector('[data-testid="bottom-nav-layer"]');
   const mini = document.querySelector('[data-testid="mini-player-layer"]');
+  const miniPlayer = document.querySelector('[data-testid="mini-player"]');
+  const miniCover = miniPlayer?.querySelector('[data-player-shared-source="cover"]');
+  const miniTitle = miniPlayer?.querySelector('[data-player-shared-source="title"]');
+  const miniArtist = miniPlayer?.querySelector('[data-player-shared-source="artist"]');
+  const miniControls = [...(miniPlayer?.querySelectorAll('button') ?? [])];
   const buttons = [...document.querySelectorAll('button[data-testid^="bottom-nav-"]')];
   const lens = document.querySelector('[data-testid="bottom-nav-lens"]');
   const rect = (element) => {
@@ -55,7 +116,17 @@ const readLayout = (page) => page.evaluate(() => {
     mode: nav?.getAttribute('data-layout-mode'),
     nav: rect(nav),
     mini: rect(mini),
+    miniPlayer: rect(miniPlayer),
+    miniCover: rect(miniCover),
+    miniTitle: rect(miniTitle),
+    miniArtist: rect(miniArtist),
+    miniControls: miniControls.map(rect),
+    miniLayoutMode: miniPlayer?.getAttribute('data-layout-mode') ?? null,
+    miniRadius: miniPlayer ? Number.parseFloat(getComputedStyle(miniPlayer).borderRadius) : null,
+    navRadius: nav ? Number.parseFloat(getComputedStyle(nav.querySelector('.liquid-tab-surface')).borderRadius) : null,
     miniBottom: mini ? getComputedStyle(mini).bottom : null,
+    miniInlineBottom: mini?.style.bottom ?? null,
+    navInlineBottom: nav?.style.bottom ?? null,
     lens: rect(lens),
     lensOpacity: lens ? Number.parseFloat(getComputedStyle(lens).opacity) : null,
     lensVisual: lens?.getAttribute('data-lens-visual') ?? null,
@@ -67,17 +138,32 @@ const readLayout = (page) => page.evaluate(() => {
 });
 
 const assertLayout = (layout, mode) => {
-  const { nav, mini, lens, buttonRects, iconSizes, viewport } = layout;
+  const { nav, mini, miniPlayer, lens, buttonRects, iconSizes, viewport } = layout;
   assert(nav && mini, `${mode} 缺少导航或 Mini 播放器：${JSON.stringify(layout)}`);
-  const expectedWidth = mode === 'compact' ? 240 : Math.min(400, viewport.width - 24);
+  const expectedWidth = Math.min(mode === 'compact' ? 240 : 400, viewport.width - 24);
   const expectedBottom = mode === 'compact' ? 33 : 14;
   assert(Math.abs(nav.width - expectedWidth) <= 1, `${mode} 宽度错误：${JSON.stringify(layout)}`);
   assert(Math.abs(viewport.height - nav.bottom - expectedBottom) <= 1, `${mode} 底部间距错误：${JSON.stringify(layout)}`);
   assert(Math.abs(nav.left - (viewport.width - nav.width) / 2) <= 1, `${mode} 未居中：${JSON.stringify(layout)}`);
+  assert(layout.navInlineBottom.includes('safe-area-inset-bottom'), `${mode} Tab 未纳入底部安全区：${JSON.stringify(layout)}`);
   const expectedMiniBottom = mode === 'compact' ? 111 : 92;
   assert(Math.abs(Number.parseFloat(layout.miniBottom) - expectedMiniBottom) <= 1, `${mode} Mini 播放器定位错误：${JSON.stringify(layout)}`);
+  assert(layout.miniInlineBottom.includes('safe-area-inset-bottom'), `${mode} Mini 播放器未纳入底部安全区：${JSON.stringify(layout)}`);
   if (mini.height > 0) {
-    assert(Math.abs(nav.top - mini.bottom - 12) <= 1, `${mode} Mini 播放器间距错误：${JSON.stringify(layout)}`);
+    const visualGap = nav.top - mini.bottom;
+    assert(visualGap >= 12 - 1 && visualGap <= 15 + 1, `${mode} Mini 播放器间距错误：${JSON.stringify(layout)}`);
+    assert(miniPlayer && Math.abs(miniPlayer.width - mini.width) <= 1, `${mode} Mini 内容未填满容器：${JSON.stringify(layout)}`);
+    assert(layout.miniLayoutMode === mode, `${mode} Mini 内部模式不一致：${JSON.stringify(layout)}`);
+    if (mode === 'compact') {
+      assert(Math.abs(mini.width - nav.width) <= 1, `紧凑 Mini 与 Tab 宽度不一致：${JSON.stringify(layout)}`);
+      assert(Math.abs((mini.left + mini.width / 2) - (nav.left + nav.width / 2)) <= 1, `紧凑 Mini 与 Tab 中心不一致：${JSON.stringify(layout)}`);
+      assert(Math.abs(layout.miniRadius - layout.navRadius) <= 3, `紧凑 Mini 与 Tab 圆角语言不一致：${JSON.stringify(layout)}`);
+      assert(layout.miniTitle?.width >= 56, `紧凑 Mini 标题区域不可读：${JSON.stringify(layout)}`);
+      assert(layout.miniCover && layout.miniCover.left >= miniPlayer.left - 1 && layout.miniCover.right <= miniPlayer.right + 1, `紧凑 Mini 封面越界：${JSON.stringify(layout)}`);
+      assert(layout.miniArtist && layout.miniArtist.left >= miniPlayer.left - 1 && layout.miniArtist.right <= miniPlayer.right + 1, `紧凑 Mini 艺人区域越界：${JSON.stringify(layout)}`);
+      assert(layout.miniControls.length === 2, `紧凑 Mini 播放控制数量异常：${JSON.stringify(layout)}`);
+      assert(layout.miniControls.every((control) => control.left >= miniPlayer.left - 1 && control.right <= miniPlayer.right + 1), `紧凑 Mini 播放控制越界：${JSON.stringify(layout)}`);
+    }
   }
   assert(buttonRects.length === 4, `${mode} Tab 项数量错误：${JSON.stringify(layout)}`);
   const centers = buttonRects.map((item) => item.left + item.width / 2);
@@ -214,6 +300,46 @@ const verifyCompactDrag = async (page) => {
   return { startTransition, start, middle, target, afterRelease };
 };
 
+const verifyLiveMiniOrigin = async (page) => {
+  const source = await page.evaluate(() => {
+    const rect = (element) => {
+      const value = element?.getBoundingClientRect();
+      return value ? { left: value.left, top: value.top, width: value.width, height: value.height } : null;
+    };
+    const mini = document.querySelector('[data-testid="mini-player"]');
+    return {
+      player: rect(mini),
+      radius: mini ? Number.parseFloat(getComputedStyle(mini).borderRadius) : null,
+      cover: rect(document.querySelector('[data-player-shared-source="cover"]')),
+      title: rect(document.querySelector('[data-player-shared-source="title"]')),
+      artist: rect(document.querySelector('[data-player-shared-source="artist"]')),
+    };
+  });
+  assert(source.player && source.cover && source.title && source.artist, `共享动画缺少紧凑 Mini 源元素：${JSON.stringify(source)}`);
+
+  await page.getByTestId('mini-player').click();
+  await page.waitForFunction(() => {
+    const layer = document.querySelector('[data-testid="mini-player-layer"]');
+    return Boolean(layer?.getAttribute('data-player-transition-origin') && layer?.getAttribute('data-player-shared-origin'));
+  }, null, { timeout: 5000 });
+  const captured = await page.getByTestId('mini-player-layer').evaluate((element) => ({
+    origin: JSON.parse(element.getAttribute('data-player-transition-origin')),
+    shared: JSON.parse(element.getAttribute('data-player-shared-origin')),
+  }));
+  const assertRectClose = (actual, expected, label) => {
+    const delta = Math.max(...['left', 'top', 'width', 'height'].map((key) => Math.abs(actual[key] - expected[key])));
+    assert(delta <= 1, `${label} 未读取实时紧凑 Mini 几何：${JSON.stringify({ actual, expected, delta })}`);
+  };
+  assertRectClose(captured.origin, source.player, '播放器外壳始点');
+  assert(Math.abs(captured.origin.borderRadius - source.radius) <= 1, `播放器始点圆角不是实时值：${JSON.stringify({ captured, source })}`);
+  for (const name of ['cover', 'title', 'artist']) assertRectClose(captured.shared[name], source[name], `${name} 共享始点`);
+
+  await page.getByTestId('player-view-close').waitFor({ state: 'visible', timeout: 5000 });
+  await page.getByTestId('player-view-close').click();
+  await page.getByTestId('player-transition-shell').waitFor({ state: 'detached', timeout: 5000 });
+  return { source, captured };
+};
+
 const browser = await chromium.launch({ headless: true });
 const results = [];
 
@@ -234,6 +360,9 @@ try {
     await page.addInitScript(() => localStorage.setItem('jzone.pwaInstallDismissedAt', String(Date.now())));
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await loginIfNeeded(page);
+    const settingsCompatibility = await verifyDefaultAndMigration(page, { verifyMigration: viewport.width === 390 });
+    results.push({ viewport: `${viewport.width}x${viewport.height}`, mode: 'settings-compatibility', settingsCompatibility });
+    await ensureMiniPlayer(page);
 
     for (const mode of ['wide', 'compact']) {
       await setLayoutMode(page, mode);
@@ -243,6 +372,7 @@ try {
       results.push({ viewport: `${viewport.width}x${viewport.height}`, mode, layout });
       if (mode === 'compact') {
         results.push({ viewport: `${viewport.width}x${viewport.height}`, mode: 'compact-drag', drag: await verifyCompactDrag(page) });
+        results.push({ viewport: `${viewport.width}x${viewport.height}`, mode: 'compact-player-origin', origin: await verifyLiveMiniOrigin(page) });
       }
     }
 
@@ -260,7 +390,7 @@ try {
       await compactOption.click();
       await page.locator('[data-testid="bottom-nav-layer"][data-layout-mode="compact"]').waitFor({ timeout: 5000 });
       assert(await compactOption.getAttribute('aria-pressed') === 'true', '高级设置未选中紧凑模式');
-      const persistedMode = await page.evaluate(() => JSON.parse(localStorage.getItem('jzone.liquidGlassSettings.v6') || '{}').bottomTabLayout);
+      const persistedMode = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) || '{}').bottomTabLayout, settingsKey);
       assert(persistedMode === 'compact', `紧凑模式未持久化：${persistedMode}`);
       await page.screenshot({ path: 'output/playwright/bottom-tab-layout-settings-390.png' });
       await page.getByTestId('bottom-tab-layout-wide').click();

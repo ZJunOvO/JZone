@@ -2,6 +2,25 @@ import { type CSSProperties, useEffect, useState } from 'react';
 
 export type LiquidGlassLayoutMode = 'wide' | 'compact';
 
+export const BOTTOM_DOCK_GEOMETRY = {
+  viewportGutter: 12,
+  wideMaxWidth: 400,
+  compactMaxWidth: 240,
+  navHeight: 66,
+  miniHeight: 56,
+  wideNavBottom: 14,
+  compactNavBottom: 33,
+  gap: 12,
+  compactMiniRadius: 28,
+} as const;
+
+export const getBottomDockMiniBottom = (layout: LiquidGlassLayoutMode) => {
+  const navBottom = layout === 'compact'
+    ? BOTTOM_DOCK_GEOMETRY.compactNavBottom
+    : BOTTOM_DOCK_GEOMETRY.wideNavBottom;
+  return navBottom + BOTTOM_DOCK_GEOMETRY.navHeight + BOTTOM_DOCK_GEOMETRY.gap;
+};
+
 export type LiquidGlassSettings = {
   strength: number;
   blur: number;
@@ -22,6 +41,7 @@ export type LiquidGlassSettings = {
 };
 
 const STORAGE_KEY = 'jzone.liquidGlassSettings.v6';
+const COMPACT_LAYOUT_MIGRATION_KEY = 'jzone.liquidGlassSettings.compactDockMigration.v1';
 const CHANGE_EVENT = 'jzone:liquid-glass-settings-changed';
 
 export const DEFAULT_LIQUID_GLASS_SETTINGS: LiquidGlassSettings = {
@@ -40,7 +60,7 @@ export const DEFAULT_LIQUID_GLASS_SETTINGS: LiquidGlassSettings = {
   edgeHighlight: 1,
   specular: 2,
   quality: 384,
-  bottomTabLayout: 'wide',
+  bottomTabLayout: 'compact',
 };
 
 const clamp = (value: unknown, min: number, max: number, fallback: number) => {
@@ -67,7 +87,7 @@ const normalizeLiquidGlassSettings = (value: unknown): LiquidGlassSettings => {
     edgeHighlight: clamp(raw.edgeHighlight, 0, 1, DEFAULT_LIQUID_GLASS_SETTINGS.edgeHighlight),
     specular: clamp(raw.specular, 0, 2, DEFAULT_LIQUID_GLASS_SETTINGS.specular),
     quality: Math.round(clamp(raw.quality, 128, 768, DEFAULT_LIQUID_GLASS_SETTINGS.quality)),
-    bottomTabLayout: raw.bottomTabLayout === 'compact' ? 'compact' : 'wide',
+    bottomTabLayout: raw.bottomTabLayout === 'wide' ? 'wide' : 'compact',
   };
 };
 
@@ -95,12 +115,23 @@ export const getLiquidGlassCssVars = (settings: LiquidGlassSettings): CSSPropert
 const loadLiquidGlassSettings = (): LiquidGlassSettings => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_LIQUID_GLASS_SETTINGS;
+    if (!raw) {
+      try {
+        localStorage.setItem(COMPACT_LAYOUT_MIGRATION_KEY, '1');
+      } catch {}
+      return DEFAULT_LIQUID_GLASS_SETTINGS;
+    }
     const parsed = JSON.parse(raw);
-    const normalized = normalizeLiquidGlassSettings(parsed);
-    if (parsed && typeof parsed === 'object' && !Object.prototype.hasOwnProperty.call(parsed, 'bottomTabLayout')) {
+    const needsCompactLayoutMigration = localStorage.getItem(COMPACT_LAYOUT_MIGRATION_KEY) !== '1';
+    const normalized = normalizeLiquidGlassSettings(
+      needsCompactLayoutMigration && parsed && typeof parsed === 'object'
+        ? { ...parsed, bottomTabLayout: 'compact' }
+        : parsed,
+    );
+    if (needsCompactLayoutMigration) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+        localStorage.setItem(COMPACT_LAYOUT_MIGRATION_KEY, '1');
       } catch {}
     }
     return normalized;
@@ -113,6 +144,7 @@ export const saveLiquidGlassSettings = (settings: LiquidGlassSettings) => {
   const next = normalizeLiquidGlassSettings(settings);
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(COMPACT_LAYOUT_MIGRATION_KEY, '1');
   } catch {}
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: next }));
 };

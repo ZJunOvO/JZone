@@ -35,7 +35,7 @@ export const formatClock = (seconds: number | null): string => {
 };
 
 export const formatOffset = (offsetMs: number): string => (
-  offsetMs > 0 ? `+${offsetMs} ms` : `${offsetMs} ms`
+  offsetMs > 0 ? `+${offsetMs} 毫秒` : `${offsetMs} 毫秒`
 );
 
 export const createEditorLine = (index: number): LyricsLine => ({

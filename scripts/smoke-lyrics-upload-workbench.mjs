@@ -10,7 +10,7 @@ const lyricsRows = new Map([
     song_id: 'smoke-upload-song-a',
     format: 'lrc',
     source: 'editor',
-    raw_content: '[00:01.00]已有歌词 A',
+    raw_content: '[jzone:role:0:duet]\n[00:01.00]已有歌词 A',
     normalized_content: null,
     offset_ms: 0,
     checksum: 'smoke-a',
@@ -202,7 +202,8 @@ try {
   await page.getByTestId('lyrics-workbench-loading').waitFor({ state: 'hidden', timeout: 10_000 });
   assert.equal(await page.getByTestId('lyrics-workbench-song').inputValue(), songs[0].id, '工作台默认应选择第一首上传歌曲');
   assert.match(await page.getByTestId('lyrics-workbench-status').textContent(), /已有歌词/, '工作台应加载已有歌词状态');
-  assert.equal(await page.getByTestId('lyrics-editor-source').inputValue(), '[00:01.00]已有歌词 A', '工作台应把已保存歌词载入编辑器');
+  assert.equal(await page.getByTestId('lyrics-editor-source').inputValue(), '[00:01.00]已有歌词 A', '工作台应载入歌词正文且不暴露内部角色元数据');
+  assert.equal(await page.getByTestId('lyrics-editor-line-role-0-duet').getAttribute('aria-pressed'), 'true', '仅依靠后端原文再次打开时也必须恢复对唱角色');
   await assertFitsViewport('歌词工作台');
   await page.setViewportSize({ width: 360, height: 800 });
   await assertFitsViewport('歌词工作台 360px');
@@ -215,9 +216,17 @@ try {
 
   await page.getByTestId('lyrics-editor-source').fill('[00:00.50]新歌词 B');
   await page.getByTestId('lyrics-editor-apply-source').click();
+  await page.getByTestId('lyrics-editor-line-role-0-background').click();
   await page.getByTestId('lyrics-editor-save').click();
   await page.getByTestId('lyrics-workbench-status').filter({ hasText: '已有歌词' }).waitFor({ state: 'visible', timeout: 10_000 });
-  assert.equal(lyricsRows.get(songs[1].id)?.raw_content, '[00:00.50]新歌词 B', '保存应写入当前歌曲的歌词记录');
+  assert.match(lyricsRows.get(songs[1].id)?.raw_content ?? '', /\[jzone:role:0:background\]/, '保存原文必须携带可再次解析的和声角色');
+  assert.equal(lyricsRows.get(songs[1].id)?.normalized_content?.lines?.[0]?.isBackground, true, '保存的标准化内容必须保留和声角色');
+
+  await page.getByTestId('lyrics-workbench-song').selectOption(songs[0].id);
+  await page.getByTestId('lyrics-workbench-loading').waitFor({ state: 'hidden', timeout: 10_000 });
+  await page.getByTestId('lyrics-workbench-song').selectOption(songs[1].id);
+  await page.getByTestId('lyrics-workbench-loading').waitFor({ state: 'hidden', timeout: 10_000 });
+  assert.equal(await page.getByTestId('lyrics-editor-line-role-0-background').getAttribute('aria-pressed'), 'true', '后端保存后切歌再打开必须恢复和声角色');
 
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByTestId('lyrics-workbench-delete').click();
@@ -243,12 +252,15 @@ try {
   await page.getByTestId('lyrics-editor').waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByTestId('lyrics-editor-source').fill('[00:01.00]文件 A 歌词');
   await page.getByTestId('lyrics-editor-apply-source').click();
+  await page.getByTestId('lyrics-editor-line-role-0-duet').click();
   await page.getByTestId('lyrics-editor-save').click();
   await page.getByTestId('upload-lyrics-status').filter({ hasText: '已暂存' }).waitFor({ state: 'visible', timeout: 10_000 });
   assert.equal(await page.getByTestId('upload-lyrics-status').getAttribute('data-lyrics-source'), 'upload', '上传流程暂存歌词的来源必须是 upload');
   await page.waitForTimeout(100);
   const storedKeysAfterA = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('jzone:lyrics-draft:v1:')));
   assert.equal(storedKeysAfterA.length, 1, '文件 A 歌词应写入独立草稿键');
+  const storedRoleAfterA = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) || 'null')?.lines?.[0], storedKeysAfterA[0]);
+  assert.deepEqual({ isDuet: storedRoleAfterA?.isDuet, isBackground: storedRoleAfterA?.isBackground }, { isDuet: true, isBackground: false }, '上传流程草稿必须保留文件 A 的对唱角色');
 
   await page.getByRole('button', { name: '确认保存至资料库' }).click();
   await page.waitForFunction(
@@ -264,11 +276,18 @@ try {
   assert.equal(await page.getByTestId('lyrics-editor-source').inputValue(), '', '顺序切换到文件 B 后不应恢复文件 A 歌词草稿');
   await page.getByTestId('lyrics-editor-source').fill('[00:02.00]文件 B 歌词');
   await page.getByTestId('lyrics-editor-apply-source').click();
+  await page.getByTestId('lyrics-editor-line-role-0-background').click();
   await page.getByTestId('lyrics-editor-save').click();
   await page.getByTestId('upload-lyrics-status').filter({ hasText: '已暂存' }).waitFor({ state: 'visible', timeout: 10_000 });
   assert.equal(await page.getByTestId('upload-lyrics-status').getAttribute('data-lyrics-source'), 'upload', '文件 B 暂存歌词的来源必须是 upload');
   const storedKeysAfterB = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('jzone:lyrics-draft:v1:')));
   assert.equal(storedKeysAfterB.length, 2, '文件 A、B 必须各自拥有歌词草稿键');
+  const storedRolesAfterB = await page.evaluate((keys) => keys.map((key) => {
+    const line = JSON.parse(localStorage.getItem(key) || 'null')?.lines?.[0];
+    return { isDuet: Boolean(line?.isDuet), isBackground: Boolean(line?.isBackground) };
+  }), storedKeysAfterB);
+  assert.ok(storedRolesAfterB.some((role) => role.isDuet && !role.isBackground), '文件 A 草稿的对唱角色不能被文件 B 覆盖');
+  assert.ok(storedRolesAfterB.some((role) => !role.isDuet && role.isBackground), '文件 B 草稿必须独立保存和声角色');
   await page.getByRole('button', { name: '确认保存至资料库' }).click();
   await page.waitForFunction(async () => {
     const { getFeedbackSnapshot } = await import('/components/feedback/feedback.ts');
@@ -288,8 +307,8 @@ try {
     baseUrl,
     viewport: 390,
     layers: { workbench: layerOrder.workbenchZIndex, pwaPrompt: layerOrder.pwaZIndex, workbenchAbovePwa: true },
-    workbench: { loaded: true, switched: true, saved: true, deleted: true },
-    upload: { collapsedByDefault: true, stagedSource: 'upload', ordered: true, draftKeys: storedKeysAfterB.length, isolated: true, fallbackFeedback: 'info' },
+    workbench: { loaded: true, switched: true, saved: true, rolesRestored: true, deleted: true },
+    upload: { collapsedByDefault: true, stagedSource: 'upload', ordered: true, draftKeys: storedKeysAfterB.length, rolesPersisted: true, isolated: true, fallbackFeedback: 'info' },
   }, null, 2));
 } catch (error) {
   console.error(`[smoke-lyrics-upload-workbench] 失败：${describeError(error)}`);

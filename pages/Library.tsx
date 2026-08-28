@@ -173,6 +173,8 @@ export const Library: React.FC = () => {
   const { user } = useAuth();
   const [viewMode, setViewMode] = useState<'list' | 'canvas'>('list');
   const [bentoEditing, setBentoEditing] = useState(false);
+  const listViewRef = React.useRef<HTMLDivElement>(null);
+  const canvasViewRef = React.useRef<HTMLDivElement>(null);
   const [contentType, setContentType] = useState<LibraryContentType>('songs');
   const [activeFilter, setActiveFilter] = useState<LibraryFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -297,6 +299,11 @@ export const Library: React.FC = () => {
 
   useEffect(() => {
     if (viewMode === 'list') setBentoEditing(false);
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (listViewRef.current) listViewRef.current.inert = viewMode !== 'list';
+    if (canvasViewRef.current) canvasViewRef.current.inert = viewMode !== 'canvas';
   }, [viewMode]);
 
   const handleBentoLongPress = (songId: string) => {
@@ -425,17 +432,18 @@ export const Library: React.FC = () => {
            </div>
        </div>
        
-       <AnimatePresence mode="popLayout" initial={false}>
-       {viewMode === 'list' ? (
-           <motion.div
-             key="library-list"
-             initial={{ opacity: 0, x: -12 }}
-             animate={{ opacity: 1, x: 0 }}
-             exit={{ opacity: 0.22, x: 30, scale: 0.988 }}
-             transition={{ duration: 0.32, ease: [0.32, 0, 0.24, 1] }}
-             className="px-6 pb-24"
-             data-library-view="list"
-           >
+       <motion.div
+         ref={listViewRef}
+         initial={false}
+         animate={viewMode === 'list'
+           ? { opacity: 1, x: 0, scale: 1 }
+           : { opacity: 0, x: 30, scale: 0.988 }}
+         transition={{ duration: viewMode === 'list' ? 0.32 : 0.22, ease: [0.32, 0, 0.24, 1] }}
+         className={`${viewMode === 'list' ? 'relative' : 'pointer-events-none absolute inset-x-0 top-0'} px-6 pb-24`}
+         data-library-view="list"
+         data-library-transition-state={viewMode === 'list' ? 'active' : 'inactive'}
+         aria-hidden={viewMode !== 'list'}
+       >
                <div className="space-y-3 mb-6">
                  <div className="flex items-center gap-3 bg-zinc-900/70 border border-white/5 rounded-2xl px-4 py-3">
                    <Icons.Search size={17} className="text-zinc-500 shrink-0" />
@@ -513,33 +521,44 @@ export const Library: React.FC = () => {
                    </div>
                  )}
                </div>
-           </motion.div>
-       ) : (
-           /* Canvas View */
-           <motion.div
-             key="library-canvas"
-             initial={{
-               opacity: 0.72,
-               x: -18,
-               clipPath: 'polygon(0% 0%, 9% 0%, 0% 100%, 0% 100%)',
-             }}
-             animate={{
-               opacity: 1,
-               x: 0,
-               clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)',
-             }}
-             exit={{ opacity: 0, x: -14 }}
-             transition={{ duration: 0.56, ease: [0.22, 0.76, 0.18, 1] }}
-             className="min-h-screen origin-center"
-             data-library-view="canvas"
-           >
+       </motion.div>
+
+       {/* Canvas 常驻，快速反向时同一个 motion 实例直接取消旧动画并服从最新状态。 */}
+       <motion.div
+         ref={canvasViewRef}
+         initial={false}
+         variants={{
+           inactive: {
+             opacity: 0,
+             x: -14,
+             clipPath: 'polygon(0% 0%, 9% 0%, 0% 100%, 0% 100%)',
+           },
+           active: {
+             opacity: 1,
+             x: 0,
+             clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)',
+           },
+         }}
+         animate={viewMode === 'canvas' ? 'active' : 'inactive'}
+         transition={{ duration: viewMode === 'canvas' ? 0.56 : 0.22, ease: [0.22, 0.76, 0.18, 1] }}
+         className={`${viewMode === 'canvas' ? 'relative' : 'pointer-events-none absolute inset-x-0 top-0'} min-h-screen origin-center`}
+         data-library-view="canvas"
+         data-library-transition-state={viewMode === 'canvas' ? 'active' : 'inactive'}
+         aria-hidden={viewMode !== 'canvas'}
+       >
            <motion.div
              aria-hidden
              data-testid="library-bento-transition-sheen"
              className="pointer-events-none fixed inset-y-0 left-0 z-[24] w-[42%] max-w-[180px] bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.13),rgba(170,220,255,0.09),transparent)] blur-[2px]"
-             initial={{ x: '-135%', opacity: 0, skewX: -8 }}
-             animate={{ x: '345%', opacity: [0, 0.58, 0.32, 0], skewX: -8 }}
-             transition={{ duration: 0.62, times: [0, 0.24, 0.7, 1], ease: [0.22, 0.76, 0.18, 1] }}
+             initial={false}
+             variants={{
+               inactive: { x: '-135%', opacity: 0, skewX: -8 },
+               active: { x: '345%', opacity: [0, 0.58, 0.32, 0], skewX: -8 },
+             }}
+             animate={viewMode === 'canvas' ? 'active' : 'inactive'}
+             transition={viewMode === 'canvas'
+               ? { duration: 0.62, times: [0, 0.24, 0.7, 1], ease: [0.22, 0.76, 0.18, 1] }
+               : { duration: 0.12, ease: 'easeOut' }}
            />
            <LibraryCanvas
                items={bentoItems}
@@ -552,9 +571,7 @@ export const Library: React.FC = () => {
                isEditing={bentoEditing}
                onEditingChange={setBentoEditing}
            />
-           </motion.div>
-       )}
-       </AnimatePresence>
+       </motion.div>
 
        <AnimatePresence initial={false}>
          {showUpload && <UploadModal onClose={() => setShowUpload(false)} />}

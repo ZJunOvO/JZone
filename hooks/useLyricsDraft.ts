@@ -237,17 +237,22 @@ export const formatLyricsTime = (timeMs: number | null | undefined): string => (
     : formatCentiseconds(timeMs)
 );
 
-export const serializeLyricsLines = (lines: readonly LyricsLine[]): string => (
-  lines
+export const serializeLyricsLines = (lines: readonly LyricsLine[]): string => {
+  const normalizedLines = lines
     .map((line, index) => cloneLine(line, index))
-    .filter((line) => line.text.trim().length > 0)
-    .map((line) => (
-      line.startTimeMs === null
-        ? line.text.trim()
-        : `[${formatCentiseconds(line.startTimeMs)}]${line.text.trim()}`
-    ))
-    .join('\n')
-);
+    .filter((line) => line.text.trim().length > 0);
+  const roleMetadata = normalizedLines.flatMap((line, index) => {
+    if (line.isBackground) return [`[jzone:role:${index}:background]`];
+    if (line.isDuet) return [`[jzone:role:${index}:duet]`];
+    return [];
+  });
+  const lyricContent = normalizedLines.map((line) => (
+    line.startTimeMs === null
+      ? line.text.trim()
+      : `[${formatCentiseconds(line.startTimeMs)}]${line.text.trim()}`
+  ));
+  return [...roleMetadata, ...lyricContent].join('\n');
+};
 
 export const createParsedLyricsFromLines = (
   lines: readonly LyricsLine[],

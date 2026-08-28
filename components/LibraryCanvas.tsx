@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { animate, motion, type PanInfo, useDragControls, useMotionValue, useSpring } from 'framer-motion';
 import { Icons } from './Icons';
 
@@ -41,6 +41,11 @@ interface GridItem {
 interface SavedLayout {
   order: string[];
   largeIds: string[];
+}
+
+interface LayoutState {
+  identity: string;
+  value: SavedLayout;
 }
 
 const defaultLarge = (index: number) => index === 0 || index % 7 === 5 || index % 11 === 8;
@@ -309,46 +314,67 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({
   const y = useMotionValue(0);
   const scale = useMotionValue(1);
   const scaleSpring = useSpring(scale, { stiffness: 300, damping: 30 });
+  const itemSignature = items.map((item) => item.id).join('|');
+  const layoutIdentity = `${layoutKey}\u0000${itemSignature}`;
   const [scaleValue, setScaleValue] = useState(1);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [constraints, setConstraints] = useState({ top: 0, bottom: 0, left: 0, right: 0 });
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [suppressLongPress, setSuppressLongPress] = useState(false);
-  const [layoutAnimationReady, setLayoutAnimationReady] = useState(false);
-  const [layout, setLayout] = useState<SavedLayout>(() => readSavedLayout(items, layoutKey));
-  const [hydratedLayoutKey, setHydratedLayoutKey] = useState<string | null>(() => layoutKey);
+  const [layoutAnimationIdentity, setLayoutAnimationIdentity] = useState<string | null>(null);
+  const [layoutState, setLayoutState] = useState<LayoutState>(() => ({
+    identity: layoutIdentity,
+    value: readSavedLayout(items, layoutKey),
+  }));
   const initializedRef = useRef(false);
   const gestureSuppressedRef = useRef(false);
   const gestureReleaseTimerRef = useRef<number | null>(null);
 
-  const itemSignature = items.map((item) => item.id).join('|');
+  // key 或条目变化时在提交前切换到对应保存布局，不能让旧/默认布局先绘制一帧。
+  let currentLayoutState = layoutState;
+  if (layoutState.identity !== layoutIdentity) {
+    currentLayoutState = {
+      identity: layoutIdentity,
+      value: readSavedLayout(items, layoutKey),
+    };
+    setLayoutState(currentLayoutState);
+  }
+  const layout = currentLayoutState.value;
+  const layoutAnimationReady = layoutAnimationIdentity === layoutIdentity;
+  const setLayout = (next: React.SetStateAction<SavedLayout>) => {
+    setLayoutState((previous) => {
+      const current = previous.identity === layoutIdentity
+        ? previous.value
+        : readSavedLayout(items, layoutKey);
+      return {
+        identity: layoutIdentity,
+        value: typeof next === 'function' ? next(current) : next,
+      };
+    });
+  };
+
   useEffect(() => {
-    setLayoutAnimationReady(false);
     let secondFrame = 0;
     const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => setLayoutAnimationReady(true));
+      secondFrame = window.requestAnimationFrame(() => setLayoutAnimationIdentity(layoutIdentity));
     });
     return () => {
       window.cancelAnimationFrame(firstFrame);
       if (secondFrame) window.cancelAnimationFrame(secondFrame);
     };
-  }, [itemSignature, layoutKey]);
+  }, [layoutIdentity]);
 
   useEffect(() => {
-    if (!items.length) return;
-    setHydratedLayoutKey(null);
-    setLayout(readSavedLayout(items, layoutKey));
     onEditingChange(false);
     setDropTargetId(null);
-    setHydratedLayoutKey(layoutKey);
-  }, [itemSignature, layoutKey, onEditingChange]);
+  }, [layoutIdentity, onEditingChange]);
 
   useEffect(() => {
-    if (!items.length || !layout.order.length || hydratedLayoutKey !== layoutKey) return;
+    if (!items.length || !layout.order.length || currentLayoutState.identity !== layoutIdentity) return;
     try {
       localStorage.setItem(storageKey(layoutKey), JSON.stringify(layout));
     } catch {}
-  }, [hydratedLayoutKey, items.length, layout, layoutKey]);
+  }, [currentLayoutState.identity, items.length, layout, layoutIdentity, layoutKey]);
 
   const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const orderedItems = useMemo(
@@ -357,10 +383,13 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({
   );
   const grid = useMemo(() => generateGrid(orderedItems, new Set(layout.largeIds)), [layout.largeIds, orderedItems]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = containerRef.current;
     if (!element) return;
-    const update = () => setContainerSize({ width: element.clientWidth, height: element.clientHeight });
+    const update = () => setContainerSize((previous) => {
+      const next = { width: element.clientWidth, height: element.clientHeight };
+      return previous.width === next.width && previous.height === next.height ? previous : next;
+    });
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
@@ -369,7 +398,7 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({
 
   useEffect(() => scale.on('change', setScaleValue), [scale]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!containerSize.width || !containerSize.height) return;
     if (!initializedRef.current) {
       const horizontalMargin = 18;
@@ -377,9 +406,11 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({
         0.58,
         Math.min(0.74, (containerSize.width - horizontalMargin * 2) / grid.totalWidth),
       );
-      scale.set(fitScale);
-      x.set((containerSize.width - grid.totalWidth * fitScale) / 2);
-      y.set(74);
+      scale.jump(fitScale);
+      scaleSpring.jump(fitScale);
+      x.jump((containerSize.width - grid.totalWidth * fitScale) / 2);
+      y.jump(74);
+      setScaleValue(fitScale);
       initializedRef.current = true;
     }
     const overscroll = Math.max(containerSize.width, containerSize.height) * 2.5 * Math.max(1, scaleValue);
@@ -388,7 +419,7 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({
     const left = Math.min(right, containerSize.width - grid.totalWidth * scaleValue - 24 - overscroll);
     const top = Math.min(bottom, containerSize.height - grid.totalHeight * scaleValue - 24 - overscroll);
     setConstraints({ top, bottom, left, right });
-  }, [containerSize, grid.totalHeight, grid.totalWidth, scaleValue, x, y]);
+  }, [containerSize, grid.totalHeight, grid.totalWidth, scale, scaleSpring, scaleValue, x, y]);
 
   const lastDistanceRef = useRef<number | null>(null);
   useEffect(() => {
@@ -446,6 +477,8 @@ export const LibraryCanvas: React.FC<LibraryCanvasProps> = ({
       data-bento-canvas
       data-bento-scale={scaleValue.toFixed(3)}
       data-bento-grid-width={grid.totalWidth}
+      data-bento-layout-key={layoutKey}
+      data-bento-layout-ready={layoutAnimationReady ? 'true' : 'false'}
       onPointerDown={(event) => { if (!isEditing) dragControls.start(event); }}
       onTouchStart={(event) => {
         if (event.touches.length >= 2) {

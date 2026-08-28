@@ -5,6 +5,7 @@ import { Icons } from './Icons';
 import { SkeletonBlock } from './Skeletons';
 import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
 import { createPlayerSettleCurve, PLAYER_SETTLE_DURATION } from './motion/playerTransition';
+import { BOTTOM_DOCK_GEOMETRY } from '../utils/liquidGlassSettings';
 
 const MINI_SETTLE_CURVE = createPlayerSettleCurve(1.0072);
 
@@ -12,17 +13,31 @@ interface PlayerBarProps {
   onExpand: () => void;
   variant?: 'dock' | 'island';
   settlePulse?: number;
+  compact?: boolean;
 }
 
-export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock', settlePulse = 0 }) => {
+export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock', settlePulse = 0, compact = false }) => {
   const { playerState, getCurrentSong, togglePlay, nextSong } = useStore();
   const playbackTime = usePlaybackTime();
   const song = getCurrentSong();
   const reduceMotion = useReducedMotion();
+  const isCompactDock = compact && variant === 'dock';
+  const playerRadiusClass = variant === 'island'
+    ? 'rounded-full'
+    : isCompactDock
+      ? 'rounded-[28px]'
+      : 'rounded-[18px]';
   const initialMapSize = React.useMemo(() => ({
-    width: Math.min(variant === 'island' ? 320 : 400, Math.max(280, (typeof window === 'undefined' ? 390 : window.innerWidth) - 24)),
+    width: Math.min(
+      variant === 'island'
+        ? 320
+        : isCompactDock
+          ? BOTTOM_DOCK_GEOMETRY.compactMaxWidth
+          : BOTTOM_DOCK_GEOMETRY.wideMaxWidth,
+      Math.max(1, (typeof window === 'undefined' ? 390 : window.innerWidth) - BOTTOM_DOCK_GEOMETRY.viewportGutter * 2),
+    ),
     height: variant === 'island' ? 48 : 56,
-  }), [variant]);
+  }), [isCompactDock, variant]);
   const settleScale = useMotionValue(1);
   const settleAnimationRef = React.useRef<AnimationPlaybackControls | null>(null);
 
@@ -46,8 +61,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
 
   return (
     <motion.div
-      className={`liquid-mini-player relative h-[56px] rounded-[18px] flex items-center cursor-pointer ${
-        variant === 'island' ? 'rounded-full h-[48px]' : ''
+      className={`liquid-mini-player relative flex h-[56px] min-w-0 items-center cursor-pointer ${playerRadiusClass} ${
+        variant === 'island' ? 'h-[48px]' : ''
       }`}
       onClick={onExpand}
       onKeyDown={(event) => {
@@ -61,18 +76,19 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
       aria-label={`展开播放器：${song.title}`}
       data-liquid-control-root
       data-testid="mini-player"
+      data-layout-mode={variant === 'island' ? 'island' : isCompactDock ? 'compact' : 'wide'}
       data-liquid-settle-surface
       style={{ scale: settleScale, transformOrigin: '50% 50%' }}
     >
       <LiquidGlassMotionContent
         profile="player"
-        borderRadiusClass={variant === 'island' ? 'rounded-full' : 'rounded-[18px]'}
-        className="flex h-full w-full items-center"
+        borderRadiusClass={playerRadiusClass}
+        className="flex h-full w-full min-w-0 items-center"
         initialMapSize={initialMapSize}
       >
       {/* Album Art */}
       <div
-        className={`h-full aspect-square p-1.5 ${variant === 'island' ? 'hidden' : ''}`}
+        className={`h-full shrink-0 aspect-square p-1.5 ${variant === 'island' ? 'hidden' : ''}`}
         data-shared-element="song-cover"
         data-player-shared-source="cover"
       >
@@ -85,7 +101,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
       </div>
 
       {/* Info */}
-      <div className={`flex-1 min-w-0 flex flex-col justify-center ${variant === 'island' ? 'px-4' : 'px-2'}`}>
+      <div className={`flex min-w-0 flex-1 flex-col justify-center ${variant === 'island' ? 'px-4' : isCompactDock ? 'px-1.5' : 'px-2'}`}>
         <h4
           className="text-[14px] font-medium text-white truncate leading-tight"
           data-shared-element="song-title"
@@ -106,11 +122,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-1 pr-3">
+      <div className={`flex shrink-0 items-center ${isCompactDock ? 'gap-0 pr-1.5' : 'gap-1 pr-3'}`}>
         <button 
           onClick={(e) => { e.stopPropagation(); togglePlay(); }}
           aria-label={playerState.isPlaying ? `暂停 ${song.title}` : `播放 ${song.title}`}
-          className="liquid-glass-interactive p-2 transition active:scale-95"
+          className={`liquid-glass-interactive transition active:scale-95 ${isCompactDock ? 'p-1.5' : 'p-2'}`}
           data-liquid-adaptive="true"
         >
           {playerState.isPlaying ? <Icons.Pause size={20} fill="currentColor" /> : <Icons.Play size={20} fill="currentColor" />}
@@ -118,7 +134,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ onExpand, variant = 'dock'
         <button 
           onClick={(e) => { e.stopPropagation(); nextSong(); }}
           aria-label="播放下一首"
-          className="liquid-glass-interactive p-2 transition active:scale-95"
+          className={`liquid-glass-interactive transition active:scale-95 ${isCompactDock ? 'p-1.5' : 'p-2'}`}
           data-liquid-adaptive="true"
         >
           <Icons.SkipForward size={20} fill="currentColor" />

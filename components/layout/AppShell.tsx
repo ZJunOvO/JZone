@@ -3,7 +3,12 @@ import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
 import { PlayerBar } from '../PlayerBar';
 import { PwaInstallPrompt } from '../PwaInstallPrompt';
 import { listenModalPresence } from '../../modalPresence';
-import { getLiquidGlassCssVars, useLiquidGlassSettings } from '../../utils/liquidGlassSettings';
+import {
+  BOTTOM_DOCK_GEOMETRY,
+  getBottomDockMiniBottom,
+  getLiquidGlassCssVars,
+  useLiquidGlassSettings,
+} from '../../utils/liquidGlassSettings';
 import { useAutoFullscreen } from '../../hooks/useAutoFullscreen';
 import { useAppRoute } from '../../hooks/useAppRoute';
 import { BottomNavigation } from '../navigation/BottomNavigation';
@@ -156,8 +161,20 @@ export const AppShell: React.FC = () => {
   }, [activeTab, profileMounted]);
 
   const capturePlayerOrigin = React.useCallback((): PlayerTransitionOrigin => {
-    const player = document.querySelector<HTMLElement>('[data-testid="mini-player"]');
-    if (!player) return getDefaultPlayerOrigin();
+    const player = miniPlayerLayerRef.current?.querySelector<HTMLElement>('[data-testid="mini-player"]');
+    if (!player) {
+      const layerRect = miniPlayerLayerRef.current?.getBoundingClientRect();
+      if (layerRect && layerRect.width > 0) {
+        return {
+          left: layerRect.left,
+          top: Math.max(0, layerRect.bottom - BOTTOM_DOCK_GEOMETRY.miniHeight),
+          width: layerRect.width,
+          height: BOTTOM_DOCK_GEOMETRY.miniHeight,
+          borderRadius: isCompactBottomTabLayout ? BOTTOM_DOCK_GEOMETRY.compactMiniRadius : 18,
+        };
+      }
+      return getDefaultPlayerOrigin();
+    }
     const rect = player.getBoundingClientRect();
     return {
       left: rect.left,
@@ -166,12 +183,12 @@ export const AppShell: React.FC = () => {
       height: rect.height,
       borderRadius: Number.parseFloat(getComputedStyle(player).borderRadius) || 18,
     };
-  }, []);
+  }, [isCompactBottomTabLayout]);
 
   const capturePlayerSharedOrigin = React.useCallback((fallbackOrigin: PlayerTransitionOrigin): PlayerSharedOrigin => {
     const fallback = getDefaultPlayerSharedOrigin(fallbackOrigin);
     const readRect = (name: keyof PlayerSharedOrigin) => {
-      const element = document.querySelector<HTMLElement>(`[data-player-shared-source="${name}"]`);
+      const element = miniPlayerLayerRef.current?.querySelector<HTMLElement>(`[data-player-shared-source="${name}"]`);
       if (!element) return fallback[name];
       const rect = element.getBoundingClientRect();
       return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
@@ -281,17 +298,20 @@ export const AppShell: React.FC = () => {
       return;
     }
     playContext([song.id], song.id);
-    const origin = getDefaultPlayerOrigin();
-    setPlayerTransitionOrigin(origin);
-    setPlayerSharedOrigin(getDefaultPlayerSharedOrigin(origin));
-    setPlayerTransitionPhase('opening');
-    setIsPlayerOpen(true);
-    if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
-    playerTransitionTimerRef.current = window.setTimeout(
-      () => setPlayerTransitionPhase('open'),
-      PLAYER_SHELL_DURATION * 1000 + 80,
-    );
-  }, [playContext, songs]);
+    const frame = window.requestAnimationFrame(() => {
+      const origin = capturePlayerOrigin();
+      setPlayerTransitionOrigin(origin);
+      setPlayerSharedOrigin(capturePlayerSharedOrigin(origin));
+      setPlayerTransitionPhase('opening');
+      setIsPlayerOpen(true);
+      if (playerTransitionTimerRef.current) window.clearTimeout(playerTransitionTimerRef.current);
+      playerTransitionTimerRef.current = window.setTimeout(
+        () => setPlayerTransitionPhase('open'),
+        PLAYER_SHELL_DURATION * 1000 + 80,
+      );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [capturePlayerOrigin, capturePlayerSharedOrigin, playContext, songs]);
 
   const playListeningRecapSong = React.useCallback((songId: string) => {
     if (!songId) return;
@@ -380,19 +400,21 @@ export const AppShell: React.FC = () => {
                   left: '12px',
                   right: '12px',
                   width: 'min(320px, calc(100% - 24px))',
+                  x: '0%',
                   opacity: 1,
                 }
               : {
                   top: 'auto',
                   // 当前导航顶部与播放器底部保持 12px，兼顾触达密度和 SVG 滤镜采样稳定性。
                   bottom: isListeningRecap
-                    ? 'calc(env(safe-area-inset-bottom) + 14px)'
-                    : isCompactBottomTabLayout
-                      ? '111px'
-                      : '92px',
-                  left: '12px',
-                  right: '12px',
-                  width: 'min(400px, calc(100% - 24px))',
+                    ? `calc(env(safe-area-inset-bottom) + ${BOTTOM_DOCK_GEOMETRY.wideNavBottom}px)`
+                    : `calc(env(safe-area-inset-bottom) + ${getBottomDockMiniBottom(liquidGlassSettings.bottomTabLayout)}px)`,
+                  left: isCompactBottomTabLayout && !isListeningRecap ? '50%' : `${BOTTOM_DOCK_GEOMETRY.viewportGutter}px`,
+                  right: isCompactBottomTabLayout && !isListeningRecap ? 'auto' : `${BOTTOM_DOCK_GEOMETRY.viewportGutter}px`,
+                  width: isCompactBottomTabLayout && !isListeningRecap
+                    ? `min(${BOTTOM_DOCK_GEOMETRY.compactMaxWidth}px, calc(100% - ${BOTTOM_DOCK_GEOMETRY.viewportGutter * 2}px))`
+                    : `min(${BOTTOM_DOCK_GEOMETRY.wideMaxWidth}px, calc(100% - ${BOTTOM_DOCK_GEOMETRY.viewportGutter * 2}px))`,
+                  x: isCompactBottomTabLayout && !isListeningRecap ? '-50%' : '0%',
                   opacity: 1,
                 }
           }
@@ -400,12 +422,20 @@ export const AppShell: React.FC = () => {
             top: { type: 'spring', damping: 26, stiffness: 320 },
             bottom: { type: 'spring', damping: 26, stiffness: 320 },
             width: { type: 'spring', damping: 26, stiffness: 320 },
+            x: { duration: 0.3, ease: [0.22, 0.74, 0.22, 1] },
             opacity: { duration: 0.12 },
           }}
           className="fixed z-[160] mx-auto"
           data-layout-mode={liquidGlassSettings.bottomTabLayout}
+          data-player-transition-origin={playerTransitionOrigin ? JSON.stringify(playerTransitionOrigin) : undefined}
+          data-player-shared-origin={playerSharedOrigin ? JSON.stringify(playerSharedOrigin) : undefined}
         >
-        <PlayerBar onExpand={openPlayer} variant={isModalActive ? 'island' : 'dock'} settlePulse={miniSettlePulse} />
+        <PlayerBar
+          onExpand={openPlayer}
+          variant={isModalActive ? 'island' : 'dock'}
+          settlePulse={miniSettlePulse}
+          compact={isCompactBottomTabLayout && !isListeningRecap}
+        />
       </motion.div>
 
       {!isListeningRecap && (

@@ -1,11 +1,17 @@
 import {
   AlertCircle,
 } from 'lucide-react';
-import type { KeyboardEvent, MouseEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type MouseEvent } from 'react';
 import { Icons } from '../../Icons';
 import { formatLyricsTime } from '../../../hooks/useLyricsDraft';
 import { formatClock, formatOffset } from './lyricsEditorUtils';
-import type { LyricsTimingPanelProps } from './types';
+import type { LyricsEditorLineRole, LyricsTimingPanelProps } from './types';
+
+const roleOptions: ReadonlyArray<{ value: LyricsEditorLineRole; label: string }> = [
+  { value: 'lead', label: '主唱' },
+  { value: 'duet', label: '对唱' },
+  { value: 'background', label: '和声' },
+];
 
 export const LyricsTimingPanel = ({
   lines,
@@ -22,6 +28,7 @@ export const LyricsTimingPanel = ({
   validationVisible,
   validationIssues,
   audioError,
+  focusRequest,
   onPrevious,
   onNext,
   onMarkCurrentLine,
@@ -31,11 +38,24 @@ export const LyricsTimingPanel = ({
   onSeekLine,
   onSelectLine,
   onLineTextChange,
+  onLineRoleChange,
   onClearLineTime,
   onRemoveLine,
   onAddLine,
 }: LyricsTimingPanelProps) => {
   const selectedLineNumber = lines.length > 0 ? Math.min(selectedIndex, lines.length - 1) + 1 : 0;
+  const lineInputRefs = useRef(new Map<number, HTMLTextAreaElement>());
+
+  useEffect(() => {
+    if (!focusRequest) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const input = lineInputRefs.current.get(focusRequest.index);
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusRequest, lines.length]);
 
   const handleLineClick = (event: MouseEvent<HTMLDivElement>, index: number) => {
     const target = event.target as HTMLElement;
@@ -56,8 +76,8 @@ export const LyricsTimingPanel = ({
     <section className="border-b border-white/10 py-4" aria-labelledby="lyrics-editor-timing-title">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 id="lyrics-editor-timing-title" className="text-sm font-extrabold text-white">行级校时</h3>
-          <p className="mt-1 text-xs leading-5 text-white/45">选择一行，播放到合适位置后标记；普通 LRC 不会生成逐字时间。</p>
+          <h3 id="lyrics-editor-timing-title" className="text-sm font-extrabold text-white">逐行标记</h3>
+          <p className="mt-1 text-xs leading-5 text-white/45">标记后会暂停，并前往下一行。</p>
         </div>
         <span className="shrink-0 text-xs font-bold text-white/45">第 {selectedLineNumber || '--'} 行</span>
       </div>
@@ -80,7 +100,7 @@ export const LyricsTimingPanel = ({
           className="inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-red-400 px-3 text-sm font-black text-black shadow-[0_0_24px_rgba(248,113,113,0.2)] transition-colors hover:bg-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/80 active:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
           data-testid="lyrics-editor-mark"
         >
-          {effectivePlaying ? <Icons.Pause size={17} aria-hidden="true" /> : <Icons.Play size={17} aria-hidden="true" />}
+          <Icons.Check size={17} aria-hidden="true" />
           标记当前行 · {formatClock(effectiveCurrentTime)}
         </button>
         <button
@@ -119,21 +139,26 @@ export const LyricsTimingPanel = ({
         </button>
       </div>
 
-      <div className="mt-4 flex items-center gap-3 border-t border-white/10 pt-3">
-        <label htmlFor="lyrics-editor-offset" className="shrink-0 text-sm font-bold text-white/65">全局偏移</label>
-        <input
-          id="lyrics-editor-offset"
-          data-testid="lyrics-editor-offset"
-          type="number"
-          step="10"
-          value={offsetMs}
-          onChange={onOffsetChange}
-          className="min-h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.045] px-3 text-base text-white outline-none transition-colors focus:border-red-300/70 focus:ring-2 focus:ring-red-300/20"
-          aria-describedby="lyrics-editor-offset-help"
-        />
-        <span className="shrink-0 text-xs font-bold text-white/45">{formatOffset(offsetMs)}</span>
-      </div>
-      <p id="lyrics-editor-offset-help" className="mt-2 text-xs leading-5 text-white/40">正数让歌词延后，负数让歌词提前；保存时会作为独立偏移量提交。</p>
+      <details className="group mt-3 border-t border-white/10 pt-2" data-testid="lyrics-editor-advanced-timing">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center rounded-xl px-2 text-sm font-bold text-white/55 outline-none transition-colors hover:bg-white/[0.05] hover:text-white focus-visible:ring-2 focus-visible:ring-red-300/60 [&::-webkit-details-marker]:hidden">
+          更多校时选项
+          <span className="ml-auto text-xs text-white/35">{formatOffset(offsetMs)}</span>
+        </summary>
+        <div className="mt-2 flex items-center gap-3 px-1">
+          <label htmlFor="lyrics-editor-offset" className="shrink-0 text-sm font-bold text-white/65">歌词偏移</label>
+          <input
+            id="lyrics-editor-offset"
+            data-testid="lyrics-editor-offset"
+            type="number"
+            step="10"
+            value={offsetMs}
+            onChange={onOffsetChange}
+            className="min-h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.045] px-3 text-base text-white outline-none transition-colors focus:border-red-300/70 focus:ring-2 focus:ring-red-300/20"
+            aria-describedby="lyrics-editor-offset-help"
+          />
+        </div>
+        <p id="lyrics-editor-offset-help" className="mt-2 px-1 text-xs leading-5 text-white/40">正数延后，负数提前。</p>
+      </details>
 
       {audioError ? (
         <p className="mt-3 flex items-start gap-2 text-sm leading-6 text-amber-200" role="alert" data-testid="lyrics-editor-audio-error">
@@ -141,7 +166,7 @@ export const LyricsTimingPanel = ({
           {audioError}
         </p>
       ) : !canControlPlayback ? (
-        <p className="mt-3 text-xs leading-5 text-white/40">传入 audioUrl 或 audioControls 后即可播放、暂停和打点。</p>
+        <p className="mt-3 text-xs leading-5 text-white/40">当前歌曲暂时无法试听，仍可继续编辑。</p>
       ) : null}
 
       {validationVisible && validationIssues.length > 0 ? (
@@ -165,6 +190,7 @@ export const LyricsTimingPanel = ({
         ) : lines.map((line, index) => {
           const isSelected = index === selectedIndex;
           const isPlaybackActive = index === activePlaybackIndex;
+          const lineRole: LyricsEditorLineRole = line.isBackground ? 'background' : line.isDuet ? 'duet' : 'lead';
           const effectiveLineTime = line.startTimeMs === null ? null : line.startTimeMs + offsetMs;
           return (
             <div
@@ -177,7 +203,7 @@ export const LyricsTimingPanel = ({
               tabIndex={0}
               onClick={(event) => handleLineClick(event, index)}
               onKeyDown={(event) => handleLineKeyDown(event, index)}
-              className={`grid grid-cols-[64px_minmax(0,1fr)_auto] gap-2 border-t px-1 py-3 outline-none transition-colors focus-within:border-red-300/50 focus-visible:border-red-300/50 focus-visible:ring-2 focus-visible:ring-red-300/30 ${isSelected ? 'border-red-300/60 bg-red-300/[0.06]' : isPlaybackActive ? 'border-cyan-200/40 bg-cyan-200/[0.04]' : 'border-white/10'}`}
+              className={`grid grid-cols-[56px_minmax(0,1fr)] gap-2 border-t px-1 py-3 outline-none transition-colors focus-within:border-red-300/50 focus-visible:border-red-300/50 focus-visible:ring-2 focus-visible:ring-red-300/30 ${isSelected ? 'border-red-300/60 bg-red-300/[0.06]' : isPlaybackActive ? 'border-cyan-200/40 bg-cyan-200/[0.04]' : 'border-white/10'}`}
             >
               <button
                 type="button"
@@ -189,19 +215,45 @@ export const LyricsTimingPanel = ({
                 <span>{line.startTimeMs === null ? '--:--.--' : formatLyricsTime(line.startTimeMs)}</span>
                 <span className="mt-1 text-[10px] font-semibold text-white/30">{isPlaybackActive ? '播放中' : isSelected ? '待编辑' : `第 ${index + 1} 行`}</span>
               </button>
-              <label className="min-w-0">
-                <span className="sr-only">第 {index + 1} 行歌词</span>
-                <textarea
-                  value={line.text}
-                  rows={1}
-                  onChange={(event) => onLineTextChange(index, event.target.value)}
-                  onClick={(event) => event.stopPropagation()}
-                  onFocus={() => onSelectLine(index)}
-                  className="min-h-11 w-full resize-y rounded-lg border border-transparent bg-transparent px-2 py-2 text-base leading-7 text-white outline-none transition-colors placeholder:text-white/25 focus:border-white/20 focus:bg-white/[0.04]"
-                  placeholder="输入这一行歌词"
-                />
-              </label>
-              <div className="flex items-start gap-1">
+              <div className="min-w-0">
+                <label className="block min-w-0">
+                  <span className="sr-only">第 {index + 1} 行歌词</span>
+                  <textarea
+                    ref={(element) => {
+                      if (element) lineInputRefs.current.set(index, element);
+                      else lineInputRefs.current.delete(index);
+                    }}
+                    value={line.text}
+                    rows={1}
+                    data-testid={`lyrics-editor-line-input-${index}`}
+                    onChange={(event) => onLineTextChange(index, event.target.value)}
+                    onClick={(event) => event.stopPropagation()}
+                    onFocus={() => onSelectLine(index)}
+                    className="min-h-11 w-full resize-y rounded-lg border border-transparent bg-transparent px-2 py-2 text-base leading-7 text-white outline-none transition-colors placeholder:text-white/25 focus:border-white/20 focus:bg-white/[0.04]"
+                    placeholder="输入这一行歌词"
+                  />
+                </label>
+                <div className="mt-2 grid grid-cols-3 gap-1" role="group" aria-label={`第 ${index + 1} 行演唱角色`}>
+                  {roleOptions.map((option) => {
+                    const selected = option.value === lineRole;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={selected}
+                        data-testid={`lyrics-editor-line-role-${index}-${option.value}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onLineRoleChange(index, option.value);
+                        }}
+                        className={`min-h-11 cursor-pointer rounded-lg px-1 text-xs font-extrabold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 ${selected ? 'bg-white text-black' : 'border border-white/10 text-white/50 hover:border-white/25 hover:bg-white/[0.06] hover:text-white'}`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-1 flex justify-end gap-1">
                 <button
                   type="button"
                   disabled={line.startTimeMs === null || saving}
@@ -228,6 +280,7 @@ export const LyricsTimingPanel = ({
                 >
                   <Icons.Trash size={16} aria-hidden="true" />
                 </button>
+                </div>
               </div>
             </div>
           );

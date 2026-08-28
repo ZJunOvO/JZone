@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Icons } from '../Icons';
 import {
+  BOTTOM_DOCK_GEOMETRY,
   DEFAULT_LIQUID_GLASS_SETTINGS,
   getLiquidGlassCssVars,
   type LiquidGlassLayoutMode,
@@ -16,9 +17,6 @@ interface BottomNavigationProps {
   profileAvatarUrl?: string;
 }
 
-const WIDE_NAV_MAX_WIDTH = 400;
-const COMPACT_NAV_WIDTH = 240;
-const NAV_VIEWPORT_GUTTER = 12;
 const JZONE_RED = { r: 239, g: 68, b: 68 };
 const ICON_WHITE = { r: 255, g: 255, b: 255 };
 const EMPTY_LENS_MAP: LiquidGlassDisplacementMap = { href: '', scale: 0 };
@@ -36,9 +34,11 @@ const getDragIconColor = (pointerX: number, tabCenterX: number, itemWidth: numbe
 };
 
 const getInitialNavWidth = (bottomTabLayout: LiquidGlassLayoutMode) => {
-  const maxWidth = bottomTabLayout === 'compact' ? COMPACT_NAV_WIDTH : WIDE_NAV_MAX_WIDTH;
+  const maxWidth = bottomTabLayout === 'compact'
+    ? BOTTOM_DOCK_GEOMETRY.compactMaxWidth
+    : BOTTOM_DOCK_GEOMETRY.wideMaxWidth;
   if (typeof window === 'undefined') return maxWidth;
-  return Math.min(maxWidth, Math.max(1, window.innerWidth - NAV_VIEWPORT_GUTTER * 2));
+  return Math.min(maxWidth, Math.max(1, window.innerWidth - BOTTOM_DOCK_GEOMETRY.viewportGutter * 2));
 };
 
 export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, setTab, profileAvatarUrl }) => {
@@ -93,7 +93,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
   const renderedLensWidth = isLensExpanded ? lensExpandedWidth : lensCompactWidth;
   const renderedLensHeight = isLensExpanded ? 72 : 62;
   const renderedLensTop = isLensExpanded ? -3 : 2;
-  const navHeight = 66;
+  const navHeight = BOTTOM_DOCK_GEOMETRY.navHeight;
   const roundedNavWidth = Math.max(1, Math.round(navWidth));
   const roundedLensWidth = Math.max(1, Math.round(renderedLensWidth));
   const roundedLensHeight = Math.max(1, Math.round(renderedLensHeight));
@@ -306,10 +306,12 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ currentTab, 
 
   return (
     <div
-      className={`fixed left-1/2 z-30 h-[66px] -translate-x-1/2 transition-[width,bottom] duration-300 ease-out ${
-        isCompactLayout ? 'w-[min(240px,calc(100vw-24px))]' : 'w-[min(400px,calc(100vw-24px))]'
-      }`}
-      style={{ ...navDynamicVars, bottom: `calc(env(safe-area-inset-bottom) + ${isCompactLayout ? 33 : 14}px)` }}
+      className="fixed left-1/2 z-30 h-[66px] -translate-x-1/2 transition-[width,bottom] duration-300 ease-out"
+      style={{
+        ...navDynamicVars,
+        width: `min(${isCompactLayout ? BOTTOM_DOCK_GEOMETRY.compactMaxWidth : BOTTOM_DOCK_GEOMETRY.wideMaxWidth}px, calc(100vw - ${BOTTOM_DOCK_GEOMETRY.viewportGutter * 2}px))`,
+        bottom: `calc(env(safe-area-inset-bottom) + ${isCompactLayout ? BOTTOM_DOCK_GEOMETRY.compactNavBottom : BOTTOM_DOCK_GEOMETRY.wideNavBottom}px)`,
+      }}
       data-liquid-control-root
       data-layout-mode={bottomTabLayout}
       data-testid="bottom-nav-layer"

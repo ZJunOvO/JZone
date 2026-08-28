@@ -33,7 +33,6 @@ import {
   createEditorLine,
   createNormalizedContent,
   formatClock,
-  formatLabels,
   formatOffset,
   toLineLevelLines,
   toSafeSeconds,
@@ -42,11 +41,18 @@ import type {
   LastMark,
   NativeAudioState,
   LyricsEditorAudioAction,
+  LyricsEditorFocusRequest,
+  LyricsEditorLineRole,
   LyricsEditorProps,
   LyricsEditorSavePayload,
   LyricsEditorSaveSource,
 } from './types';
 import { Icons } from '../../Icons';
+
+const toVisibleSourceText = (value: string): string => value
+  .split(/\r?\n/)
+  .filter((line) => !/^\s*\[jzone:role:\d+:(?:lead|duet|background)\]\s*$/i.test(line))
+  .join('\n');
 
 export const LyricsEditor: FC<LyricsEditorProps> = ({
   initialLyrics = null,
@@ -87,9 +93,10 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     clearDraft,
   } = useLyricsDraft({ initialLyrics, initialOffsetMs, songId, draftKey });
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
-  const [sourceText, setSourceText] = useState(content);
+  const [sourceText, setSourceText] = useState(() => toVisibleSourceText(content));
   const [sourceKind, setSourceKind] = useState<LyricsEditorSaveSource>('editor');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [focusRequest, setFocusRequest] = useState<LyricsEditorFocusRequest | null>(null);
   const [lastMark, setLastMark] = useState<LastMark | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
@@ -103,6 +110,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
   const [audioError, setAudioError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileReadSequenceRef = useRef(0);
+  const focusRequestIdRef = useRef(0);
 
   const controlCurrentTime = audioControls?.currentTime ?? currentTime;
   const controlDuration = audioControls?.duration ?? duration;
@@ -125,7 +133,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
   const canSeek = Boolean(controlOnSeek || audioUrl);
 
   useEffect(() => {
-    setSourceText(content);
+    setSourceText(toVisibleSourceText(content));
   }, [content]);
 
   useEffect(() => {
@@ -197,6 +205,21 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     return true;
   }, []);
 
+  const pausePlayback = useCallback(() => {
+    setAudioError(null);
+    if (controlOnPause && invokeAudioAction(controlOnPause, '暂停试听失败。')) return;
+    if (effectivePlaying && controlOnTogglePlay && invokeAudioAction(controlOnTogglePlay, '暂停试听失败。')) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    setNativeAudio((previous) => ({ ...previous, playing: false }));
+  }, [controlOnPause, controlOnTogglePlay, effectivePlaying, invokeAudioAction]);
+
+  const selectAndFocusLine = useCallback((index: number) => {
+    setSelectedIndex(index);
+    setFocusRequest({ id: ++focusRequestIdRef.current, index });
+  }, []);
+
   const seekTo = useCallback((timeSeconds: number) => {
     const nextTime = clampSeconds(timeSeconds, effectiveDuration);
     if (controlOnSeek) {
@@ -241,7 +264,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
         return;
       }
     }
-    setAudioError('请传入 audioUrl 或播放控制回调后再试听。');
+    setAudioError('当前歌曲暂时无法试听。');
   }, [controlOnPause, controlOnPlay, controlOnTogglePlay, effectivePlaying, invokeAudioAction]);
 
   const handleAudioTimeUpdate = useCallback((event: SyntheticEvent<HTMLAudioElement>) => {
@@ -335,14 +358,29 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
 
   const addLine = useCallback(() => {
     const nextLines = [...lines, createEditorLine(lines.length)];
-    setSelectedIndex(nextLines.length - 1);
+    pausePlayback();
+    selectAndFocusLine(nextLines.length - 1);
     commitLines(nextLines);
-  }, [commitLines, lines]);
+  }, [commitLines, lines, pausePlayback, selectAndFocusLine]);
 
   const updateLineText = useCallback((index: number, text: string) => {
     const nextLines = lines.map((line, lineIndex) => (
       lineIndex === index ? { ...line, text } : line
     ));
+    commitLines(nextLines);
+  }, [commitLines, lines]);
+
+  const updateLineRole = useCallback((index: number, role: LyricsEditorLineRole) => {
+    const nextLines = lines.map((line, lineIndex) => (
+      lineIndex === index
+        ? {
+            ...line,
+            isDuet: role === 'duet',
+            isBackground: role === 'background',
+          }
+        : line
+    ));
+    setSelectedIndex(index);
     commitLines(nextLines);
   }, [commitLines, lines]);
 
@@ -375,18 +413,19 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     }
     const currentTimeMs = Math.round(effectiveCurrentTime * 1_000);
     const rawTimeMs = Math.max(0, currentTimeMs - offsetMs);
-    const nextLines = lines.map((line, lineIndex) => (
+    let nextLines = lines.map((line, lineIndex) => (
       lineIndex === index
         ? { ...line, startTimeMs: rawTimeMs, endTimeMs: null }
         : line
     ));
+    if (index === lines.length - 1) {
+      nextLines = [...nextLines, createEditorLine(nextLines.length)];
+    }
     setLastMark({ index, previousTimeMs: selectedLine.startTimeMs });
     commitLines(nextLines, 'lrc');
-    const nextUnmarkedIndex = nextLines.findIndex((line, lineIndex) => (
-      lineIndex > index && line.text.trim().length > 0 && line.startTimeMs === null
-    ));
-    setSelectedIndex(nextUnmarkedIndex >= 0 ? nextUnmarkedIndex : Math.min(index + 1, nextLines.length - 1));
-  }, [commitLines, effectiveCurrentTime, lines, offsetMs, selectedIndex]);
+    pausePlayback();
+    selectAndFocusLine(index + 1);
+  }, [commitLines, effectiveCurrentTime, lines, offsetMs, pausePlayback, selectAndFocusLine, selectedIndex]);
 
   const undoLastMark = useCallback(() => {
     if (!lastMark || !lines[lastMark.index]) return;
@@ -402,8 +441,9 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
 
   const moveSelection = useCallback((direction: -1 | 1) => {
     if (lines.length === 0) return;
-    setSelectedIndex((previous) => Math.max(0, Math.min(lines.length - 1, previous + direction)));
-  }, [lines.length]);
+    const nextIndex = Math.max(0, Math.min(lines.length - 1, selectedIndex + direction));
+    selectAndFocusLine(nextIndex);
+  }, [lines.length, selectAndFocusLine, selectedIndex]);
 
   const seekLine = useCallback((index: number) => {
     const line = lines[index];
@@ -483,15 +523,13 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
         />
       ) : null}
 
-      <header className="flex min-w-0 items-start justify-between gap-3 border-b border-white/10 px-1 pb-4">
+      <header className="flex min-w-0 items-center justify-between gap-3 border-b border-white/10 px-1 pb-3">
         <div className="min-w-0">
-          <p className="text-xs font-bold tracking-[0.16em] text-white/45">LYRICS WORKSPACE</p>
-          <h2 className="mt-1 truncate text-xl font-black text-white">歌词制作</h2>
-          <p className="mt-1 text-sm leading-6 text-white/50">导入、逐行打点，再切换到正式预览。</p>
+          <h2 className="truncate text-xl font-black text-white">歌词制作</h2>
+          <p className="mt-1 text-sm leading-6 text-white/50">播放、标记，逐句完成。</p>
         </div>
         <div className="shrink-0 text-right text-xs text-white/45" aria-live="polite" data-testid="lyrics-editor-draft-status">
           <span className="block">{storageLabel}</span>
-          <span className="mt-1 block">{formatLabels[format]}</span>
         </div>
       </header>
 
@@ -553,6 +591,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           validationVisible={validationVisible}
           validationIssues={validation.issues}
           audioError={audioError}
+          focusRequest={focusRequest}
           onPrevious={() => moveSelection(-1)}
           onNext={() => moveSelection(1)}
           onMarkCurrentLine={markCurrentLine}
@@ -562,6 +601,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           onSeekLine={seekLine}
           onSelectLine={setSelectedIndex}
           onLineTextChange={updateLineText}
+          onLineRoleChange={updateLineRole}
           onClearLineTime={clearLineTime}
           onRemoveLine={removeLine}
           onAddLine={addLine}
@@ -570,8 +610,8 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
         <section className="border-b border-white/10 py-4" aria-labelledby="lyrics-editor-preview-title">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 id="lyrics-editor-preview-title" className="text-sm font-extrabold text-white">正式预览</h3>
-              <p className="mt-1 text-xs leading-5 text-white/45">此处复用 LyricsRenderer，偏移量已应用到试听时间。</p>
+              <h3 id="lyrics-editor-preview-title" className="text-sm font-extrabold text-white">效果预览</h3>
+              <p className="mt-1 text-xs leading-5 text-white/45">检查歌词排版与播放同步。</p>
             </div>
             <span className="shrink-0 text-xs font-bold text-white/45">{formatOffset(offsetMs)}</span>
           </div>

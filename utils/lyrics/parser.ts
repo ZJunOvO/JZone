@@ -12,7 +12,42 @@ import type {
 
 const LRC_TIMESTAMP_PATTERN = /^\s*\[(?:\d+:)*\d+(?:\.\d+)?\]/m;
 const TTML_ROOT_PATTERN = /<tt(?:\s|>)/i;
+const JZONE_LINE_ROLE_PATTERN = /^\s*\[jzone:role:(\d+):(lead|duet|background)\]\s*$/i;
 const MAX_TIME_MS = Number.MAX_SAFE_INTEGER;
+
+type PersistedLyricsRole = 'lead' | 'duet' | 'background';
+
+const extractJzoneLineRoles = (content: string): {
+  content: string;
+  roles: Map<number, PersistedLyricsRole>;
+} => {
+  const roles = new Map<number, PersistedLyricsRole>();
+  const lyricLines: string[] = [];
+  content.split(/\r?\n/).forEach((line) => {
+    const match = line.match(JZONE_LINE_ROLE_PATTERN);
+    if (!match) {
+      lyricLines.push(line);
+      return;
+    }
+    const lineIndex = Number.parseInt(match[1], 10);
+    const role = match[2].toLowerCase() as PersistedLyricsRole;
+    if (Number.isSafeInteger(lineIndex) && lineIndex >= 0) roles.set(lineIndex, role);
+  });
+  return { content: lyricLines.join('\n'), roles };
+};
+
+const applyJzoneLineRoles = (
+  lines: readonly LyricsLine[],
+  roles: ReadonlyMap<number, PersistedLyricsRole>,
+): LyricsLine[] => lines.map((line, index) => {
+  const role = roles.get(index);
+  if (!role) return line;
+  return {
+    ...line,
+    isDuet: role === 'duet',
+    isBackground: role === 'background',
+  };
+});
 
 export class LyricsParseError extends Error {
   readonly format: LyricsFormat;
@@ -157,19 +192,30 @@ const parseTtmlLyrics = (content: string): ParsedLyrics => {
 export function parseLyrics(input: LyricsInput, format?: LyricsFormat): ParsedLyrics {
   const content = getInputContent(input).replace(/^\uFEFF/, '');
   const resolvedFormat = format ?? getInputFormat(input) ?? detectLyricsFormat(content);
+  const extracted = extractJzoneLineRoles(content);
+  let parsedLyrics: ParsedLyrics;
 
   switch (resolvedFormat) {
     case 'plain':
-      return parsePlainLyrics(content);
+      parsedLyrics = parsePlainLyrics(extracted.content);
+      break;
     case 'lrc':
-      return parseLrcLyrics(content);
+      parsedLyrics = parseLrcLyrics(extracted.content);
+      break;
     case 'ttml':
-      return parseTtmlLyrics(content);
+      parsedLyrics = parseTtmlLyrics(extracted.content);
+      break;
     default: {
       const unreachableFormat: never = resolvedFormat;
       throw new LyricsParseError('plain', `不支持的歌词格式：${String(unreachableFormat)}。`);
     }
   }
+
+  return {
+    ...parsedLyrics,
+    rawContent: content,
+    lines: applyJzoneLineRoles(parsedLyrics.lines, extracted.roles),
+  };
 }
 
 const getLineEndTime = (

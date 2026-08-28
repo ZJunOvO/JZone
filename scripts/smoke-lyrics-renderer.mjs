@@ -32,6 +32,58 @@ const ttmlFixture = [
   '</p></div></body></tt>',
 ].join('');
 
+const roleLyricsFixture = {
+  format: 'ttml',
+  timing: 'word',
+  rawContent: '<tt>lyrics renderer role smoke</tt>',
+  lines: [
+    {
+      id: 'lead-line',
+      text: '左侧主唱',
+      startTimeMs: 8_000,
+      endTimeMs: 11_500,
+      words: [{ text: '左侧主唱', startTimeMs: 8_000, endTimeMs: 11_500 }],
+      translatedText: '',
+      romanizedText: '',
+      isBackground: false,
+      isDuet: false,
+    },
+    {
+      id: 'lead-background',
+      text: '左侧和声',
+      startTimeMs: 8_100,
+      endTimeMs: 11_500,
+      words: [{ text: '左侧和声', startTimeMs: 8_100, endTimeMs: 11_500 }],
+      translatedText: '',
+      romanizedText: '',
+      isBackground: true,
+      isDuet: false,
+    },
+    {
+      id: 'duet-line',
+      text: '右侧对唱',
+      startTimeMs: 12_000,
+      endTimeMs: 15_000,
+      words: [{ text: '右侧对唱', startTimeMs: 12_000, endTimeMs: 15_000 }],
+      translatedText: '',
+      romanizedText: '',
+      isBackground: false,
+      isDuet: true,
+    },
+    {
+      id: 'duet-background',
+      text: '右侧和声',
+      startTimeMs: 12_100,
+      endTimeMs: 15_000,
+      words: [{ text: '右侧和声', startTimeMs: 12_100, endTimeMs: 15_000 }],
+      translatedText: '',
+      romanizedText: '',
+      isBackground: true,
+      isDuet: true,
+    },
+  ],
+};
+
 try {
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => Boolean(document.querySelector('#root')), null, { timeout: 10_000 });
@@ -92,7 +144,7 @@ try {
   });
   assert.equal(parsed.malformedError, true, '非法 TTML 必须返回统一解析错误');
 
-  const rendered = await evaluateWithReloadRetry(async (fixture) => {
+  const rendered = await evaluateWithReloadRetry(async ({ fixture, roleLyrics }) => {
     const resources = performance.getEntriesByType('resource').map((entry) => entry.name);
     const reactUrl = resources.find((url) => /\/react\.js(?:\?|$)/.test(url));
     const reactDomUrl = resources.find((url) => /\/react-dom_client\.js(?:\?|$)/.test(url));
@@ -103,37 +155,96 @@ try {
     const React = ReactModule.default ?? ReactModule;
     const ReactDOMClient = ReactDOMClientModule.default ?? ReactDOMClientModule;
     const { LyricsRenderer } = await import('/components/lyrics/LyricsRenderer.tsx');
+    const { toAmllLyricLines } = await import('/utils/lyrics/index.ts');
     const mount = document.createElement('div');
-    mount.style.height = '520px';
+    mount.style.height = '600px';
     document.body.appendChild(mount);
     const seekCalls = [];
     const root = ReactDOMClient.createRoot(mount);
+    const convertedRoles = toAmllLyricLines(roleLyrics, 18_000).map((line) => ({
+      isBG: line.isBG,
+      isDuet: line.isDuet,
+      startTime: line.startTime,
+    }));
 
     root.render(React.createElement(LyricsRenderer, {
-      lyrics: { format: 'lrc', content: '[00:01.00]第一行\n[00:03.50]第二行' },
+      lyrics: roleLyrics,
       currentTime: 2,
-      duration: 5,
+      duration: 18,
       lowPerformance: true,
       onSeek: (time) => seekCalls.push(time),
     }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const lightMode = mount.querySelector('[data-testid="lyrics-renderer"]')?.dataset.lyricsRendererMode;
-    const lightLine = mount.querySelector('[data-testid="lyrics-line-1"] button');
-    lightLine?.click();
+    const lightLead = mount.querySelector('[data-testid="lyrics-line-0"]');
+    const lightLeadBackground = mount.querySelector('[data-testid="lyrics-line-1"]');
+    const lightDuet = mount.querySelector('[data-testid="lyrics-line-2"]');
+    const lightDuetBackground = mount.querySelector('[data-testid="lyrics-line-3"]');
+    const introAtTwoSeconds = mount.querySelector('[data-testid="lyrics-intro-dots"]');
+    const introAtTwoSecondsOpacity = introAtTwoSeconds ? Number(getComputedStyle(introAtTwoSeconds).opacity) : null;
+    const lightLeadFontSize = Number.parseFloat(getComputedStyle(lightLead?.querySelector('span') ?? mount).fontSize);
+    const lightBackgroundFontSize = Number.parseFloat(getComputedStyle(lightLeadBackground?.querySelector('span') ?? mount).fontSize);
+    lightDuet?.querySelector('button')?.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const lightUsesLineTiming = mount.querySelector('[data-testid="lyrics-lightweight"]')?.dataset.lyricsTiming === 'line';
+    const lightUsesWordTiming = mount.querySelector('[data-testid="lyrics-lightweight"]')?.dataset.lyricsTiming === 'word';
     const lightHasNoAmllNodes = !mount.querySelector('.FmKaba_lyricMainLine');
+    const lightRoles = [lightLead, lightLeadBackground, lightDuet, lightDuetBackground].map((line) => ({
+      role: line?.dataset.lyricsRole,
+      direction: line?.dataset.lyricsDirection,
+      textAlign: line ? getComputedStyle(line.querySelector('button, div')).textAlign : null,
+    }));
 
     root.render(React.createElement(LyricsRenderer, {
-      lyrics: { format: 'ttml', content: fixture },
-      currentTime: 0.5,
-      duration: 5,
+      lyrics: roleLyrics,
+      currentTime: 7.65,
+      duration: 18,
+      lowPerformance: true,
+    }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const endingDots = mount.querySelector('[data-testid="lyrics-intro-dots"]');
+    const introNearFirstLine = endingDots ? {
+      state: endingDots.dataset.introState,
+      opacity: Number(getComputedStyle(endingDots).opacity),
+      firstLineTimeMs: Number(endingDots.dataset.firstLineTimeMs),
+      currentTimeMs: Number(endingDots.dataset.currentTimeMs),
+    } : null;
+
+    root.render(React.createElement(LyricsRenderer, {
+      lyrics: roleLyrics,
+      currentTime: 8,
+      duration: 18,
+      lowPerformance: true,
+    }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const introAtFirstLine = Boolean(mount.querySelector('[data-testid="lyrics-intro-dots"]'));
+
+    root.render(React.createElement(LyricsRenderer, {
+      lyrics: roleLyrics,
+      currentTime: 2,
+      duration: 18,
       onSeek: (time) => seekCalls.push(time),
     }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await new Promise((resolve) => setTimeout(resolve, 400));
     const amllMode = mount.querySelector('[data-testid="lyrics-renderer"]')?.dataset.lyricsRendererMode;
     const amllElementPresent = Boolean(mount.querySelector('.amll-lyric-player'));
     const lightModeStillAvailable = Boolean(mount.querySelector('[data-testid="lyrics-lightweight"]'));
+    const amllDuetLines = [...mount.querySelectorAll('.FmKaba_lyricDuetLine')];
+    const amllBackgroundLines = [...mount.querySelectorAll('.FmKaba_lyricBgLine')];
+    const amllBuiltInDots = mount.querySelector('.FmKaba_interludeDots');
+    const amllSemanticState = {
+      duetCount: amllDuetLines.length,
+      backgroundCount: amllBackgroundLines.length,
+      duetLines: amllDuetLines.map((line) => ({ className: line.className, text: line.textContent?.trim() ?? '' })),
+      backgroundLines: amllBackgroundLines.map((line) => ({ className: line.className, text: line.textContent?.trim() ?? '' })),
+      duetTextAlign: amllDuetLines[0] ? getComputedStyle(amllDuetLines[0]).textAlign : null,
+      backgroundFontSize: amllBackgroundLines[0] ? Number.parseFloat(getComputedStyle(amllBackgroundLines[0]).fontSize) : null,
+      leadFontSize: mount.querySelector('.FmKaba_lyricLine:not(.FmKaba_lyricBgLine)')
+        ? Number.parseFloat(getComputedStyle(mount.querySelector('.FmKaba_lyricLine:not(.FmKaba_lyricBgLine)')).fontSize)
+        : null,
+      builtInDotsDisplay: amllBuiltInDots ? getComputedStyle(amllBuiltInDots).display : null,
+      customIntroVisible: Boolean(mount.querySelector('[data-testid="lyrics-intro-dots"]')),
+    };
 
     root.unmount();
     const unmountedChildCount = mount.childElementCount;
@@ -142,24 +253,59 @@ try {
     return {
       skipped: false,
       lightMode,
-      lightUsesLineTiming,
+      lightUsesWordTiming,
       lightHasNoAmllNodes,
+      lightRoles,
+      lightLeadFontSize,
+      lightBackgroundFontSize,
+      introAtTwoSecondsOpacity,
+      introNearFirstLine,
+      introAtFirstLine,
       amllMode,
       amllElementPresent,
       lightModeStillAvailable,
+      amllSemanticState,
+      convertedRoles,
       seekCalls,
       unmountedChildCount,
     };
-  }, ttmlFixture);
+  }, { fixture: ttmlFixture, roleLyrics: roleLyricsFixture });
 
   if (!rendered.skipped) {
     assert.equal(rendered.lightMode, 'lightweight');
-    assert.equal(rendered.lightUsesLineTiming, true, 'LRC 降级渲染必须保持行级时间模型');
+    assert.equal(rendered.lightUsesWordTiming, true, '轻量降级渲染必须保持原歌词时间模型');
     assert.equal(rendered.lightHasNoAmllNodes, true, '轻量降级渲染不能挂载 AMLL 逐字节点');
-    assert.equal(rendered.seekCalls[0], 3.5, '点击 LRC 行必须按行起始时间跳转');
+    assert.equal(rendered.seekCalls[0], 12, '点击右侧对唱行必须按行起始时间跳转');
+    assert.deepEqual(rendered.lightRoles, [
+      { role: 'lead', direction: 'left', textAlign: 'left' },
+      { role: 'background', direction: 'left', textAlign: 'left' },
+      { role: 'duet', direction: 'right', textAlign: 'right' },
+      { role: 'background', direction: 'right', textAlign: 'right' },
+    ]);
+    assert(rendered.lightLeadFontSize > rendered.lightBackgroundFontSize, '轻量模式和声字号必须小于主唱');
+    assert.equal(rendered.introAtTwoSecondsOpacity, 1, '前奏早段三点必须保持可见');
+    assert.deepEqual(rendered.introNearFirstLine, {
+      state: 'ending',
+      opacity: 0.5,
+      firstLineTimeMs: 8_000,
+      currentTimeMs: 7_650,
+    }, '前奏三点必须仅按当前时间与第一句时间进入收尾');
+    assert.equal(rendered.introAtFirstLine, false, '到达第一句有效时间时前奏三点必须结束');
     assert.equal(rendered.amllMode, 'amll');
     assert.equal(rendered.amllElementPresent, true, '正常能力下必须挂载 AMLL 歌词元素');
     assert.equal(rendered.lightModeStillAvailable, false);
+    assert.deepEqual(rendered.convertedRoles, [
+      { isBG: false, isDuet: false, startTime: 8_000 },
+      { isBG: true, isDuet: false, startTime: 8_100 },
+      { isBG: false, isDuet: true, startTime: 12_000 },
+      { isBG: true, isDuet: true, startTime: 12_100 },
+    ], 'AMLL 输入必须完整保留主唱、对唱与和声语义');
+    assert(rendered.amllSemanticState.duetCount >= 1, `AMLL 必须保留对唱方向语义：${JSON.stringify(rendered.amllSemanticState)}`);
+    assert(rendered.amllSemanticState.backgroundCount >= 1, `AMLL 必须保留和声层级语义：${JSON.stringify(rendered.amllSemanticState)}`);
+    assert.equal(rendered.amllSemanticState.duetTextAlign, 'right');
+    assert(rendered.amllSemanticState.leadFontSize > rendered.amllSemanticState.backgroundFontSize, 'AMLL 和声字号必须小于主唱');
+    assert.equal(rendered.amllSemanticState.builtInDotsDisplay, 'none', '必须隐藏 AMLL 自带的非严格间奏提示');
+    assert.equal(rendered.amllSemanticState.customIntroVisible, true, 'AMLL 路径必须复用严格时序的前奏三点');
     assert.equal(rendered.unmountedChildCount, 0, '卸载后歌词根元素必须清空');
   }
 

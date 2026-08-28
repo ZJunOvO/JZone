@@ -536,81 +536,83 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           />
         )}
 
-        {/* Core Cover Area */}
-        <div
-          className="relative flex flex-grow-[2] items-center justify-center py-4"
+        {/* Cover / lyrics shared layout */}
+        <motion.section
+          layout={!reduceMotion}
+          className={`relative grid min-h-0 ${isLyricsViewOpen ? 'flex-1 gap-x-4 gap-y-3' : 'flex-grow-[2] gap-y-3'}`}
+          style={isLyricsViewOpen ? {
+            gridTemplateColumns: '76px minmax(0, 1fr)',
+            gridTemplateRows: '76px minmax(0, 1fr)',
+          } : {
+            gridTemplateColumns: 'minmax(0, 1fr)',
+            gridTemplateRows: 'minmax(0, 1fr) auto',
+          }}
           data-testid="player-cover-area"
           onTouchStart={handleCoverTouchStart}
           onTouchEnd={handleCoverTouchEnd}
           onTouchCancel={() => { lyricsTouchStartRef.current = null; }}
         >
-          <PlayerSharedElement
-            className="w-[96%] max-w-[400px] aspect-square relative transition-all duration-500 ease-out"
-            sourceRect={sharedOrigin.cover}
-            phase={transitionPhase}
-            name="cover"
+          <motion.div
+            layout={!reduceMotion}
+            className={`relative self-center justify-self-center ${isLyricsViewOpen ? 'h-[76px] w-[76px]' : 'aspect-square w-[96%] max-w-[400px]'}`}
+            transition={{ layout: reduceMotion ? { duration: 0 } : { duration: 0.46, ease: [0.22, 0.74, 0.22, 1] } }}
+            data-testid="player-cover-layout"
           >
-            {isLyricsViewOpen ? (
-              <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[14px] border border-white/10 bg-black/35 shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)]" data-testid="player-lyrics-panel">
-                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Icons.Music2 size={15} className="shrink-0 text-white/65" aria-hidden="true" />
-                    <span className="truncate text-sm font-bold text-white/80">歌词</span>
-                  </div>
-                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
-                    {lyricsRow?.format === 'plain' ? '纯文本' : lyricsRow?.format === 'lrc' ? 'LRC' : lyricsRow?.format === 'ttml' ? 'TTML' : '当前歌曲'}
-                  </span>
-                </div>
-                <div className="min-h-0 flex-1">
-                  {lyricsContent}
-                </div>
-              </div>
-            ) : (
-              <>
+            <PlayerSharedElement
+              className="relative h-full w-full"
+              sourceRect={sharedOrigin.cover}
+              phase={transitionPhase}
+              name="cover"
+            >
+              <button
+                type="button"
+                onClick={() => setIsLyricsViewOpen((value) => !value)}
+                className="group relative block h-full w-full cursor-pointer rounded-[14px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80 focus-visible:ring-offset-4 focus-visible:ring-offset-black/40"
+                aria-pressed={isLyricsViewOpen}
+                aria-label={isLyricsViewOpen ? '查看封面' : '查看歌词'}
+                data-testid="player-cover-button"
+              >
                 <div
                   className={`pointer-events-none absolute inset-[7%] translate-y-[8%] rounded-[24px] bg-black/65 transition-[transform,opacity,filter] duration-500 ease-out ${
-                    playerState.isPlaying ? 'scale-100 opacity-[0.55] blur-[32px]' : 'scale-[0.84] opacity-[0.42] blur-[36px]'
+                    isLyricsViewOpen
+                      ? 'scale-[0.82] opacity-25 blur-[16px]'
+                      : playerState.isPlaying
+                        ? 'scale-100 opacity-[0.55] blur-[32px]'
+                        : 'scale-[0.84] opacity-[0.42] blur-[36px]'
                   }`}
                   data-testid="player-cover-soft-shadow"
                   aria-hidden
                 />
                 <PlayerArtworkTransition artworkKey={song.id} direction={artworkDirection}>
                   <div
-                    className={`relative h-full w-full transition-[transform,opacity] duration-500 ease-out ${playerState.isPlaying ? 'scale-100 opacity-100' : 'scale-[0.88] opacity-80'}`}
+                    className={`relative h-full w-full transition-[transform,opacity] duration-500 ease-out ${isLyricsViewOpen || playerState.isPlaying ? 'scale-100 opacity-100' : 'scale-[0.88] opacity-80'}`}
                     data-testid="player-cover-visual"
                   >
                     <img
                       src={song.coverUrl}
-                      alt="Album Cover"
-                      className="h-full w-full rounded-[14px] border border-white/10 object-cover shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)]"
+                      alt=""
+                      className="h-full w-full rounded-[14px] border border-white/10 object-cover shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)] transition-[filter] duration-200 group-hover:brightness-105"
                       data-testid="player-cover-image"
                     />
                   </div>
                 </PlayerArtworkTransition>
-              </>
-            )}
-          </PlayerSharedElement>
-          <button
-            type="button"
-            onClick={() => setIsLyricsViewOpen((value) => !value)}
-            className="absolute bottom-7 left-1/2 z-20 inline-flex min-h-10 -translate-x-1/2 cursor-pointer items-center gap-2 rounded-full border border-white/15 bg-black/45 px-4 text-xs font-bold text-white/80 shadow-lg backdrop-blur-md transition-colors hover:bg-black/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80"
-            aria-pressed={isLyricsViewOpen}
-            aria-label={isLyricsViewOpen ? '查看封面' : '查看歌词'}
-            data-testid="player-cover-lyrics-toggle"
-          >
-            {isLyricsViewOpen ? <Icons.Image size={15} aria-hidden="true" /> : <Icons.Music2 size={15} aria-hidden="true" />}
-            {isLyricsViewOpen ? '查看封面' : '查看歌词'}
-          </button>
-        </div>
+              </button>
+            </PlayerSharedElement>
+          </motion.div>
 
-        {/* Song Info & Action Buttons */}
-        <div className="flex items-center justify-between">
+          {/* Song Info & Action Buttons */}
+          <motion.div
+            layout={!reduceMotion}
+            className="flex min-w-0 items-center justify-between"
+            transition={{ layout: reduceMotion ? { duration: 0 } : { duration: 0.42, ease: [0.22, 0.74, 0.22, 1] } }}
+            data-testid="player-song-info"
+          >
           <div className="flex-1 min-w-0 pr-4">
             <PlayerSharedElement sourceRect={sharedOrigin.title} phase={transitionPhase} name="title">
-              <h2 className="text-2xl font-bold text-white truncate tracking-tight mb-0.5">{song.title}</h2>
+              <h2 className={`${isLyricsViewOpen ? 'text-lg' : 'text-2xl'} truncate font-bold tracking-tight text-white transition-[font-size] duration-300`}>{song.title}</h2>
             </PlayerSharedElement>
             <PlayerSharedElement sourceRect={sharedOrigin.artist} phase={transitionPhase} name="artist">
-              <p className="text-lg text-white/60 font-medium truncate">{song.artist}</p>
+              <p className={`${isLyricsViewOpen ? 'text-sm' : 'text-lg'} truncate font-medium text-white/60 transition-[font-size] duration-300`}>{song.artist}</p>
             </PlayerSharedElement>
           </div>
           <motion.div
@@ -640,15 +642,29 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
               <Icons.MoreHorizontal size={18} strokeWidth={1.5} />
             </button>
           </motion.div>
-        </div>
+          </motion.div>
+
+          {isLyricsViewOpen && (
+            <motion.div
+              className="col-span-2 min-h-0 overflow-hidden"
+              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={reduceMotion ? { duration: 0.1 } : { duration: 0.3, delay: 0.08, ease: 'easeOut' }}
+              data-testid="player-lyrics-panel"
+            >
+              {lyricsContent}
+            </motion.div>
+          )}
+        </motion.section>
 
         {/* 5. Progress Bar - Apple style with Thickening Animation */}
         <motion.div
-          className="mt-8"
+          className={isLyricsViewOpen ? 'mt-3' : 'mt-8'}
           initial={secondaryInitial}
           animate={secondaryAnimate}
           transition={secondaryTransition(2)}
           data-player-transition-part="secondary"
+          data-testid="player-progress"
         >
           {playerState.isAudioLoading ? (
             <SkeletonBlock className="w-full h-1.5 rounded-full" />
