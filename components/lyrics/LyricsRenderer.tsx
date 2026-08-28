@@ -140,10 +140,17 @@ const LyricsIntroDots: React.FC<LyricsIntroDotsProps> = ({
 
   const remainingMs = firstLineTimeMs - currentTimeMs;
   const exitOpacity = Math.min(1, Math.max(0, remainingMs / INTRO_DOTS_FADE_MS));
+  const introProgress = firstLineTimeMs > 0
+    ? Math.min(1, Math.max(0, currentTimeMs / firstLineTimeMs))
+    : 1;
+  const getDotProgress = (start: number) => {
+    const progress = Math.min(1, Math.max(0, (introProgress - start) / 0.18));
+    return progress * progress * (3 - 2 * progress);
+  };
 
   return (
     <div
-      className={`pointer-events-none absolute inset-x-4 top-[38%] z-10 flex ${align === 'right' ? 'justify-end' : 'justify-start'} ${animate ? 'transition-opacity duration-150' : 'transition-none'}`}
+      className={`pointer-events-none absolute inset-x-4 top-[34%] z-10 flex -translate-y-2 ${align === 'right' ? 'justify-end' : 'justify-start'} ${animate ? 'transition-opacity duration-150' : 'transition-none'}`}
       style={{ opacity: exitOpacity }}
       aria-hidden="true"
       data-testid="lyrics-intro-dots"
@@ -153,14 +160,17 @@ const LyricsIntroDots: React.FC<LyricsIntroDotsProps> = ({
       data-intro-state={remainingMs <= INTRO_DOTS_FADE_MS ? 'ending' : 'active'}
     >
       <span className="flex items-center gap-2 rounded-full bg-black/10 px-4 py-3 backdrop-blur-sm">
-        {[0.42, 0.7, 1].map((opacity, index) => (
+        {[0.08, 0.36, 0.64].map((start, index) => {
+          const dotProgress = getDotProgress(start);
+          return (
           <span
-            key={opacity}
-            className="h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_14px_rgba(255,255,255,0.22)]"
-            style={{ opacity }}
+            key={start}
+            className={`h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_14px_rgba(255,255,255,0.22)] ${animate ? 'transition-[opacity,transform] duration-200 ease-out' : ''}`}
+            style={{ opacity: dotProgress, transform: `scale(${0.72 + dotProgress * 0.28})` }}
             data-testid={`lyrics-intro-dot-${index}`}
           />
-        ))}
+          );
+        })}
       </span>
     </div>
   );

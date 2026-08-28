@@ -184,7 +184,8 @@ export const LyricsWorkbenchDialog: React.FC<LyricsWorkbenchDialogProps> = ({
             onClick={onClose}
             aria-label="关闭歌词工作台"
             data-testid="lyrics-workbench-close"
-            className="grid min-h-11 min-w-11 shrink-0 cursor-pointer place-items-center rounded-full text-white/55 transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70"
+            className="grid min-h-11 min-w-11 shrink-0 cursor-pointer place-items-center rounded-full border border-white/15 bg-white/10 text-white shadow-[0_8px_24px_rgba(0,0,0,0.28)] transition-colors hover:border-white/30 hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70"
+            title="关闭"
           >
             <Icons.X size={19} aria-hidden="true" />
           </button>

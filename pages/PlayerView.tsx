@@ -200,6 +200,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const [lyricsError, setLyricsError] = useState<string | null>(null);
   const [lyricsRetryNonce, setLyricsRetryNonce] = useState(0);
   const [isLyricsEditorOpen, setIsLyricsEditorOpen] = useState(false);
+  const [areLyricsControlsVisible, setAreLyricsControlsVisible] = useState(true);
   const reduceMotion = useReducedMotion();
   const initialInsets = getPlayerOriginInsets(transitionOrigin);
   const originInsetsRef = React.useRef(initialInsets);
@@ -219,6 +220,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const previousArtworkSongIdRef = React.useRef<string | null>(null);
   const currentSongIdRef = React.useRef<string | null>(null);
   const lyricsTouchStartRef = React.useRef<{ x: number; y: number } | null>(null);
+  const lyricsControlsTimerRef = React.useRef<number | null>(null);
 
   useModalPresence(isMemoryOpen);
   useModalPresence(isQueueOpen);
@@ -254,6 +256,25 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   
   const song = getCurrentSong();
   currentSongIdRef.current = song?.id ?? null;
+
+  const revealLyricsControls = React.useCallback(() => {
+    if (lyricsControlsTimerRef.current) window.clearTimeout(lyricsControlsTimerRef.current);
+    lyricsControlsTimerRef.current = null;
+    setAreLyricsControlsVisible(true);
+    if (!isLyricsViewOpen || !playerState.isPlaying || isSeeking || isChangingVolume) return;
+    lyricsControlsTimerRef.current = window.setTimeout(() => {
+      setAreLyricsControlsVisible(false);
+      lyricsControlsTimerRef.current = null;
+    }, 4_200);
+  }, [isChangingVolume, isLyricsViewOpen, isSeeking, playerState.isPlaying]);
+
+  React.useEffect(() => {
+    revealLyricsControls();
+    return () => {
+      if (lyricsControlsTimerRef.current) window.clearTimeout(lyricsControlsTimerRef.current);
+      lyricsControlsTimerRef.current = null;
+    };
+  }, [revealLyricsControls, song?.id]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -481,6 +502,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       style={{ clipPath, willChange: 'clip-path', transform: 'translateZ(0)', backfaceVisibility: 'hidden', contain: 'paint' }}
       data-testid="player-transition-shell"
       data-player-transition-phase={transitionPhase}
+      onPointerDown={revealLyricsControls}
+      onKeyDown={revealLyricsControls}
     >
       {/* 1. Immersive Dynamic Background Layer */}
       <motion.div
@@ -657,15 +680,21 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           )}
         </motion.section>
 
-        {/* 5. Progress Bar - Apple style with Thickening Animation */}
-        <motion.div
-          className={isLyricsViewOpen ? 'mt-3' : 'mt-8'}
-          initial={secondaryInitial}
-          animate={secondaryAnimate}
-          transition={secondaryTransition(2)}
-          data-player-transition-part="secondary"
-          data-testid="player-progress"
+        <div
+          className={`overflow-hidden transition-[max-height,opacity,transform] ease-[cubic-bezier(0.22,0.74,0.22,1)] ${reduceMotion ? 'duration-100' : 'duration-500'} ${isLyricsViewOpen && !areLyricsControlsVisible ? 'pointer-events-none max-h-0 translate-y-3 opacity-0' : 'max-h-[320px] translate-y-0 opacity-100'}`}
+          aria-hidden={isLyricsViewOpen && !areLyricsControlsVisible ? 'true' : undefined}
+          data-testid="player-lower-controls"
+          data-controls-visible={areLyricsControlsVisible ? 'true' : 'false'}
         >
+          {/* 5. Progress Bar - Apple style with Thickening Animation */}
+          <motion.div
+            className={isLyricsViewOpen ? 'mt-3' : 'mt-8'}
+            initial={secondaryInitial}
+            animate={secondaryAnimate}
+            transition={secondaryTransition(2)}
+            data-player-transition-part="secondary"
+            data-testid="player-progress"
+          >
           {playerState.isAudioLoading ? (
             <SkeletonBlock className="w-full h-1.5 rounded-full" />
           ) : (
@@ -790,6 +819,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             </button>
           </div>
         </motion.div>
+        </div>
       </div>
 
       {/* Memory Card Overlay */}

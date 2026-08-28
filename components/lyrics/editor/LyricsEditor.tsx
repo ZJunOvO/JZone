@@ -215,6 +215,21 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setNativeAudio((previous) => ({ ...previous, playing: false }));
   }, [controlOnPause, controlOnTogglePlay, effectivePlaying, invokeAudioAction]);
 
+  const resumePlayback = useCallback(() => {
+    setAudioError(null);
+    if (controlOnPlay && invokeAudioAction(controlOnPlay, '继续试听失败。')) return;
+    if (!effectivePlaying && controlOnTogglePlay && invokeAudioAction(controlOnTogglePlay, '继续试听失败。')) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    try {
+      void audio.play().catch((error: unknown) => {
+        setAudioError(error instanceof Error ? error.message : '继续试听失败。');
+      });
+    } catch (error) {
+      setAudioError(error instanceof Error ? error.message : '继续试听失败。');
+    }
+  }, [controlOnPlay, controlOnTogglePlay, effectivePlaying, invokeAudioAction]);
+
   const selectAndFocusLine = useCallback((index: number) => {
     setSelectedIndex(index);
     setFocusRequest({ id: ++focusRequestIdRef.current, index });
@@ -266,6 +281,11 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     }
     setAudioError('当前歌曲暂时无法试听。');
   }, [controlOnPause, controlOnPlay, controlOnTogglePlay, effectivePlaying, invokeAudioAction]);
+
+  const restartPlayback = useCallback(() => {
+    seekTo(0);
+    if (!effectivePlaying) resumePlayback();
+  }, [effectivePlaying, resumePlayback, seekTo]);
 
   const handleAudioTimeUpdate = useCallback((event: SyntheticEvent<HTMLAudioElement>) => {
     const audio = event.currentTarget;
@@ -356,13 +376,6 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setChangedMessage();
   }, [setChangedMessage, setLines]);
 
-  const addLine = useCallback(() => {
-    const nextLines = [...lines, createEditorLine(lines.length)];
-    pausePlayback();
-    selectAndFocusLine(nextLines.length - 1);
-    commitLines(nextLines);
-  }, [commitLines, lines, pausePlayback, selectAndFocusLine]);
-
   const updateLineText = useCallback((index: number, text: string) => {
     const nextLines = lines.map((line, lineIndex) => (
       lineIndex === index ? { ...line, text } : line
@@ -400,32 +413,49 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
   }, [commitLines, lines]);
 
   const markCurrentLine = useCallback(() => {
-    if (lines.length === 0) {
-      setSaveError('请先新增歌词行，再进行打点。');
-      return;
-    }
-    const index = Math.min(selectedIndex, lines.length - 1);
-    const selectedLine = lines[index];
-    if (!selectedLine?.text.trim()) {
-      setSaveError(`请先填写第 ${index + 1} 行歌词。`);
-      setSelectedIndex(index);
-      return;
-    }
+    const workingLines = lines.length > 0 ? [...lines] : [createEditorLine(0)];
+    const index = Math.min(selectedIndex, workingLines.length - 1);
+    const selectedLine = workingLines[index];
     const currentTimeMs = Math.round(effectiveCurrentTime * 1_000);
     const rawTimeMs = Math.max(0, currentTimeMs - offsetMs);
-    let nextLines = lines.map((line, lineIndex) => (
+    const nextLines = workingLines.map((line, lineIndex) => (
       lineIndex === index
         ? { ...line, startTimeMs: rawTimeMs, endTimeMs: null }
         : line
     ));
-    if (index === lines.length - 1) {
-      nextLines = [...nextLines, createEditorLine(nextLines.length)];
-    }
+    setSaveError(null);
     setLastMark({ index, previousTimeMs: selectedLine.startTimeMs });
     commitLines(nextLines, 'lrc');
     pausePlayback();
-    selectAndFocusLine(index + 1);
+    selectAndFocusLine(index);
   }, [commitLines, effectiveCurrentTime, lines, offsetMs, pausePlayback, selectAndFocusLine, selectedIndex]);
+
+  const completeLine = useCallback((index: number) => {
+    const line = lines[index];
+    if (!line?.text.trim()) {
+      setSaveError(`请填写第 ${index + 1} 行歌词后再继续。`);
+      selectAndFocusLine(index);
+      return;
+    }
+
+    let nextLines = [...lines];
+    const nextIndex = index + 1;
+    if (nextIndex >= nextLines.length) {
+      const nextLine = createEditorLine(nextLines.length);
+      nextLines = [
+        ...nextLines,
+        {
+          ...nextLine,
+          isDuet: line.isDuet,
+          isBackground: line.isBackground,
+        },
+      ];
+    }
+    setSaveError(null);
+    commitLines(nextLines);
+    selectAndFocusLine(nextIndex);
+    resumePlayback();
+  }, [commitLines, lines, resumePlayback, selectAndFocusLine]);
 
   const undoLastMark = useCallback(() => {
     if (!lastMark || !lines[lastMark.index]) return;
@@ -596,15 +626,17 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           onNext={() => moveSelection(1)}
           onMarkCurrentLine={markCurrentLine}
           onTogglePlayback={togglePlayback}
+          onRestartPlayback={restartPlayback}
+          onSeekTime={seekTo}
           onUndoLastMark={undoLastMark}
           onOffsetChange={handleOffsetChange}
           onSeekLine={seekLine}
           onSelectLine={setSelectedIndex}
           onLineTextChange={updateLineText}
+          onCompleteLine={completeLine}
           onLineRoleChange={updateLineRole}
           onClearLineTime={clearLineTime}
           onRemoveLine={removeLine}
-          onAddLine={addLine}
         />
       ) : (
         <section className="border-b border-white/10 py-4" aria-labelledby="lyrics-editor-preview-title">

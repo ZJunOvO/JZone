@@ -276,6 +276,13 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
         await wait(() => Boolean(document.querySelector('[data-testid="lyrics-renderer"]')), '再次打开歌词');
         await settle();
         const reopenedCover = readRect('[data-testid="player-cover-layout"]');
+        document.querySelector('[data-testid="player-toggle-play"]')?.click();
+        await new Promise((resolve) => setTimeout(resolve, 4_500));
+        const lowerControls = document.querySelector('[data-testid="player-lower-controls"]');
+        const controlsAfterIdle = lowerControls?.dataset.controlsVisible ?? null;
+        document.querySelector('[data-testid="player-transition-shell"]')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        await settle();
+        const controlsAfterActivity = lowerControls?.dataset.controlsVisible ?? null;
         readyLayout = {
           smallState,
           largeCover,
@@ -284,6 +291,8 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
           openingWidths,
           reopenedCover,
           lyricsRestored: Boolean(document.querySelector('[data-testid="player-lyrics-panel"]')),
+          controlsAfterIdle,
+          controlsAfterActivity,
         };
       }
 
@@ -358,7 +367,7 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
     } else if (initialMode === 'error') {
       assert.equal(result.retryRecovered, true, '歌词失败状态必须支持重试并恢复空状态');
     } else {
-      const { smallState, largeCover, rendererAfterClose, coverStateLabel, openingWidths, reopenedCover, lyricsRestored } = result.readyLayout;
+      const { smallState, largeCover, rendererAfterClose, coverStateLabel, openingWidths, reopenedCover, lyricsRestored, controlsAfterIdle, controlsAfterActivity } = result.readyLayout;
       assert.equal(smallState.ariaLabel, '查看封面', '歌词态小封面必须提供返回名称');
       assert.equal(smallState.visibleText, '', '封面切换入口不能显示“查看歌词/查看封面”文字');
       assert.equal(smallState.introFirstLineTimeMs, 8_000, '播放器必须按第一句有效时间显示前奏三点');
@@ -373,6 +382,8 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
       assert.equal(rendererAfterClose, false, '返回大封面后必须卸载歌词渲染器');
       assert.equal(coverStateLabel, '查看歌词');
       assert.equal(lyricsRestored, true, '再次点击大封面必须恢复歌词态');
+      assert.equal(controlsAfterIdle, 'false', '播放中的歌词页停留后必须自动淡出下方控制区');
+      assert.equal(controlsAfterActivity, 'true', '触摸歌词页后必须立即恢复下方控制区');
       assert(openingWidths.length >= 5, '必须采集到封面缩放动画帧');
       assert(openingWidths.some((width) => width < largeCover.width - 8 && width > smallState.cover.width + 8), `封面缩放缺少中间动画帧：${JSON.stringify(openingWidths)}`);
     }

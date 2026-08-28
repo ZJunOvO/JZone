@@ -182,6 +182,10 @@ try {
     const lightDuetBackground = mount.querySelector('[data-testid="lyrics-line-3"]');
     const introAtTwoSeconds = mount.querySelector('[data-testid="lyrics-intro-dots"]');
     const introAtTwoSecondsOpacity = introAtTwoSeconds ? Number(getComputedStyle(introAtTwoSeconds).opacity) : null;
+    const introAtTwoSecondsDots = [0, 1, 2].map((index) => {
+      const dot = mount.querySelector(`[data-testid="lyrics-intro-dot-${index}"]`);
+      return dot ? Number(getComputedStyle(dot).opacity) : null;
+    });
     const lightLeadFontSize = Number.parseFloat(getComputedStyle(lightLead?.querySelector('span') ?? mount).fontSize);
     const lightBackgroundFontSize = Number.parseFloat(getComputedStyle(lightLeadBackground?.querySelector('span') ?? mount).fontSize);
     lightDuet?.querySelector('button')?.click();
@@ -259,6 +263,7 @@ try {
       lightLeadFontSize,
       lightBackgroundFontSize,
       introAtTwoSecondsOpacity,
+      introAtTwoSecondsDots,
       introNearFirstLine,
       introAtFirstLine,
       amllMode,
@@ -284,6 +289,8 @@ try {
     ]);
     assert(rendered.lightLeadFontSize > rendered.lightBackgroundFontSize, '轻量模式和声字号必须小于主唱');
     assert.equal(rendered.introAtTwoSecondsOpacity, 1, '前奏早段三点必须保持可见');
+    assert(rendered.introAtTwoSecondsDots[0] > 0.95, '前奏进度达到四分之一时第一点必须已经出现');
+    assert(rendered.introAtTwoSecondsDots[1] < 0.05 && rendered.introAtTwoSecondsDots[2] < 0.05, '后两点必须随前奏进度依次出现，不能一开始就静止显示');
     assert.deepEqual(rendered.introNearFirstLine, {
       state: 'ending',
       opacity: 0.5,

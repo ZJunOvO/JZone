@@ -33,15 +33,17 @@ export const LyricsTimingPanel = ({
   onNext,
   onMarkCurrentLine,
   onTogglePlayback,
+  onRestartPlayback,
+  onSeekTime,
   onUndoLastMark,
   onOffsetChange,
   onSeekLine,
   onSelectLine,
   onLineTextChange,
+  onCompleteLine,
   onLineRoleChange,
   onClearLineTime,
   onRemoveLine,
-  onAddLine,
 }: LyricsTimingPanelProps) => {
   const selectedLineNumber = lines.length > 0 ? Math.min(selectedIndex, lines.length - 1) + 1 : 0;
   const lineInputRefs = useRef(new Map<number, HTMLTextAreaElement>());
@@ -77,9 +79,41 @@ export const LyricsTimingPanel = ({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 id="lyrics-editor-timing-title" className="text-sm font-extrabold text-white">逐行标记</h3>
-          <p className="mt-1 text-xs leading-5 text-white/45">标记后会暂停，并前往下一行。</p>
+          <p className="mt-1 text-xs leading-5 text-white/45">听到开口时打点，写完按回车继续。</p>
         </div>
         <span className="shrink-0 text-xs font-bold text-white/45">第 {selectedLineNumber || '--'} 行</span>
+      </div>
+
+      <div className="mt-3 flex items-center gap-3" data-testid="lyrics-editor-timeline">
+        <button
+          type="button"
+          aria-label="从头开始试听"
+          title="从头开始试听"
+          onClick={onRestartPlayback}
+          disabled={!canSeek || saving}
+          className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-full border border-white/15 text-white/75 transition-colors hover:border-white/30 hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-not-allowed disabled:opacity-30"
+          data-testid="lyrics-editor-restart"
+        >
+          <Icons.RotateCcw size={17} aria-hidden="true" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <input
+            type="range"
+            min="0"
+            max={Math.max(0.1, effectiveDuration ?? effectiveCurrentTime ?? 0.1)}
+            step="0.05"
+            value={Math.min(effectiveCurrentTime, Math.max(0.1, effectiveDuration ?? effectiveCurrentTime ?? 0.1))}
+            onChange={(event) => onSeekTime(Number(event.target.value))}
+            disabled={!canSeek || saving}
+            aria-label="歌词制作播放进度"
+            className="h-11 w-full cursor-pointer accent-red-300 disabled:cursor-not-allowed disabled:opacity-35"
+            data-testid="lyrics-editor-seek"
+          />
+          <div className="-mt-2 flex justify-between text-[11px] font-bold tabular-nums text-white/40">
+            <span>{formatClock(effectiveCurrentTime)}</span>
+            <span>{formatClock(effectiveDuration)}</span>
+          </div>
+        </div>
       </div>
 
       <div className="mt-3 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2">
@@ -96,12 +130,12 @@ export const LyricsTimingPanel = ({
         <button
           type="button"
           onClick={onMarkCurrentLine}
-          disabled={saving || lines.length === 0}
+          disabled={saving}
           className="inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-red-400 px-3 text-sm font-black text-black shadow-[0_0_24px_rgba(248,113,113,0.2)] transition-colors hover:bg-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/80 active:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
           data-testid="lyrics-editor-mark"
         >
           <Icons.Check size={17} aria-hidden="true" />
-          标记当前行 · {formatClock(effectiveCurrentTime)}
+          标记当前行
         </button>
         <button
           type="button"
@@ -185,7 +219,7 @@ export const LyricsTimingPanel = ({
         {lines.length === 0 ? (
           <div className="border-y border-dashed border-white/15 py-8 text-center" data-testid="lyrics-editor-empty-lines">
             <p className="text-sm font-bold text-white/65">还没有歌词行</p>
-            <p className="mt-1 text-xs leading-5 text-white/40">从上方导入歌词，或点击“新增一行”开始制作。</p>
+            <p className="mt-1 text-xs leading-5 text-white/40">播放歌曲，在开口时点击“标记当前行”。</p>
           </div>
         ) : lines.map((line, index) => {
           const isSelected = index === selectedIndex;
@@ -227,76 +261,66 @@ export const LyricsTimingPanel = ({
                     rows={1}
                     data-testid={`lyrics-editor-line-input-${index}`}
                     onChange={(event) => onLineTextChange(index, event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+                      event.preventDefault();
+                      onCompleteLine(index);
+                    }}
                     onClick={(event) => event.stopPropagation()}
                     onFocus={() => onSelectLine(index)}
                     className="min-h-11 w-full resize-y rounded-lg border border-transparent bg-transparent px-2 py-2 text-base leading-7 text-white outline-none transition-colors placeholder:text-white/25 focus:border-white/20 focus:bg-white/[0.04]"
                     placeholder="输入这一行歌词"
                   />
                 </label>
-                <div className="mt-2 grid grid-cols-3 gap-1" role="group" aria-label={`第 ${index + 1} 行演唱角色`}>
-                  {roleOptions.map((option) => {
-                    const selected = option.value === lineRole;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        aria-pressed={selected}
-                        data-testid={`lyrics-editor-line-role-${index}-${option.value}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onLineRoleChange(index, option.value);
-                        }}
-                        className={`min-h-11 cursor-pointer rounded-lg px-1 text-xs font-extrabold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 ${selected ? 'bg-white text-black' : 'border border-white/10 text-white/50 hover:border-white/25 hover:bg-white/[0.06] hover:text-white'}`}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-1 flex justify-end gap-1">
-                <button
-                  type="button"
-                  disabled={line.startTimeMs === null || saving}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onClearLineTime(index);
-                  }}
-                  className="grid min-h-11 min-w-11 cursor-pointer place-items-center rounded-lg text-white/45 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-not-allowed disabled:opacity-25"
-                  aria-label={`清除第 ${index + 1} 行时间`}
-                  title="清除本行时间"
-                >
-                  <Icons.X size={16} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onRemoveLine(index);
-                  }}
-                  className="grid min-h-11 min-w-11 cursor-pointer place-items-center rounded-lg text-white/35 transition-colors hover:bg-red-300/[0.12] hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-not-allowed disabled:opacity-25"
-                  aria-label={`删除第 ${index + 1} 行`}
-                  title="删除本行"
-                >
-                  <Icons.Trash size={16} aria-hidden="true" />
-                </button>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <label className="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3 text-xs font-bold text-white/55">
+                    <span className="sr-only">第 {index + 1} 行演唱角色</span>
+                    <select
+                      value={lineRole}
+                      onChange={(event) => onLineRoleChange(index, event.target.value as LyricsEditorLineRole)}
+                      onClick={(event) => event.stopPropagation()}
+                      className="cursor-pointer appearance-none bg-transparent pr-2 text-xs font-extrabold text-white outline-none"
+                      data-testid={`lyrics-editor-line-role-${index}`}
+                      aria-label={`第 ${index + 1} 行演唱角色`}
+                    >
+                      {roleOptions.map((option) => <option key={option.value} value={option.value} className="bg-zinc-900">{option.label}</option>)}
+                    </select>
+                    <Icons.ChevronDown size={13} aria-hidden="true" />
+                  </label>
+                  <div className="flex justify-end gap-1">
+                    <button
+                      type="button"
+                      disabled={line.startTimeMs === null || saving}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onClearLineTime(index);
+                      }}
+                      className="grid min-h-11 min-w-11 cursor-pointer place-items-center rounded-lg text-white/45 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-not-allowed disabled:opacity-25"
+                      aria-label={`清除第 ${index + 1} 行时间`}
+                      title="清除本行时间"
+                    >
+                      <Icons.X size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRemoveLine(index);
+                      }}
+                      className="grid min-h-11 min-w-11 cursor-pointer place-items-center rounded-lg text-white/35 transition-colors hover:bg-red-300/[0.12] hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-not-allowed disabled:opacity-25"
+                      aria-label={`删除第 ${index + 1} 行`}
+                      title="删除本行"
+                    >
+                      <Icons.Trash size={16} aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           );
         })}
       </div>
-
-      <button
-        type="button"
-        disabled={saving}
-        onClick={onAddLine}
-        className="mt-3 inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 text-sm font-bold text-white/60 transition-colors hover:border-white/40 hover:bg-white/[0.05] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-not-allowed disabled:opacity-40"
-        data-testid="lyrics-editor-add-line"
-      >
-        <Icons.Plus size={17} aria-hidden="true" />
-        新增一行
-      </button>
     </section>
   );
 };

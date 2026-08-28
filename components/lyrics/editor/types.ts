@@ -151,15 +151,17 @@ export interface LyricsTimingPanelProps {
   onNext: () => void;
   onMarkCurrentLine: () => void;
   onTogglePlayback: () => void;
+  onRestartPlayback: () => void;
+  onSeekTime: (timeSeconds: number) => void;
   onUndoLastMark: () => void;
   onOffsetChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onSeekLine: (index: number) => void;
   onSelectLine: (index: number) => void;
   onLineTextChange: (index: number, text: string) => void;
+  onCompleteLine: (index: number) => void;
   onLineRoleChange: (index: number, role: LyricsEditorLineRole) => void;
   onClearLineTime: (index: number) => void;
   onRemoveLine: (index: number) => void;
-  onAddLine: () => void;
 }
 
 export type LyricsEditorLineClickHandler = (event: MouseEvent<HTMLDivElement>, index: number) => void;

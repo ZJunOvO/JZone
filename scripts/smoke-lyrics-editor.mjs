@@ -32,6 +32,7 @@ try {
     const seekCalls = [];
     const saveCalls = [];
     const pauseCalls = [];
+    const playCalls = [];
 
     const settle = (delay = 0) => new Promise((resolve) => {
       setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(resolve)), delay);
@@ -42,6 +43,21 @@ try {
     };
     const click = async (testId) => {
       mount.querySelector(`[data-testid="${testId}"]`)?.click();
+      await settle(20);
+    };
+    const changeSelect = async (testId, value) => {
+      const select = mount.querySelector(`[data-testid="${testId}"]`);
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await settle(20);
+    };
+    const pressEnter = async (testId) => {
+      mount.querySelector(`[data-testid="${testId}"]`)?.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      }));
       await settle(20);
     };
     const pasteSource = async (text) => {
@@ -80,7 +96,7 @@ try {
       duration: 5,
       currentTime: 1.25,
       playing: true,
-      onPause: () => pauseCalls.push('add'),
+      onPause: () => pauseCalls.push('initial'),
       onSeek: (time) => seekCalls.push(time),
       onSave: async (payload) => saveCalls.push(payload),
     });
@@ -95,12 +111,12 @@ try {
       fileAccept: mount.querySelector('[data-testid="lyrics-editor-file"]')?.getAttribute('accept') || '',
     };
 
-    await click('lyrics-editor-add-line');
-    const addFlow = {
-      paused: pauseCalls.length === 1,
-      lineCount: mount.querySelectorAll('[data-lyrics-line-index]').length,
-      selected: mount.querySelector('[data-testid="lyrics-editor-line-2"]')?.dataset.selected,
-      focused: document.activeElement?.getAttribute('data-testid'),
+    await click('lyrics-editor-restart');
+    const timelineFlow = {
+      timeline: Boolean(mount.querySelector('[data-testid="lyrics-editor-timeline"]')),
+      seek: Boolean(mount.querySelector('[data-testid="lyrics-editor-seek"]')),
+      restartedAt: seekCalls.at(-1),
+      addButtonRemoved: !mount.querySelector('[data-testid="lyrics-editor-add-line"]'),
     };
 
     await render({
@@ -110,12 +126,13 @@ try {
       currentTime: 1.25,
       playing: true,
       onPause: () => pauseCalls.push('mark'),
+      onPlay: () => playCalls.push('resume'),
       onSeek: (time) => seekCalls.push(time),
       clearDraftOnSave: false,
       onSave: async (payload) => saveCalls.push(payload),
     });
-    await click('lyrics-editor-line-role-0-duet');
-    await click('lyrics-editor-line-role-1-background');
+    await changeSelect('lyrics-editor-line-role-0', 'duet');
+    await changeSelect('lyrics-editor-line-role-1', 'background');
     await click('lyrics-editor-line-0');
     await click('lyrics-editor-mark');
     const draftKeyA = draftApi.createLyricsDraftStorageKey({ songId: 'smoke-song-mark' });
@@ -124,7 +141,7 @@ try {
       format: mount.querySelector('[data-testid="lyrics-editor"]')?.dataset.lyricsFormat,
       firstTime: mount.querySelector('[data-testid="lyrics-editor-line-0"] span')?.textContent,
       paused: pauseCalls.filter((value) => value === 'mark').length === 1,
-      selected: mount.querySelector('[data-testid="lyrics-editor-line-1"]')?.dataset.selected,
+      selected: mount.querySelector('[data-testid="lyrics-editor-line-0"]')?.dataset.selected,
       focused: document.activeElement?.getAttribute('data-testid'),
       storageVersion: storedAfterMark?.version,
       storageHasAudioField: Object.keys(storedAfterMark || {}).some((key) => /audio|blob|file/i.test(key)),
@@ -135,14 +152,24 @@ try {
       })),
     };
 
+    await pressEnter('lyrics-editor-line-input-0');
+    const afterFirstCompletion = {
+      resumed: playCalls.length === 1,
+      lineCount: mount.querySelectorAll('[data-lyrics-line-index]').length,
+      selected: mount.querySelector('[data-testid="lyrics-editor-line-1"]')?.dataset.selected,
+      focused: document.activeElement?.getAttribute('data-testid'),
+    };
     await click('lyrics-editor-mark');
+    await pressEnter('lyrics-editor-line-input-1');
     const afterLastMark = {
       paused: pauseCalls.filter((value) => value === 'mark').length === 2,
+      resumed: playCalls.length === 2,
       lineCount: mount.querySelectorAll('[data-lyrics-line-index]').length,
       selected: mount.querySelector('[data-testid="lyrics-editor-line-2"]')?.dataset.selected,
       focused: document.activeElement?.getAttribute('data-testid'),
       firstText: mount.querySelector('[data-testid="lyrics-editor-line-input-0"]')?.value,
       secondText: mount.querySelector('[data-testid="lyrics-editor-line-input-1"]')?.value,
+      inheritedRole: mount.querySelector('[data-testid="lyrics-editor-line-role-2"]')?.value,
     };
     await click('lyrics-editor-undo');
     const afterUndo = {
@@ -183,8 +210,8 @@ try {
       onSave: async (payload) => saveCalls.push(payload),
     });
     const restoredRoles = {
-      duet: mount.querySelector('[data-testid="lyrics-editor-line-role-0-duet"]')?.getAttribute('aria-pressed'),
-      background: mount.querySelector('[data-testid="lyrics-editor-line-role-1-background"]')?.getAttribute('aria-pressed'),
+      duet: mount.querySelector('[data-testid="lyrics-editor-line-role-0"]')?.value,
+      background: mount.querySelector('[data-testid="lyrics-editor-line-role-1"]')?.value,
     };
 
     await render({
@@ -261,7 +288,7 @@ try {
     const malformedFeedback = mount.querySelector('[data-testid="lyrics-editor-parse-error"]')?.textContent || '';
 
     await click('lyrics-editor-new');
-    await click('lyrics-editor-add-line');
+    await click('lyrics-editor-mark');
     const blankCreationLineCount = mount.querySelectorAll('[data-lyrics-line-index]').length;
     await click('lyrics-editor-save');
     const emptyFeedback = mount.querySelector('[data-testid="lyrics-editor-error"]')?.textContent || '';
@@ -276,8 +303,9 @@ try {
     return {
       parserChecks,
       initial,
-      addFlow,
+      timelineFlow,
       afterMark,
+      afterFirstCompletion,
       afterLastMark,
       afterUndo,
       roleRoundTrip,
@@ -314,17 +342,17 @@ try {
   assert.match(result.initial.fileAccept, /\.lrc/);
   assert.match(result.initial.fileAccept, /\.txt/);
   assert.match(result.initial.fileAccept, /\.ttml/);
-  assert.deepEqual(result.addFlow, {
-    paused: true,
-    lineCount: 3,
-    selected: 'true',
-    focused: 'lyrics-editor-line-input-2',
-  }, '新增一行必须立即暂停、选中新行并聚焦输入');
+  assert.deepEqual(result.timelineFlow, {
+    timeline: true,
+    seek: true,
+    restartedAt: 0,
+    addButtonRemoved: true,
+  }, '逐行标记必须提供时间轴与从头试听，并移除独立新增按钮');
   assert.equal(result.afterMark.format, 'lrc');
   assert.notEqual(result.afterMark.firstTime, '--:--.--', '标记当前行后必须出现行级时间');
   assert.equal(result.afterMark.paused, true, '标记当前行后必须立即暂停');
-  assert.equal(result.afterMark.selected, 'true', '标记后必须自动选中下一行');
-  assert.equal(result.afterMark.focused, 'lyrics-editor-line-input-1', '标记后焦点应进入下一行');
+  assert.equal(result.afterMark.selected, 'true', '标记后必须留在当前行等待填写');
+  assert.equal(result.afterMark.focused, 'lyrics-editor-line-input-0', '标记后焦点应进入当前行');
   assert.equal(result.afterMark.storageVersion, 1, '草稿必须带版本号');
   assert.equal(result.afterMark.storageHasAudioField, false, '草稿不得保存音频 Blob 或文件字段');
   assert.equal(result.afterMark.storedLineCount, 2, '部分打点也必须保留未打点行');
@@ -332,14 +360,22 @@ try {
     { isDuet: true, isBackground: false },
     { isDuet: false, isBackground: true },
   ], '草稿必须持久化逐行角色');
+  assert.deepEqual(result.afterFirstCompletion, {
+    resumed: true,
+    lineCount: 2,
+    selected: 'true',
+    focused: 'lyrics-editor-line-input-1',
+  }, '回车完成当前句后必须续播并前往下一句');
   assert.deepEqual(result.afterLastMark, {
     paused: true,
+    resumed: true,
     lineCount: 3,
     selected: 'true',
     focused: 'lyrics-editor-line-input-2',
     firstText: '第一行',
     secondText: '第二行',
-  }, '末行标记后必须追加空白行，且不能覆盖已有歌词');
+    inheritedRole: 'background',
+  }, '末行完成后必须追加空白行、继承角色且不能覆盖已有歌词');
   assert.equal(result.afterUndo.secondTime, '--:--.--', '撤销上次打点必须恢复最近一行原时间');
   assert.equal(result.afterUndo.undoDisabled, true, '撤销后不应继续存在可撤销打点');
   assert.deepEqual(result.roleRoundTrip, {
@@ -353,7 +389,7 @@ try {
       { isDuet: false, isBackground: true },
     ],
   }, '保存内容与再次解析都必须保留主唱、对唱、和声语义');
-  assert.deepEqual(result.restoredRoles, { duet: 'true', background: 'true' }, '重新挂载后必须从本地草稿恢复角色');
+  assert.deepEqual(result.restoredRoles, { duet: 'duet', background: 'background' }, '重新挂载后必须从本地草稿恢复角色');
   assert.equal(result.jumped, 3.5, '点击已打点行必须跳转到行起始时间');
   assert.deepEqual(result.preview, { present: true, renderer: true, timing: 'line' });
   assert.match(result.durationError, /超过歌曲时长/);
@@ -367,7 +403,7 @@ try {
   assert.equal(result.uploadedFormat, 'ttml', '上传 TTML 后必须自动识别');
   assert.equal(result.pastedFormat, 'lrc', '粘贴 LRC 后必须自动识别并载入');
   assert.match(result.malformedFeedback, /没有可用的歌词行|解析失败/, '解析错误必须给出反馈');
-  assert.equal(result.blankCreationLineCount, 1, '从零创建后应可新增歌词行');
+  assert.equal(result.blankCreationLineCount, 1, '从零创建后首次打点应自动创建歌词行');
   assert.match(result.emptyFeedback, /歌词内容不能为空/, '空内容必须阻止保存并给出反馈');
   assert.equal(result.isolated, true, 'songId 与 draftKey 草稿必须隔离');
   assert.deepEqual(pageErrors, [], '编辑器运行期间不应出现页面异常');
