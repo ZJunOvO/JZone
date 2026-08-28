@@ -195,8 +195,8 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
       >
         <LiquidGlassSurface
           key={materialKey}
-          material="shuding"
-          coverage="full"
+          material={profile === 'player' ? 'settings' : 'shuding'}
+          coverage={profile === 'player' ? 'edge' : 'full'}
           geometry={profile === 'menu' ? 'panel' : 'standard'}
           eagerMap
           initialSize={initialMapSize}

@@ -88,26 +88,40 @@ try {
   if (await page.locator('.liquid-mini-player[data-compact-player-state="circle"]').isVisible().catch(() => false)) {
     await page.getByTestId('mini-player').click();
     await page.waitForFunction(() => document.querySelector('.liquid-mini-player')?.getAttribute('data-compact-player-state') === 'expanded');
-    await page.waitForTimeout(120);
+    await page.waitForFunction(() => {
+      const width = document.querySelector('.liquid-mini-player')?.getBoundingClientRect().width ?? 0;
+      return Math.abs(width - 240) <= 0.75;
+    });
     const expandedMaterial = await page.evaluate(() => {
       const player = document.querySelector('.liquid-mini-player');
-      const material = player?.querySelector('[data-liquid-material="shuding"]');
+      const material = player?.querySelector('[data-liquid-material="settings"]');
+      const tabMaterial = document.querySelector('[data-testid="bottom-nav-layer"]');
       const filter = material?.querySelector('filter');
       const mapImage = material?.querySelector('feImage');
       const playerRect = player?.getBoundingClientRect();
       const materialRect = material?.getBoundingClientRect();
       return {
+        materialType: material?.getAttribute('data-liquid-material'),
+        coverage: material?.getAttribute('data-liquid-coverage'),
         playerWidth: playerRect?.width,
         materialWidth: materialRect?.width,
         filterWidth: Number(filter?.getAttribute('width')),
         filterApplied: material ? getComputedStyle(material).getPropertyValue('--liquid-tab-filter').includes('url(') : false,
         mapReady: (mapImage?.getAttribute('href') || mapImage?.getAttribute('xlink:href') || '').startsWith('data:image/'),
+        blur: material ? getComputedStyle(material).getPropertyValue('--lg-f-blur').trim() : '',
+        tabBlur: tabMaterial ? getComputedStyle(tabMaterial).getPropertyValue('--lg-f-blur').trim() : '',
+        saturation: material ? getComputedStyle(material).getPropertyValue('--lg-f-saturation').trim() : '',
+        tabSaturation: tabMaterial ? getComputedStyle(tabMaterial).getPropertyValue('--lg-f-saturation').trim() : '',
       };
     });
+    assert(expandedMaterial.materialType === 'settings' && expandedMaterial.coverage === 'edge', `紧凑 Mini 未使用底部 Tab 同款材质：${JSON.stringify(expandedMaterial)}`);
     assert(Math.abs(expandedMaterial.playerWidth - 240) <= 1, `紧凑 Mini 未完成展开：${JSON.stringify(expandedMaterial)}`);
     assert(Math.abs(expandedMaterial.materialWidth - expandedMaterial.playerWidth) <= 1, `展开态材质没有覆盖播放器：${JSON.stringify(expandedMaterial)}`);
     assert(Math.abs(expandedMaterial.filterWidth - expandedMaterial.playerWidth) <= 1, `展开态仍复用圆形折射图：${JSON.stringify(expandedMaterial)}`);
     assert(expandedMaterial.filterApplied && expandedMaterial.mapReady, `展开态液态玻璃折射未生效：${JSON.stringify(expandedMaterial)}`);
+    assert(expandedMaterial.blur === expandedMaterial.tabBlur && expandedMaterial.saturation === expandedMaterial.tabSaturation, `紧凑 Mini 与底部 Tab 参数未同步：${JSON.stringify(expandedMaterial)}`);
+    await mkdir('output/playwright', { recursive: true });
+    await page.screenshot({ path: `output/playwright/liquid-glass-compact-mini-expanded-${viewportWidth}x${viewportHeight}.png` });
     await page.getByTestId('bottom-nav-home').click();
   }
 

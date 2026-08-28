@@ -149,6 +149,7 @@ export interface LyricsTimingPanelProps {
   onPrevious: () => void;
   onNext: () => void;
   onMarkCurrentLine: () => void;
+  onMarkLine: (index: number) => void;
   onTogglePlayback: () => void;
   onRestartPlayback: () => void;
   onSeekTime: (timeSeconds: number) => void;

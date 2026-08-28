@@ -115,10 +115,19 @@ try {
     const timelineFlow = {
       timeline: Boolean(mount.querySelector('[data-testid="lyrics-editor-timeline"]')),
       seek: Boolean(mount.querySelector('[data-testid="lyrics-editor-seek"]')),
-      timeMark: Boolean(mount.querySelector('[data-testid="lyrics-editor-time-mark"]')),
+      globalTimeMarkRemoved: !mount.querySelector('[data-testid="lyrics-editor-time-mark"]'),
       restartedAt: seekCalls.at(-1),
       addButtonRemoved: !mount.querySelector('[data-testid="lyrics-editor-add-line"]'),
       newBlankRemoved: !mount.querySelector('[data-testid="lyrics-editor-new"]'),
+    };
+
+    await click('lyrics-editor-line-time-1');
+    const rowSpecificMark = {
+      firstTime: mount.querySelector('[data-testid="lyrics-editor-line-time-0"] > span')?.textContent,
+      secondTime: mount.querySelector('[data-testid="lyrics-editor-line-time-1"] > span')?.textContent,
+      selected: mount.querySelector('[data-testid="lyrics-editor-line-1"]')?.dataset.selected,
+      focused: document.activeElement?.getAttribute('data-testid'),
+      paused: pauseCalls.filter((value) => value === 'initial').length === 1,
     };
 
     await render({
@@ -136,7 +145,7 @@ try {
     await changeSelect('lyrics-editor-line-role-0', 'duet');
     await changeSelect('lyrics-editor-line-role-1', 'background');
     await click('lyrics-editor-line-0');
-    await click('lyrics-editor-time-mark');
+    await click('lyrics-editor-line-time-0');
     const draftKeyA = draftApi.createLyricsDraftStorageKey({ songId: 'smoke-song-mark' });
     const storedAfterMark = JSON.parse(localStorage.getItem(draftKeyA) || 'null');
     const afterMark = {
@@ -322,6 +331,7 @@ try {
       parserChecks,
       initial,
       timelineFlow,
+      rowSpecificMark,
       afterMark,
     afterFirstCompletion,
     reopenedCompletedLine,
@@ -365,11 +375,18 @@ try {
   assert.deepEqual(result.timelineFlow, {
     timeline: true,
     seek: true,
-    timeMark: true,
+    globalTimeMarkRemoved: true,
     restartedAt: 0,
     addButtonRemoved: true,
     newBlankRemoved: true,
   }, '逐行标记必须提供时间轴与从头试听，并移除独立新增按钮');
+  assert.deepEqual(result.rowSpecificMark, {
+    firstTime: '--:--.--',
+    secondTime: '0:01.25',
+    selected: 'true',
+    focused: 'lyrics-editor-line-input-1',
+    paused: true,
+  }, '点击任意未完成歌词左侧时间块必须只标记该行并暂停聚焦');
   assert.equal(result.afterMark.format, 'lrc');
   assert.notEqual(result.afterMark.firstTime, '--:--.--', '标记当前行后必须出现行级时间');
   assert.equal(result.afterMark.paused, true, '标记当前行后必须立即暂停');

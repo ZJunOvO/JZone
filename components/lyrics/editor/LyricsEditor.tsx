@@ -397,9 +397,9 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     commitLines(nextLines);
   }, [commitLines, lines]);
 
-  const markCurrentLine = useCallback(() => {
+  const markLine = useCallback((targetIndex: number) => {
     const workingLines = lines.length > 0 ? [...lines] : [createEditorLine(0)];
-    const index = Math.min(selectedIndex, workingLines.length - 1);
+    const index = Math.max(0, Math.min(targetIndex, workingLines.length - 1));
     const selectedLine = workingLines[index];
     const currentTimeMs = Math.round(effectiveCurrentTime * 1_000);
     const rawTimeMs = Math.max(0, currentTimeMs - offsetMs);
@@ -413,7 +413,11 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     commitLines(nextLines, 'lrc');
     pausePlayback();
     selectAndFocusLine(index);
-  }, [commitLines, effectiveCurrentTime, lines, offsetMs, pausePlayback, selectAndFocusLine, selectedIndex]);
+  }, [commitLines, effectiveCurrentTime, lines, offsetMs, pausePlayback, selectAndFocusLine]);
+
+  const markCurrentLine = useCallback(() => {
+    markLine(selectedIndex);
+  }, [markLine, selectedIndex]);
 
   const completeLine = useCallback((index: number) => {
     const line = lines[index];
@@ -618,6 +622,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           onPrevious={() => moveSelection(-1)}
           onNext={() => moveSelection(1)}
           onMarkCurrentLine={markCurrentLine}
+          onMarkLine={markLine}
           onTogglePlayback={togglePlayback}
           onRestartPlayback={restartPlayback}
           onSeekTime={seekTo}

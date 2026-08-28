@@ -32,6 +32,7 @@ export const LyricsTimingPanel = ({
   onPrevious,
   onNext,
   onMarkCurrentLine,
+  onMarkLine,
   onTogglePlayback,
   onRestartPlayback,
   onSeekTime,
@@ -109,17 +110,7 @@ export const LyricsTimingPanel = ({
             data-testid="lyrics-editor-seek"
           />
           <div className="-mt-2 flex justify-between text-[11px] font-bold tabular-nums text-white/40">
-            <button
-              type="button"
-              onClick={onMarkCurrentLine}
-              disabled={saving}
-              className="min-h-9 cursor-pointer rounded-full px-1 text-left transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-not-allowed disabled:opacity-45"
-              aria-label={`在 ${formatClock(effectiveCurrentTime)} 标记当前行`}
-              title="标记当前行"
-              data-testid="lyrics-editor-time-mark"
-            >
-              {formatClock(effectiveCurrentTime)}
-            </button>
+            <span>{formatClock(effectiveCurrentTime)}</span>
             <span>{formatClock(effectiveDuration)}</span>
           </div>
         </div>
@@ -288,13 +279,18 @@ export const LyricsTimingPanel = ({
             >
               <button
                 type="button"
-                onClick={() => onSeekLine(index)}
-                disabled={!canSeek || line.startTimeMs === null}
-                className="flex min-h-11 min-w-0 cursor-pointer flex-col items-start justify-center rounded-lg px-1 text-left text-xs font-bold text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-default disabled:opacity-50"
-                aria-label={line.startTimeMs === null ? `第 ${index + 1} 行，未标记时间` : `跳转到第 ${index + 1} 行，${formatClock(effectiveLineTime / 1_000)}`}
+                onClick={() => {
+                  if (isComplete) onSeekLine(index);
+                  else onMarkLine(index);
+                }}
+                disabled={saving || (isComplete && (!canSeek || line.startTimeMs === null))}
+                className={`flex min-h-11 min-w-0 cursor-pointer flex-col items-start justify-center rounded-lg px-1 text-left text-xs font-bold transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-default disabled:opacity-50 ${isComplete ? 'text-white/50' : 'text-red-200/75'}`}
+                aria-label={isComplete ? `跳转到第 ${index + 1} 行，${formatClock(effectiveLineTime / 1_000)}` : `在当前位置标记第 ${index + 1} 行`}
+                title={isComplete ? '跳转到本行' : '标记当前行'}
+                data-testid={`lyrics-editor-line-time-${index}`}
               >
                 <span>{line.startTimeMs === null ? '--:--.--' : formatLyricsTime(line.startTimeMs)}</span>
-                <span className="mt-1 text-[10px] font-semibold text-white/30">{isPlaybackActive ? '播放中' : isSelected ? '待编辑' : `第 ${index + 1} 行`}</span>
+                <span className="mt-1 text-[10px] font-semibold text-white/35">{isComplete ? (isPlaybackActive ? '播放中' : isSelected ? '待编辑' : `第 ${index + 1} 行`) : '点击打标'}</span>
               </button>
               <div className="min-w-0">
                 <label className="block min-w-0">

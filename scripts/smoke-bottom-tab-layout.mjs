@@ -104,7 +104,7 @@ const readLayout = (page) => page.evaluate(() => {
   const miniTitle = miniPlayer?.querySelector('[data-player-shared-source="title"]');
   const miniArtist = miniPlayer?.querySelector('[data-player-shared-source="artist"]');
   const miniControls = [...(miniPlayer?.querySelectorAll('button') ?? [])];
-  const miniMaterial = miniPlayer?.querySelector('[data-liquid-material="shuding"]');
+  const miniMaterial = miniPlayer?.querySelector('[data-liquid-material="settings"]');
   const miniMaterialFilter = miniMaterial?.querySelector('filter');
   const buttons = [...document.querySelectorAll('button[data-testid^="bottom-nav-"]')];
   const lens = document.querySelector('[data-testid="bottom-nav-lens"]');
@@ -124,6 +124,8 @@ const readLayout = (page) => page.evaluate(() => {
     miniArtist: rect(miniArtist),
     miniControls: miniControls.map(rect),
     miniMaterial: rect(miniMaterial),
+    miniMaterialType: miniMaterial?.getAttribute('data-liquid-material') ?? null,
+    miniMaterialCoverage: miniMaterial?.getAttribute('data-liquid-coverage') ?? null,
     miniMaterialFilterWidth: Number.parseFloat(miniMaterialFilter?.getAttribute('width') ?? 'NaN'),
     miniMaterialFilterApplied: Boolean(miniMaterial && getComputedStyle(miniMaterial).getPropertyValue('--liquid-tab-filter').includes('url(')),
     miniLayoutMode: miniPlayer?.getAttribute('data-layout-mode') ?? null,
@@ -209,6 +211,7 @@ const assertCompactExpandedLayout = (layout) => {
   assert(layout.miniLayoutMode === 'compact-expanded' && layout.compactPlayerState === 'expanded', `横向 Mini 表现错误：${JSON.stringify(layout)}`);
   assert(layout.miniTitle?.width >= 44 && layout.miniArtist?.width >= 44, `横向 Mini 文本区域不可读：${JSON.stringify(layout)}`);
   assert(layout.miniControls.length === 2, `横向 Mini 播放控制数量异常：${JSON.stringify(layout)}`);
+  assert(layout.miniMaterialType === 'settings' && layout.miniMaterialCoverage === 'edge', `横向 Mini 未使用底部 Tab 同款材质：${JSON.stringify(layout)}`);
   assert(layout.miniMaterial && Math.abs(layout.miniMaterial.width - 240) <= 1, `横向 Mini 液态玻璃表面没有覆盖完整宽度：${JSON.stringify(layout)}`);
   assert(Math.abs(layout.miniMaterialFilterWidth - 240) <= 1, `横向 Mini 仍在复用圆形折射图：${JSON.stringify(layout)}`);
   assert(layout.miniMaterialFilterApplied, `横向 Mini 没有应用液态玻璃折射滤镜：${JSON.stringify(layout)}`);
