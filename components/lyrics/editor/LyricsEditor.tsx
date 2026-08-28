@@ -102,6 +102,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
   const [inputError, setInputError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
   const [nativeAudio, setNativeAudio] = useState<NativeAudioState>({
     currentTime: 0,
     duration: null,
@@ -180,6 +181,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setSubmitted(false);
     setSaveError(null);
     setSaveMessage(null);
+    setIsDirty(true);
   }, []);
 
   const commitLines = useCallback((nextLines: readonly LyricsLine[], preferredFormat?: LyricsFormat) => {
@@ -404,14 +406,6 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     commitLines(nextLines);
   }, [commitLines, lines]);
 
-  const clearLineTime = useCallback((index: number) => {
-    const nextLines = lines.map((line, lineIndex) => (
-      lineIndex === index ? { ...line, startTimeMs: null, endTimeMs: null } : line
-    ));
-    setSelectedIndex(index);
-    commitLines(nextLines);
-  }, [commitLines, lines]);
-
   const markCurrentLine = useCallback(() => {
     const workingLines = lines.length > 0 ? [...lines] : [createEditorLine(0)];
     const index = Math.min(selectedIndex, workingLines.length - 1);
@@ -517,6 +511,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
       } else {
         setSaveMessage('歌词已暂存，保存歌曲后会同步。');
       }
+      setIsDirty(false);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : '歌词保存失败，请稍后重试。');
     }
@@ -529,7 +524,15 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
   }, [setChangedMessage, setOffsetMs]);
 
   const rootClassName = ['w-full min-w-0 text-white', className].filter(Boolean).join(' ');
-  const storageLabel = !isRestored
+  const storageLabel = saving
+    ? '正在保存到资料库'
+    : saveMessage
+      ? clearDraftOnSave ? '已保存到资料库' : '已暂存到歌曲'
+    : isDirty && storageStatus === 'saved'
+      ? '已自动暂存 · 待保存'
+    : isDirty
+      ? '正在自动暂存'
+    : !isRestored
     ? '正在读取草稿'
     : hasLocalDraft
       ? storageStatus === 'error' ? '草稿保存失败' : '已恢复本地草稿'
@@ -631,11 +634,10 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           onUndoLastMark={undoLastMark}
           onOffsetChange={handleOffsetChange}
           onSeekLine={seekLine}
-          onSelectLine={setSelectedIndex}
+          onSelectLine={selectAndFocusLine}
           onLineTextChange={updateLineText}
           onCompleteLine={completeLine}
           onLineRoleChange={updateLineRole}
-          onClearLineTime={clearLineTime}
           onRemoveLine={removeLine}
         />
       ) : (
@@ -661,18 +663,18 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
         </section>
       )}
 
-      <footer className="flex flex-wrap items-center justify-between gap-3 py-4">
+      <footer className="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-zinc-950/90 px-1 py-3 backdrop-blur-xl">
         <div className="min-w-0 text-xs leading-5 text-white/45" aria-live="polite">
           {saveError ? <span className="block text-red-200" data-testid="lyrics-editor-save-error">{saveError}</span> : null}
           {saveMessage ? <span className="block text-emerald-200" data-testid="lyrics-editor-save-message">{saveMessage}</span> : null}
-          {!saveError && !saveMessage ? <span>{hasLocalDraft ? '离开页面后可继续编辑。' : '修改会自动保存到当前歌曲草稿。'}</span> : null}
+          {!saveError && !saveMessage ? <span>{isDirty ? '草稿已保留，点击保存后才会同步到资料库。' : hasLocalDraft ? '离开页面后可继续编辑。' : '歌词已与资料库同步。'}</span> : null}
         </div>
         <button
           type="button"
           data-testid="lyrics-editor-save"
           onClick={() => { void saveLyrics(); }}
           disabled={saving}
-          className="inline-flex min-h-12 shrink-0 cursor-pointer items-center gap-2 rounded-full bg-white px-5 text-sm font-black text-black transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80 active:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex min-h-12 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-black text-black transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80 active:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
         >
           {saving ? <Icons.RotateCcw size={16} className="animate-spin" aria-hidden="true" /> : <Save size={16} aria-hidden="true" />}
           {saving ? '保存中…' : '保存歌词'}

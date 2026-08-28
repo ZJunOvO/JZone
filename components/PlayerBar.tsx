@@ -140,6 +140,15 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 ))}
               </div>
             )}
+            {!playerState.isPlaying && (
+              <div
+                className="absolute inset-0 flex items-center justify-center bg-black/28 text-white"
+                aria-hidden="true"
+                data-testid="compact-player-paused"
+              >
+                <Icons.Pause size={22} fill="currentColor" />
+              </div>
+            )}
           </div>
           <svg className="pointer-events-none absolute inset-0 -rotate-90" viewBox="0 0 64 64" aria-hidden="true">
             <circle cx="32" cy="32" r="29.5" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="2" />

@@ -323,7 +323,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   return (
     <div
       ref={shellRef}
-      className={`fixed z-30 h-[66px] transition-[width,left,bottom,transform] duration-300 ease-out ${compactDocked ? 'overflow-hidden' : 'overflow-visible'}`}
+      className={`fixed z-30 h-[66px] rounded-[30px] border-0 outline-none transition-[width,left,bottom,transform] duration-300 ease-out ${compactDocked ? 'overflow-hidden' : 'overflow-visible'}`}
       style={{
         ...navDynamicVars,
         left: compactDocked

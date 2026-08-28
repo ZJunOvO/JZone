@@ -38,6 +38,9 @@ const assertContract = async () => {
   assert.match(player, /player-lyrics-loading/);
   assert.match(player, /player-lyrics-error/);
   assert.match(player, /player-lyrics-empty/);
+  assert.match(player, /PLAYER_LYRICS_UI_CACHE_FRESH_MS/);
+  assert.match(player, /playerLyricsUiCache/);
+  assert.match(player, /data-testid="player-song-info-button"/);
   assert.match(player, /SONG_LYRICS_UPDATED_EVENT/);
   assert.match(player, /<SongLyricsEditorDialog/);
   assert.match(player, /React\.useMemo\(\s*\(\) => lyricsRow \? getPlayerLyricsInput\(lyricsRow\) : null/);
@@ -276,6 +279,14 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
         await wait(() => Boolean(document.querySelector('[data-testid="lyrics-renderer"]')), '再次打开歌词');
         await settle();
         const reopenedCover = readRect('[data-testid="player-cover-layout"]');
+        const songInfoButton = document.querySelector('[data-testid="player-song-info-button"]');
+        if (!(songInfoButton instanceof HTMLButtonElement)) throw new Error('未找到歌曲信息返回按钮');
+        songInfoButton.click();
+        await wait(() => !document.querySelector('[data-testid="player-lyrics-panel"]'), '点击歌曲信息返回封面');
+        const songInfoReturnedCover = Boolean(document.querySelector('[data-testid="player-cover-image"]'));
+        coverButton.click();
+        await wait(() => Boolean(document.querySelector('[data-testid="lyrics-renderer"]')), '歌曲信息返回后再次打开歌词');
+        await settle();
         document.querySelector('[data-testid="player-toggle-play"]')?.click();
         await new Promise((resolve) => setTimeout(resolve, 4_500));
         const lowerControls = document.querySelector('[data-testid="player-lower-controls"]');
@@ -290,6 +301,7 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
           coverStateLabel,
           openingWidths,
           reopenedCover,
+          songInfoReturnedCover,
           lyricsRestored: Boolean(document.querySelector('[data-testid="player-lyrics-panel"]')),
           controlsAfterIdle,
           controlsAfterActivity,
@@ -367,7 +379,7 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
     } else if (initialMode === 'error') {
       assert.equal(result.retryRecovered, true, '歌词失败状态必须支持重试并恢复空状态');
     } else {
-      const { smallState, largeCover, rendererAfterClose, coverStateLabel, openingWidths, reopenedCover, lyricsRestored, controlsAfterIdle, controlsAfterActivity } = result.readyLayout;
+      const { smallState, largeCover, rendererAfterClose, coverStateLabel, openingWidths, reopenedCover, songInfoReturnedCover, lyricsRestored, controlsAfterIdle, controlsAfterActivity } = result.readyLayout;
       assert.equal(smallState.ariaLabel, '查看封面', '歌词态小封面必须提供返回名称');
       assert.equal(smallState.visibleText, '', '封面切换入口不能显示“查看歌词/查看封面”文字');
       assert.equal(smallState.introFirstLineTimeMs, 8_000, '播放器必须按第一句有效时间显示前奏三点');
@@ -382,6 +394,8 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
       assert.equal(rendererAfterClose, false, '返回大封面后必须卸载歌词渲染器');
       assert.equal(coverStateLabel, '查看歌词');
       assert.equal(lyricsRestored, true, '再次点击大封面必须恢复歌词态');
+      assert.equal(songInfoReturnedCover, true, '歌词态点击歌名艺人区域必须返回封面态');
+      assert.equal(result.lyricsFetchSongIds.filter((songId) => songId === 'smoke-lyrics-player-song').length, 1, '同一歌曲反复开关歌词视图不得重复拉取');
       assert.equal(controlsAfterIdle, 'false', '播放中的歌词页停留后必须自动淡出下方控制区');
       assert.equal(controlsAfterActivity, 'true', '触摸歌词页后必须立即恢复下方控制区');
       assert(openingWidths.length >= 5, '必须采集到封面缩放动画帧');

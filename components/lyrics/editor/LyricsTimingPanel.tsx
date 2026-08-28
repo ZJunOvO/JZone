@@ -42,7 +42,6 @@ export const LyricsTimingPanel = ({
   onLineTextChange,
   onCompleteLine,
   onLineRoleChange,
-  onClearLineTime,
   onRemoveLine,
 }: LyricsTimingPanelProps) => {
   const selectedLineNumber = lines.length > 0 ? Math.min(selectedIndex, lines.length - 1) + 1 : 0;
@@ -226,6 +225,43 @@ export const LyricsTimingPanel = ({
           const isPlaybackActive = index === activePlaybackIndex;
           const lineRole: LyricsEditorLineRole = line.isBackground ? 'background' : line.isDuet ? 'duet' : 'lead';
           const effectiveLineTime = line.startTimeMs === null ? null : line.startTimeMs + offsetMs;
+          const isComplete = line.startTimeMs !== null && Boolean(line.text.trim());
+          const isCollapsed = isComplete && !isSelected;
+
+          if (isCollapsed) {
+            return (
+              <div
+                key={line.id}
+                role="listitem"
+                data-testid={`lyrics-editor-line-${index}`}
+                data-lyrics-line-index={index}
+                data-selected="false"
+                data-line-state="complete"
+                className={`grid grid-cols-[minmax(0,1fr)_44px] items-center gap-2 border-t px-1 py-2 transition-colors ${isPlaybackActive ? 'border-cyan-200/40 bg-cyan-200/[0.04]' : 'border-emerald-200/15 bg-emerald-200/[0.025]'}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelectLine(index)}
+                  className="min-h-12 min-w-0 cursor-text rounded-xl px-3 text-left text-base font-bold leading-6 text-white/82 transition-colors hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60"
+                  aria-label={`编辑第 ${index + 1} 行：${line.text}`}
+                  data-testid={`lyrics-editor-line-summary-${index}`}
+                >
+                  <span className="block truncate">{line.text}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => onRemoveLine(index)}
+                  className="grid h-11 w-11 cursor-pointer place-items-center rounded-full text-white/32 transition-colors hover:bg-red-300/[0.12] hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-not-allowed disabled:opacity-25"
+                  aria-label={`删除第 ${index + 1} 行`}
+                  title="删除本行"
+                >
+                  <Icons.Trash size={16} aria-hidden="true" />
+                </button>
+              </div>
+            );
+          }
+
           return (
             <div
               key={line.id}
@@ -234,6 +270,7 @@ export const LyricsTimingPanel = ({
               data-lyrics-line-index={index}
               data-selected={isSelected ? 'true' : 'false'}
               data-playback-active={isPlaybackActive ? 'true' : 'false'}
+              data-line-state={isComplete ? 'editing-complete' : 'editing'}
               tabIndex={0}
               onClick={(event) => handleLineClick(event, index)}
               onKeyDown={(event) => handleLineKeyDown(event, index)}
@@ -290,16 +327,16 @@ export const LyricsTimingPanel = ({
                   <div className="flex justify-end gap-1">
                     <button
                       type="button"
-                      disabled={line.startTimeMs === null || saving}
+                      disabled={saving || !line.text.trim() || line.startTimeMs === null}
                       onClick={(event) => {
                         event.stopPropagation();
-                        onClearLineTime(index);
+                        onCompleteLine(index);
                       }}
-                      className="grid min-h-11 min-w-11 cursor-pointer place-items-center rounded-lg text-white/45 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-not-allowed disabled:opacity-25"
-                      aria-label={`清除第 ${index + 1} 行时间`}
-                      title="清除本行时间"
+                      className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full bg-white px-3 text-xs font-black text-black transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:cursor-not-allowed disabled:opacity-35"
+                      data-testid={`lyrics-editor-line-complete-${index}`}
                     >
-                      <Icons.X size={16} aria-hidden="true" />
+                      <Icons.Check size={15} aria-hidden="true" />
+                      完成本行
                     </button>
                     <button
                       type="button"

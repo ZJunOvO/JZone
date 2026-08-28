@@ -160,7 +160,6 @@ export interface LyricsTimingPanelProps {
   onLineTextChange: (index: number, text: string) => void;
   onCompleteLine: (index: number) => void;
   onLineRoleChange: (index: number, role: LyricsEditorLineRole) => void;
-  onClearLineTime: (index: number) => void;
   onRemoveLine: (index: number) => void;
 }
 

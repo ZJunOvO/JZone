@@ -57,6 +57,14 @@ interface PlayerLyricsRequest {
 
 type PlayerLyricsLoadState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
+const PLAYER_LYRICS_UI_CACHE_FRESH_MS = 10 * 60_000;
+interface PlayerLyricsUiCacheEntry {
+  row: SongLyricsRow | null;
+  updatedAt: number;
+}
+const playerLyricsUiCache = new Map<string, PlayerLyricsUiCacheEntry>();
+const getPlayerLyricsUiCacheKey = (viewerId: string | undefined, songId: string) => `${viewerId ?? 'anonymous'}:${songId}`;
+
 const shiftLyricsTime = (timeMs: number | null, offsetMs: number) => (
   timeMs === null ? null : Math.max(0, timeMs + offsetMs)
 );
@@ -182,6 +190,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
 }) => {
   const { user } = useAuth();
   const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, cyclePlaybackMode, seek, setVolume, playSong, removeFromQueue, reorderQueue, toggleFavorite, isFavorite } = useStore();
+  const song = getCurrentSong();
+  const initialLyricsCacheEntry = song
+    ? playerLyricsUiCache.get(getPlayerLyricsUiCacheKey(user?.id, song.id))
+    : undefined;
   const playbackTime = usePlaybackTime();
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isQueueClosing, setIsQueueClosing] = useState(false);
@@ -195,8 +207,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const [contextMenuOpenNonce, setContextMenuOpenNonce] = useState(0);
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | undefined>(undefined);
   const [isLyricsViewOpen, setIsLyricsViewOpen] = useState(false);
-  const [lyricsLoadState, setLyricsLoadState] = useState<PlayerLyricsLoadState>('idle');
-  const [lyricsRow, setLyricsRow] = useState<SongLyricsRow | null>(null);
+  const [lyricsLoadState, setLyricsLoadState] = useState<PlayerLyricsLoadState>(
+    initialLyricsCacheEntry ? (initialLyricsCacheEntry.row ? 'ready' : 'empty') : 'idle',
+  );
+  const [lyricsRow, setLyricsRow] = useState<SongLyricsRow | null>(initialLyricsCacheEntry?.row ?? null);
   const [lyricsError, setLyricsError] = useState<string | null>(null);
   const [lyricsRetryNonce, setLyricsRetryNonce] = useState(0);
   const [isLyricsEditorOpen, setIsLyricsEditorOpen] = useState(false);
@@ -219,6 +233,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const queueCloseTimerRef = React.useRef<number | null>(null);
   const previousArtworkSongIdRef = React.useRef<string | null>(null);
   const currentSongIdRef = React.useRef<string | null>(null);
+  const currentLyricsCacheKeyRef = React.useRef<string | null>(null);
   const lyricsTouchStartRef = React.useRef<{ x: number; y: number } | null>(null);
   const lyricsControlsTimerRef = React.useRef<number | null>(null);
 
@@ -254,8 +269,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     if (queueCloseTimerRef.current) window.clearTimeout(queueCloseTimerRef.current);
   }, []);
   
-  const song = getCurrentSong();
   currentSongIdRef.current = song?.id ?? null;
+  currentLyricsCacheKeyRef.current = song ? getPlayerLyricsUiCacheKey(user?.id, song.id) : null;
 
   const revealLyricsControls = React.useCallback(() => {
     if (lyricsControlsTimerRef.current) window.clearTimeout(lyricsControlsTimerRef.current);
@@ -287,15 +302,31 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       };
     }
 
-    setLyricsLoadState('loading');
-    setLyricsRow(null);
-    setLyricsError(null);
+    const cacheKey = getPlayerLyricsUiCacheKey(user?.id, song.id);
+    const cachedEntry = playerLyricsUiCache.get(cacheKey);
+    if (cachedEntry) {
+      setLyricsRow(cachedEntry.row);
+      setLyricsLoadState(cachedEntry.row ? 'ready' : 'empty');
+      setLyricsError(null);
+      if (Date.now() - cachedEntry.updatedAt < PLAYER_LYRICS_UI_CACHE_FRESH_MS) {
+        return () => {
+          cancelled = true;
+        };
+      }
+    } else {
+      setLyricsLoadState('loading');
+      setLyricsRow(null);
+      setLyricsError(null);
+    }
+
     void supabaseApi.fetchSongLyrics(song.id).then((row) => {
       if (cancelled) return;
+      playerLyricsUiCache.set(cacheKey, { row, updatedAt: Date.now() });
       setLyricsRow(row);
       setLyricsLoadState(row ? 'ready' : 'empty');
     }).catch((error: unknown) => {
       if (cancelled) return;
+      if (cachedEntry) return;
       setLyricsRow(null);
       setLyricsLoadState('error');
       setLyricsError(getLyricsErrorMessage(error));
@@ -304,12 +335,13 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [lyricsRetryNonce, song?.id]);
+  }, [lyricsRetryNonce, song?.id, user?.id]);
 
   React.useEffect(() => {
     const handleLyricsUpdated = (event: Event) => {
       const detail = (event as SongLyricsUpdatedEvent).detail;
       if (!detail?.songId || detail.songId !== currentSongIdRef.current) return;
+      if (currentLyricsCacheKeyRef.current) playerLyricsUiCache.delete(currentLyricsCacheKeyRef.current);
       setLyricsRetryNonce((value) => value + 1);
     };
     window.addEventListener(SONG_LYRICS_UPDATED_EVENT, handleLyricsUpdated);
@@ -630,14 +662,22 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             transition={{ layout: reduceMotion ? { duration: 0 } : { duration: 0.42, ease: [0.22, 0.74, 0.22, 1] } }}
             data-testid="player-song-info"
           >
-          <div className="flex-1 min-w-0 pr-4">
+          <button
+            type="button"
+            className={`flex-1 min-w-0 pr-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70 ${isLyricsViewOpen ? 'cursor-pointer rounded-xl' : 'cursor-default'}`}
+            onClick={() => {
+              if (isLyricsViewOpen) setIsLyricsViewOpen(false);
+            }}
+            aria-label={isLyricsViewOpen ? '返回封面' : undefined}
+            data-testid="player-song-info-button"
+          >
             <PlayerSharedElement sourceRect={sharedOrigin.title} phase={transitionPhase} name="title">
               <h2 className={`${isLyricsViewOpen ? 'text-lg' : 'text-2xl'} truncate font-bold tracking-tight text-white transition-[font-size] duration-300`}>{song.title}</h2>
             </PlayerSharedElement>
             <PlayerSharedElement sourceRect={sharedOrigin.artist} phase={transitionPhase} name="artist">
               <p className={`${isLyricsViewOpen ? 'text-sm' : 'text-lg'} truncate font-medium text-white/60 transition-[font-size] duration-300`}>{song.artist}</p>
             </PlayerSharedElement>
-          </div>
+          </button>
           <motion.div
             className="flex items-center gap-2"
             initial={secondaryInitial}

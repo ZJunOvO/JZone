@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useState } from 'react';
-import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
+import { AnimatePresence, motion, useAnimationControls, useReducedMotion } from 'framer-motion';
 import { PlayerBar } from '../PlayerBar';
 import { PwaInstallPrompt } from '../PwaInstallPrompt';
 import { listenModalPresence } from '../../modalPresence';
@@ -88,6 +88,7 @@ export const AppShell: React.FC = () => {
   const miniSettleTimerRef = React.useRef<number | null>(null);
   const miniSettleResetTimerRef = React.useRef<number | null>(null);
   const routeFallbackControls = useAnimationControls();
+  const reduceMotion = useReducedMotion();
   const previousRouteRef = React.useRef(currentRoute);
 
   useAutoFullscreen();
@@ -346,6 +347,44 @@ export const AppShell: React.FC = () => {
     setIsCompactPlayerExpanded(false);
   }, [setActiveTab, setProfileUserId]);
 
+  const miniPlayerLayoutTarget = isModalActive
+    ? {
+        top: 'calc(env(safe-area-inset-top) + 12px)',
+        bottom: 'auto',
+        left: '12px',
+        right: '12px',
+        width: 'min(320px, calc(100% - 24px))',
+        x: '0%',
+        opacity: 1,
+      }
+    : isCompactDockPair
+      ? {
+          top: 'auto',
+          bottom: `calc(env(safe-area-inset-bottom) + ${BOTTOM_DOCK_GEOMETRY.compactNavBottom + 1}px)`,
+          left: '50%',
+          right: 'auto',
+          width: isCompactPlayerExpanded
+            ? `${BOTTOM_DOCK_GEOMETRY.compactMaxWidth}px`
+            : `${BOTTOM_DOCK_GEOMETRY.compactCircleSize}px`,
+          x: isCompactPlayerExpanded
+            ? -(BOTTOM_DOCK_GEOMETRY.compactPairWidth / 2 - BOTTOM_DOCK_GEOMETRY.compactCircleSize - BOTTOM_DOCK_GEOMETRY.compactPairGap)
+            : BOTTOM_DOCK_GEOMETRY.compactPairWidth / 2 - BOTTOM_DOCK_GEOMETRY.compactCircleSize,
+          opacity: 1,
+        }
+      : {
+          top: 'auto',
+          bottom: isListeningRecap
+            ? `calc(env(safe-area-inset-bottom) + ${BOTTOM_DOCK_GEOMETRY.wideNavBottom}px)`
+            : `calc(env(safe-area-inset-bottom) + ${getBottomDockMiniBottom(liquidGlassSettings.bottomTabLayout)}px)`,
+          left: isCompactBottomTabLayout && !isListeningRecap ? '50%' : `${BOTTOM_DOCK_GEOMETRY.viewportGutter}px`,
+          right: isCompactBottomTabLayout && !isListeningRecap ? 'auto' : `${BOTTOM_DOCK_GEOMETRY.viewportGutter}px`,
+          width: isCompactBottomTabLayout && !isListeningRecap
+            ? `min(${BOTTOM_DOCK_GEOMETRY.compactMaxWidth}px, calc(100% - ${BOTTOM_DOCK_GEOMETRY.viewportGutter * 2}px))`
+            : `min(${BOTTOM_DOCK_GEOMETRY.wideMaxWidth}px, calc(100% - ${BOTTOM_DOCK_GEOMETRY.viewportGutter * 2}px))`,
+          x: isCompactBottomTabLayout && !isListeningRecap ? '-50%' : '0%',
+          opacity: 1,
+        };
+
   return (
     <div className="jzone-app-shell max-w-md mx-auto bg-black h-screen overflow-hidden relative shadow-2xl flex flex-col" style={liquidGlassCssVars}>
       <SharedElementLayer>
@@ -408,51 +447,15 @@ export const AppShell: React.FC = () => {
       )}
       </AnimatePresence>
 
+      <AnimatePresence initial={false}>
+      {currentSong && (
       <motion.div
           ref={miniPlayerLayerRef}
           data-testid="mini-player-layer"
           aria-hidden={isPlayerOpen && playerTransitionPhase !== 'closing'}
-          initial={false}
-          animate={
-            isModalActive
-              ? {
-                  top: 'calc(env(safe-area-inset-top) + 12px)',
-                  bottom: 'auto',
-                  left: '12px',
-                  right: '12px',
-                  width: 'min(320px, calc(100% - 24px))',
-                  x: '0%',
-                  opacity: 1,
-                }
-              : isCompactDockPair
-                ? {
-                    top: 'auto',
-                    bottom: `calc(env(safe-area-inset-bottom) + ${BOTTOM_DOCK_GEOMETRY.compactNavBottom + 1}px)`,
-                    left: '50%',
-                    right: 'auto',
-                    width: isCompactPlayerExpanded
-                      ? `${BOTTOM_DOCK_GEOMETRY.compactMaxWidth}px`
-                      : `${BOTTOM_DOCK_GEOMETRY.compactCircleSize}px`,
-                    x: isCompactPlayerExpanded
-                      ? -(BOTTOM_DOCK_GEOMETRY.compactPairWidth / 2 - BOTTOM_DOCK_GEOMETRY.compactCircleSize - BOTTOM_DOCK_GEOMETRY.compactPairGap)
-                      : BOTTOM_DOCK_GEOMETRY.compactPairWidth / 2 - BOTTOM_DOCK_GEOMETRY.compactCircleSize,
-                    opacity: 1,
-                  }
-              : {
-                  top: 'auto',
-                  // 当前导航顶部与播放器底部保持 12px，兼顾触达密度和 SVG 滤镜采样稳定性。
-                  bottom: isListeningRecap
-                    ? `calc(env(safe-area-inset-bottom) + ${BOTTOM_DOCK_GEOMETRY.wideNavBottom}px)`
-                    : `calc(env(safe-area-inset-bottom) + ${getBottomDockMiniBottom(liquidGlassSettings.bottomTabLayout)}px)`,
-                  left: isCompactBottomTabLayout && !isListeningRecap ? '50%' : `${BOTTOM_DOCK_GEOMETRY.viewportGutter}px`,
-                  right: isCompactBottomTabLayout && !isListeningRecap ? 'auto' : `${BOTTOM_DOCK_GEOMETRY.viewportGutter}px`,
-                  width: isCompactBottomTabLayout && !isListeningRecap
-                    ? `min(${BOTTOM_DOCK_GEOMETRY.compactMaxWidth}px, calc(100% - ${BOTTOM_DOCK_GEOMETRY.viewportGutter * 2}px))`
-                    : `min(${BOTTOM_DOCK_GEOMETRY.wideMaxWidth}px, calc(100% - ${BOTTOM_DOCK_GEOMETRY.viewportGutter * 2}px))`,
-                  x: isCompactBottomTabLayout && !isListeningRecap ? '-50%' : '0%',
-                  opacity: 1,
-                }
-          }
+          initial={reduceMotion ? miniPlayerLayoutTarget : { ...miniPlayerLayoutTarget, opacity: 0, scale: 0.94, filter: 'blur(8px)' }}
+          animate={{ ...miniPlayerLayoutTarget, scale: 1, filter: 'blur(0px)' }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, filter: 'blur(6px)' }}
           transition={{
             top: { type: 'spring', damping: 26, stiffness: 320 },
             bottom: { type: 'spring', damping: 26, stiffness: 320 },
@@ -460,6 +463,8 @@ export const AppShell: React.FC = () => {
             width: { type: 'spring', damping: 26, stiffness: 320 },
             x: { type: 'spring', damping: 30, stiffness: 380, mass: 0.78 },
             opacity: { duration: 0.12 },
+            scale: { type: 'spring', damping: 24, stiffness: 360, mass: 0.72 },
+            filter: { duration: reduceMotion ? 0 : 0.24 },
           }}
           className="fixed z-[160] mx-auto"
           data-layout-mode={liquidGlassSettings.bottomTabLayout}
@@ -475,6 +480,8 @@ export const AppShell: React.FC = () => {
           compactMode={isCompactDockPair ? (isCompactPlayerExpanded ? 'expanded' : 'circle') : undefined}
         />
       </motion.div>
+      )}
+      </AnimatePresence>
 
       {!isListeningRecap && (
         <BottomNavigation

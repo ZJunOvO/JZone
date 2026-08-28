@@ -158,7 +158,17 @@ try {
       lineCount: mount.querySelectorAll('[data-lyrics-line-index]').length,
       selected: mount.querySelector('[data-testid="lyrics-editor-line-1"]')?.dataset.selected,
       focused: document.activeElement?.getAttribute('data-testid'),
+      completedState: mount.querySelector('[data-testid="lyrics-editor-line-0"]')?.dataset.lineState,
+      collapsedText: mount.querySelector('[data-testid="lyrics-editor-line-summary-0"]')?.textContent,
+      hiddenEditor: !mount.querySelector('[data-testid="lyrics-editor-line-input-0"]'),
     };
+    await click('lyrics-editor-line-summary-0');
+    const reopenedCompletedLine = {
+      state: mount.querySelector('[data-testid="lyrics-editor-line-0"]')?.dataset.lineState,
+      focused: document.activeElement?.getAttribute('data-testid'),
+      text: mount.querySelector('[data-testid="lyrics-editor-line-input-0"]')?.value,
+    };
+    await click('lyrics-editor-line-1');
     await click('lyrics-editor-mark');
     await pressEnter('lyrics-editor-line-input-1');
     const afterLastMark = {
@@ -167,8 +177,8 @@ try {
       lineCount: mount.querySelectorAll('[data-lyrics-line-index]').length,
       selected: mount.querySelector('[data-testid="lyrics-editor-line-2"]')?.dataset.selected,
       focused: document.activeElement?.getAttribute('data-testid'),
-      firstText: mount.querySelector('[data-testid="lyrics-editor-line-input-0"]')?.value,
-      secondText: mount.querySelector('[data-testid="lyrics-editor-line-input-1"]')?.value,
+      firstText: mount.querySelector('[data-testid="lyrics-editor-line-summary-0"]')?.textContent,
+      secondText: mount.querySelector('[data-testid="lyrics-editor-line-summary-1"]')?.textContent,
       inheritedRole: mount.querySelector('[data-testid="lyrics-editor-line-role-2"]')?.value,
     };
     await click('lyrics-editor-undo');
@@ -178,6 +188,10 @@ try {
     };
     await click('lyrics-editor-mark');
     await click('lyrics-editor-save');
+    const saveFeedback = {
+      message: mount.querySelector('[data-testid="lyrics-editor-save-message"]')?.textContent,
+      status: mount.querySelector('[data-testid="lyrics-editor-draft-status"]')?.textContent,
+    };
     const rolePayload = saveCalls.at(-1);
     if (!rolePayload) {
       throw new Error(`角色歌词未产生保存载荷：${mount.querySelector('[data-testid="lyrics-editor-error"]')?.textContent || mount.querySelector('[data-testid="lyrics-editor-save-error"]')?.textContent || '无错误提示'}`);
@@ -209,8 +223,11 @@ try {
       clearDraftOnSave: false,
       onSave: async (payload) => saveCalls.push(payload),
     });
+    if (mount.querySelector('[data-testid="lyrics-editor-line-summary-0"]')) await click('lyrics-editor-line-summary-0');
+    const restoredDuet = mount.querySelector('[data-testid="lyrics-editor-line-role-0"]')?.value;
+    if (mount.querySelector('[data-testid="lyrics-editor-line-summary-1"]')) await click('lyrics-editor-line-summary-1');
     const restoredRoles = {
-      duet: mount.querySelector('[data-testid="lyrics-editor-line-role-0"]')?.value,
+      duet: restoredDuet,
       background: mount.querySelector('[data-testid="lyrics-editor-line-role-1"]')?.value,
     };
 
@@ -305,10 +322,12 @@ try {
       initial,
       timelineFlow,
       afterMark,
-      afterFirstCompletion,
-      afterLastMark,
+    afterFirstCompletion,
+    reopenedCompletedLine,
+    afterLastMark,
       afterUndo,
-      roleRoundTrip,
+    roleRoundTrip,
+    saveFeedback,
       restoredRoles,
       jumped,
       preview,
@@ -365,7 +384,15 @@ try {
     lineCount: 2,
     selected: 'true',
     focused: 'lyrics-editor-line-input-1',
+    completedState: 'complete',
+    collapsedText: '第一行',
+    hiddenEditor: true,
   }, '回车完成当前句后必须续播并前往下一句');
+  assert.deepEqual(result.reopenedCompletedLine, {
+    state: 'editing-complete',
+    focused: 'lyrics-editor-line-input-0',
+    text: '第一行',
+  }, '点击已完成歌词必须重新展开并聚焦编辑，而不是暴露冗余操作');
   assert.deepEqual(result.afterLastMark, {
     paused: true,
     resumed: true,
@@ -389,6 +416,10 @@ try {
       { isDuet: false, isBackground: true },
     ],
   }, '保存内容与再次解析都必须保留主唱、对唱、和声语义');
+  assert.deepEqual(result.saveFeedback, {
+    message: '歌词已暂存，保存歌曲后会同步。',
+    status: '已暂存到歌曲',
+  }, '移动端保存后必须显示明确的成功状态');
   assert.deepEqual(result.restoredRoles, { duet: 'duet', background: 'background' }, '重新挂载后必须从本地草稿恢复角色');
   assert.equal(result.jumped, 3.5, '点击已打点行必须跳转到行起始时间');
   assert.deepEqual(result.preview, { present: true, renderer: true, timing: 'line' });

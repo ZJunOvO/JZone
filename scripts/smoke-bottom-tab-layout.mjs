@@ -127,6 +127,7 @@ const readLayout = (page) => page.evaluate(() => {
     compactExpanded: mini?.getAttribute('data-compact-player-expanded') ?? null,
     playbackProgress: Number.parseFloat(miniPlayer?.getAttribute('data-playback-progress') ?? 'NaN'),
     hasEqualizer: Boolean(miniPlayer?.querySelector('[data-testid="compact-player-equalizer"]')),
+    hasPausedIndicator: Boolean(miniPlayer?.querySelector('[data-testid="compact-player-paused"]')),
     hasProgressRing: Boolean(miniPlayer?.querySelector('[data-testid="compact-player-progress-ring"]')),
     miniRadius: miniPlayer ? Number.parseFloat(getComputedStyle(miniPlayer).borderRadius) : null,
     navRadius: nav ? Number.parseFloat(getComputedStyle(nav.querySelector('.liquid-tab-surface')).borderRadius) : null,
@@ -380,6 +381,7 @@ const verifyLiveMiniOrigin = async (page) => {
   assert(expectedCenters && closingFrames.every((frame) => frame.every((center, index) => Math.abs(center - expectedCenters[index]) <= 1)), `Tab 图标在回弹首帧发生挤压错位：${JSON.stringify(closingFrames)}`);
   const pausedCircle = await readLayout(page);
   assert(!pausedCircle.hasEqualizer, `暂停圆形 Mini 仍显示播放音阶：${JSON.stringify(pausedCircle)}`);
+  assert(pausedCircle.hasPausedIndicator, `暂停圆形 Mini 缺少暂停状态标识：${JSON.stringify(pausedCircle)}`);
 
   await page.getByTestId('mini-player').click();
   await waitForCompactGeometry(page, 'expanded');
@@ -389,6 +391,7 @@ const verifyLiveMiniOrigin = async (page) => {
   await waitForCompactGeometry(page, 'circle');
   const playingCircle = await readLayout(page);
   assert(playingCircle.hasEqualizer, `播放中圆形 Mini 缺少跳动音阶：${JSON.stringify(playingCircle)}`);
+  assert(!playingCircle.hasPausedIndicator, `播放中圆形 Mini 仍显示暂停状态标识：${JSON.stringify(playingCircle)}`);
 
   await page.getByTestId('mini-player').click();
   await waitForCompactGeometry(page, 'expanded');
