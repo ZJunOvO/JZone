@@ -22,6 +22,7 @@ import { useLiquidGlassAdaptiveForeground } from '../../hooks/useLiquidGlassAdap
 import { SharedElementLayer } from '../motion/SharedElementLayer';
 import { ProfileAvatarRouteTransition } from '../motion/ProfileAvatarRouteTransition';
 import { useCurrentArtistProfile } from '../../hooks/useCurrentArtistProfile';
+import { Icons } from '../Icons';
 import {
   getDefaultPlayerOrigin,
   getDefaultPlayerSharedOrigin,
@@ -40,7 +41,8 @@ const loadProfile = () => import('../../pages/Profile').then((module) => ({ defa
 const Profile = React.memo(lazy(loadProfile));
 const loadCollectionDetail = () => import('../../pages/CollectionDetailPage').then((module) => ({ default: module.CollectionDetailPage }));
 const CollectionDetailPage = lazy(loadCollectionDetail);
-const ListeningRecapPage = lazy(() => import('../../pages/ListeningRecap').then((module) => ({ default: module.ListeningRecap })));
+const loadListeningRecap = () => import('../../pages/ListeningRecap').then((module) => ({ default: module.ListeningRecap }));
+const ListeningRecapPage = lazy(loadListeningRecap);
 const loadPlayerView = () => import('../../pages/PlayerView').then((module) => ({ default: module.PlayerView }));
 const PlayerView = lazy(loadPlayerView);
 
@@ -48,6 +50,59 @@ const PageFallback = () => (
   <div className="min-h-screen bg-black px-6 pt-16" aria-label="页面加载中">
     <div className="h-8 w-28 animate-pulse rounded-lg bg-white/8" />
     <div className="mt-8 h-40 animate-pulse rounded-3xl bg-white/[0.045]" />
+  </div>
+);
+
+const ListeningRecapFallback: React.FC<{ onBack: () => void }> = ({ onBack }) => (
+  <div
+    className="min-h-full bg-[#070709] text-white"
+    role="status"
+    aria-live="polite"
+    aria-label="正在加载聆听回顾"
+    data-testid="listening-recap-route-loading"
+  >
+    <header className="sticky top-0 z-30 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+10px)] sm:px-6">
+      <div className="pointer-events-none absolute inset-x-0 -top-2 bottom-[-2.5rem] bg-[#070709]/78 backdrop-blur-xl [mask-image:linear-gradient(to_bottom,black_0%,black_54%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_54%,transparent_100%)]" />
+      <div className="relative z-10 mx-auto flex min-h-11 max-w-4xl items-center justify-center">
+        <button
+          type="button"
+          onClick={onBack}
+          className="absolute left-0 flex h-11 w-11 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80"
+          aria-label="返回"
+        >
+          <Icons.ChevronLeft size={20} aria-hidden="true" />
+        </button>
+        <div className="flex h-11 items-center gap-1 rounded-full border border-white/10 bg-white/[0.045] px-1.5 backdrop-blur-xl">
+          <span className="h-8 w-12 rounded-full bg-white/[0.07]" aria-hidden="true" />
+          <span className="h-8 w-12 rounded-full bg-red-300/15" aria-hidden="true" />
+          <span className="h-8 w-12 rounded-full bg-white/[0.07]" aria-hidden="true" />
+        </div>
+      </div>
+    </header>
+
+    <main className="px-5 pb-28 pt-10 sm:px-8 sm:pt-14">
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-10 flex items-center gap-3 text-[10px] font-bold text-white/42">
+          <span className="h-px w-9 bg-red-400/65" aria-hidden="true" />
+          <span>聆听回顾</span>
+        </div>
+        <div className="relative mx-auto aspect-square w-[min(86vw,420px)] overflow-hidden rounded-[30px] bg-[linear-gradient(145deg,#211d27,#0b0b0d_68%)]">
+          <div className="absolute inset-0 animate-pulse bg-[radial-gradient(circle_at_28%_24%,rgba(251,113,133,0.16),transparent_38%),radial-gradient(circle_at_72%_76%,rgba(129,140,248,0.13),transparent_42%)] motion-reduce:animate-none" />
+        </div>
+        <div className="mt-14 max-w-2xl" aria-hidden="true">
+          <div className="h-4 w-32 animate-pulse rounded-full bg-red-300/20 motion-reduce:animate-none" />
+          <div className="mt-6 h-11 w-[82%] animate-pulse rounded-xl bg-white/[0.09] motion-reduce:animate-none" />
+          <div className="mt-3 h-11 w-[56%] animate-pulse rounded-xl bg-white/[0.07] motion-reduce:animate-none" />
+        </div>
+        <div className="mt-8 flex items-center gap-3 text-sm font-semibold text-white/55">
+          <span className="relative flex h-2.5 w-2.5" aria-hidden="true">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-300/50 motion-reduce:animate-none" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-300/80" />
+          </span>
+          正在整理这段时间的声音…
+        </div>
+      </div>
+    </main>
   </div>
 );
 
@@ -104,6 +159,14 @@ export const AppShell: React.FC = () => {
     if (activeTab === 'upload') setUploadMounted(true);
     if (activeTab === 'profile') setProfileMounted(true);
   }, [activeTab]);
+
+  React.useEffect(() => {
+    if (activeTab !== 'home' || isListeningRecap) return;
+    const timer = window.setTimeout(() => {
+      void loadListeningRecap();
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, isListeningRecap]);
 
   React.useLayoutEffect(() => {
     if (previousRouteRef.current === currentRoute) return;
@@ -395,7 +458,7 @@ export const AppShell: React.FC = () => {
           initial={false}
           animate={routeFallbackControls}
         >
-        <Suspense fallback={<PageFallback />}>
+        <Suspense fallback={isListeningRecap ? <ListeningRecapFallback onBack={closeListeningRecap} /> : <PageFallback />}>
           {isListeningRecap ? (
             <ListeningRecapPage
               period={listeningRecapPeriod ?? undefined}
