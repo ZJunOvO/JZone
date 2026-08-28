@@ -16,6 +16,7 @@ interface LiquidGlassMotionContentProps {
   closing?: boolean;
   animateOnMount?: boolean;
   initialMapSize?: { width: number; height: number };
+  materialKey?: React.Key;
 }
 
 export const LIQUID_MENU_EXIT_MS = 380;
@@ -53,6 +54,7 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
   closing = false,
   animateOnMount = true,
   initialMapSize,
+  materialKey,
 }) => {
   const reduceMotion = useReducedMotion();
   const contentControls = useAnimationControls();
@@ -192,6 +194,7 @@ export const LiquidGlassMotionContent: React.FC<LiquidGlassMotionContentProps> =
             }}
       >
         <LiquidGlassSurface
+          key={materialKey}
           material="shuding"
           coverage="full"
           geometry={profile === 'menu' ? 'panel' : 'standard'}

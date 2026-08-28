@@ -104,6 +104,8 @@ const readLayout = (page) => page.evaluate(() => {
   const miniTitle = miniPlayer?.querySelector('[data-player-shared-source="title"]');
   const miniArtist = miniPlayer?.querySelector('[data-player-shared-source="artist"]');
   const miniControls = [...(miniPlayer?.querySelectorAll('button') ?? [])];
+  const miniMaterial = miniPlayer?.querySelector('[data-liquid-material="shuding"]');
+  const miniMaterialFilter = miniMaterial?.querySelector('filter');
   const buttons = [...document.querySelectorAll('button[data-testid^="bottom-nav-"]')];
   const lens = document.querySelector('[data-testid="bottom-nav-lens"]');
   const rect = (element) => {
@@ -121,6 +123,9 @@ const readLayout = (page) => page.evaluate(() => {
     miniTitle: rect(miniTitle),
     miniArtist: rect(miniArtist),
     miniControls: miniControls.map(rect),
+    miniMaterial: rect(miniMaterial),
+    miniMaterialFilterWidth: Number.parseFloat(miniMaterialFilter?.getAttribute('width') ?? 'NaN'),
+    miniMaterialFilterApplied: Boolean(miniMaterial && getComputedStyle(miniMaterial).getPropertyValue('--liquid-tab-filter').includes('url(')),
     miniLayoutMode: miniPlayer?.getAttribute('data-layout-mode') ?? null,
     compactPlayerState: miniPlayer?.getAttribute('data-compact-player-state') ?? null,
     compactPresentation: nav?.getAttribute('data-compact-presentation') ?? null,
@@ -204,6 +209,9 @@ const assertCompactExpandedLayout = (layout) => {
   assert(layout.miniLayoutMode === 'compact-expanded' && layout.compactPlayerState === 'expanded', `横向 Mini 表现错误：${JSON.stringify(layout)}`);
   assert(layout.miniTitle?.width >= 44 && layout.miniArtist?.width >= 44, `横向 Mini 文本区域不可读：${JSON.stringify(layout)}`);
   assert(layout.miniControls.length === 2, `横向 Mini 播放控制数量异常：${JSON.stringify(layout)}`);
+  assert(layout.miniMaterial && Math.abs(layout.miniMaterial.width - 240) <= 1, `横向 Mini 液态玻璃表面没有覆盖完整宽度：${JSON.stringify(layout)}`);
+  assert(Math.abs(layout.miniMaterialFilterWidth - 240) <= 1, `横向 Mini 仍在复用圆形折射图：${JSON.stringify(layout)}`);
+  assert(layout.miniMaterialFilterApplied, `横向 Mini 没有应用液态玻璃折射滤镜：${JSON.stringify(layout)}`);
   assert(buttonRects[0]?.width >= 50, `首页圆钮点击区域过小：${JSON.stringify(layout)}`);
   assert(buttonRects.slice(1).every((rect) => rect.left >= nav.right - 1), `隐藏入口没有留在稳定轨道外：${JSON.stringify(layout)}`);
   assert(layout.overflow <= 0, `紧凑展开态横向溢出：${JSON.stringify(layout)}`);

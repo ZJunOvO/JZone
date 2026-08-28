@@ -85,6 +85,32 @@ try {
   assert(playerOpening.mapReady, `Mini 播放器首帧位移图未就绪：${JSON.stringify(playerOpening)}`);
   assert(Math.abs(playerOpening.filterWidth - playerOpening.playerWidth) <= 1 && Math.abs(playerOpening.filterHeight - playerOpening.playerHeight) <= 1, `Mini 播放器首帧滤镜尺寸错误：${JSON.stringify(playerOpening)}`);
 
+  if (await page.locator('.liquid-mini-player[data-compact-player-state="circle"]').isVisible().catch(() => false)) {
+    await page.getByTestId('mini-player').click();
+    await page.waitForFunction(() => document.querySelector('.liquid-mini-player')?.getAttribute('data-compact-player-state') === 'expanded');
+    await page.waitForTimeout(120);
+    const expandedMaterial = await page.evaluate(() => {
+      const player = document.querySelector('.liquid-mini-player');
+      const material = player?.querySelector('[data-liquid-material="shuding"]');
+      const filter = material?.querySelector('filter');
+      const mapImage = material?.querySelector('feImage');
+      const playerRect = player?.getBoundingClientRect();
+      const materialRect = material?.getBoundingClientRect();
+      return {
+        playerWidth: playerRect?.width,
+        materialWidth: materialRect?.width,
+        filterWidth: Number(filter?.getAttribute('width')),
+        filterApplied: material ? getComputedStyle(material).getPropertyValue('--liquid-tab-filter').includes('url(') : false,
+        mapReady: (mapImage?.getAttribute('href') || mapImage?.getAttribute('xlink:href') || '').startsWith('data:image/'),
+      };
+    });
+    assert(Math.abs(expandedMaterial.playerWidth - 240) <= 1, `紧凑 Mini 未完成展开：${JSON.stringify(expandedMaterial)}`);
+    assert(Math.abs(expandedMaterial.materialWidth - expandedMaterial.playerWidth) <= 1, `展开态材质没有覆盖播放器：${JSON.stringify(expandedMaterial)}`);
+    assert(Math.abs(expandedMaterial.filterWidth - expandedMaterial.playerWidth) <= 1, `展开态仍复用圆形折射图：${JSON.stringify(expandedMaterial)}`);
+    assert(expandedMaterial.filterApplied && expandedMaterial.mapReady, `展开态液态玻璃折射未生效：${JSON.stringify(expandedMaterial)}`);
+    await page.getByTestId('bottom-nav-home').click();
+  }
+
   for (let round = 0; round < 3; round += 1) {
     for (const tab of ['upload', 'profile', 'home', 'library']) {
       await page.getByTestId(`bottom-nav-${tab}`).evaluate((element) => element.click());

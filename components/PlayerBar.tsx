@@ -104,6 +104,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         borderRadiusClass={playerRadiusClass}
         className="flex h-full w-full min-w-0 items-center overflow-hidden"
         initialMapSize={initialMapSize}
+        materialKey={isCompactDock ? `compact-${compactMode ?? 'expanded'}` : variant}
       >
       {isCompactCircle ? (
         <div className="relative h-full w-full p-[5px]" data-testid="compact-player-circle">
