@@ -171,7 +171,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           src={song.coverUrl} 
           alt="Cover" 
           decoding="async"
-          className="w-full h-full rounded-md object-cover shadow-sm bg-zinc-800" 
+          className={`h-full w-full object-cover shadow-sm bg-zinc-800 ${isCompactExpanded ? 'rounded-[25px]' : 'rounded-md'}`}
         />
       </div>
 

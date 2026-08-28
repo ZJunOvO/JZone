@@ -428,14 +428,14 @@ export const AppShell: React.FC = () => {
                 ? {
                     top: 'auto',
                     bottom: `calc(env(safe-area-inset-bottom) + ${BOTTOM_DOCK_GEOMETRY.compactNavBottom + 1}px)`,
-                    left: isCompactPlayerExpanded
-                      ? `calc(50% - ${BOTTOM_DOCK_GEOMETRY.compactPairWidth / 2 - BOTTOM_DOCK_GEOMETRY.compactCircleSize - BOTTOM_DOCK_GEOMETRY.compactPairGap}px)`
-                      : `calc(50% + ${BOTTOM_DOCK_GEOMETRY.compactPairWidth / 2 - BOTTOM_DOCK_GEOMETRY.compactCircleSize}px)`,
+                    left: '50%',
                     right: 'auto',
                     width: isCompactPlayerExpanded
                       ? `${BOTTOM_DOCK_GEOMETRY.compactMaxWidth}px`
                       : `${BOTTOM_DOCK_GEOMETRY.compactCircleSize}px`,
-                    x: '0%',
+                    x: isCompactPlayerExpanded
+                      ? -(BOTTOM_DOCK_GEOMETRY.compactPairWidth / 2 - BOTTOM_DOCK_GEOMETRY.compactCircleSize - BOTTOM_DOCK_GEOMETRY.compactPairGap)
+                      : BOTTOM_DOCK_GEOMETRY.compactPairWidth / 2 - BOTTOM_DOCK_GEOMETRY.compactCircleSize,
                     opacity: 1,
                   }
               : {
@@ -458,7 +458,7 @@ export const AppShell: React.FC = () => {
             bottom: { type: 'spring', damping: 26, stiffness: 320 },
             left: { type: 'spring', damping: 30, stiffness: 380, mass: 0.78 },
             width: { type: 'spring', damping: 26, stiffness: 320 },
-            x: { duration: 0.3, ease: [0.22, 0.74, 0.22, 1] },
+            x: { type: 'spring', damping: 30, stiffness: 380, mass: 0.78 },
             opacity: { duration: 0.12 },
           }}
           className="fixed z-[160] mx-auto"

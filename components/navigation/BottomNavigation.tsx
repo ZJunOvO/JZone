@@ -65,6 +65,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   const [navWidth, setNavWidth] = React.useState(() => getInitialNavWidth(bottomTabLayout));
   const [navMap, setNavMap] = React.useState<LiquidGlassDisplacementMap>({ href: '', scale: 0 });
   const [lensMap, setLensMap] = React.useState<LiquidGlassDisplacementMap>({ href: '', scale: 0 });
+  const shellRef = React.useRef<HTMLDivElement>(null);
   const navRef = React.useRef<HTMLDivElement>(null);
   const navFeImageRef = React.useRef<SVGFEImageElement>(null);
   const lensFeImageRef = React.useRef<SVGFEImageElement>(null);
@@ -137,17 +138,20 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   }, [currentTab]);
 
   React.useLayoutEffect(() => {
-    const element = navRef.current;
+    const element = shellRef.current;
     if (!element) return;
     const update = () => {
       const rect = element.getBoundingClientRect();
-      if (rect.width > 0) setNavWidth(rect.width);
+      const stableWidth = isCompactLayout && compactDocked
+        ? (isCompactHomeOnly ? BOTTOM_DOCK_GEOMETRY.compactCircleSize : BOTTOM_DOCK_GEOMETRY.compactMaxWidth)
+        : rect.width;
+      if (stableWidth > 0) setNavWidth(stableWidth);
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [compactDocked, isCompactHomeOnly, isCompactLayout]);
 
   React.useEffect(() => {
     setNavMap(
@@ -318,7 +322,8 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
 
   return (
     <div
-      className="fixed z-30 h-[66px] transition-[width,left,bottom,transform] duration-300 ease-out"
+      ref={shellRef}
+      className={`fixed z-30 h-[66px] transition-[width,left,bottom,transform] duration-300 ease-out ${compactDocked ? 'overflow-hidden' : 'overflow-visible'}`}
       style={{
         ...navDynamicVars,
         left: compactDocked
@@ -379,7 +384,11 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       <div className="liquid-tab-surface absolute inset-0 pointer-events-none rounded-[30px]">
         <div className="liquid-tab-f-glass absolute inset-0 rounded-[30px]" />
       </div>
-      <div ref={navRef} className="relative z-10 flex h-full items-center overflow-visible rounded-[30px] px-1.5">
+      <div
+        ref={navRef}
+        className="relative z-10 flex h-full shrink-0 items-center overflow-visible rounded-[30px] px-1.5"
+        style={{ width: isCompactLayout && compactDocked ? `${BOTTOM_DOCK_GEOMETRY.compactMaxWidth}px` : '100%' }}
+      >
         {!isCompactLayout && (
           <motion.div
             className="absolute z-30 overflow-hidden rounded-[34px] pointer-events-none transform-gpu"
@@ -446,10 +455,14 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                 }
                 selectTab(tab.id);
               }}
-              className={`liquid-glass-interactive relative z-20 flex h-[54px] min-w-0 items-center justify-center overflow-hidden rounded-[25px] group touch-none ${isVisible ? '' : 'pointer-events-none'}`}
-              style={dragIconColor ? { color: dragIconColor } : undefined}
+              className={`liquid-glass-interactive relative z-20 flex h-[54px] min-w-0 shrink-0 items-center justify-center overflow-hidden rounded-[25px] group touch-none ${isVisible ? '' : 'pointer-events-none'}`}
+              style={{
+                ...(dragIconColor ? { color: dragIconColor } : {}),
+                width: isCompactLayout && compactDocked
+                  ? `${(BOTTOM_DOCK_GEOMETRY.compactMaxWidth - navTrackPadding * 2) / tabs.length}px`
+                  : `${100 / tabs.length}%`,
+              }}
               animate={{
-                width: isVisible ? (isCompactHomeOnly ? 52 : `${100 / tabs.length}%`) : 0,
                 opacity: isVisible ? 1 : 0,
                 scale: isVisible ? 1 : 0.72,
               }}

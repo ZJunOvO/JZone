@@ -203,9 +203,21 @@ const assertCompactExpandedLayout = (layout) => {
   assert(layout.miniLayoutMode === 'compact-expanded' && layout.compactPlayerState === 'expanded', `横向 Mini 表现错误：${JSON.stringify(layout)}`);
   assert(layout.miniTitle?.width >= 44 && layout.miniArtist?.width >= 44, `横向 Mini 文本区域不可读：${JSON.stringify(layout)}`);
   assert(layout.miniControls.length === 2, `横向 Mini 播放控制数量异常：${JSON.stringify(layout)}`);
-  assert(buttonRects[0]?.width >= 50 && buttonRects.slice(1).every((rect) => rect.width <= 1), `首页圆钮没有收拢其他入口：${JSON.stringify(layout)}`);
+  assert(buttonRects[0]?.width >= 50, `首页圆钮点击区域过小：${JSON.stringify(layout)}`);
+  assert(buttonRects.slice(1).every((rect) => rect.left >= nav.right - 1), `隐藏入口没有留在稳定轨道外：${JSON.stringify(layout)}`);
   assert(layout.overflow <= 0, `紧凑展开态横向溢出：${JSON.stringify(layout)}`);
 };
+
+const waitForCompactGeometry = (page, state) => page.waitForFunction((expectedState) => {
+  const player = document.querySelector('[data-testid="mini-player"]');
+  const nav = document.querySelector('[data-testid="bottom-nav-layer"]');
+  const playerRect = player?.getBoundingClientRect();
+  const navRect = nav?.getBoundingClientRect();
+  if (!playerRect || !navRect || player?.getAttribute('data-compact-player-state') !== expectedState) return false;
+  return expectedState === 'expanded'
+    ? Math.abs(playerRect.width - 240) <= 1 && Math.abs(navRect.width - 64) <= 1
+    : Math.abs(playerRect.width - 64) <= 1 && Math.abs(navRect.width - 240) <= 1;
+}, state);
 
 const parseColor = (value) => {
   const match = value.match(/rgba?\(([^)]+)\)/);
@@ -328,30 +340,58 @@ const verifyLiveMiniOrigin = async (page) => {
   const circleState = await readLayout(page);
   assert(circleState.compactPlayerState === 'circle', `交互测试起点不是圆形态：${JSON.stringify(circleState)}`);
 
-  await circle.click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'expanded');
+  const openingFrames = await page.evaluate(async () => {
+    const player = document.querySelector('[data-testid="mini-player"]');
+    player?.click();
+    const frames = [];
+    for (let index = 0; index < 18; index += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const rect = player?.getBoundingClientRect();
+      if (rect) frames.push({ left: rect.left, width: rect.width });
+    }
+    return frames;
+  });
+  await waitForCompactGeometry(page, 'expanded');
+  assert(openingFrames.some((frame) => frame.left < circleState.mini.left - 8 && frame.left > circleState.mini.left - 168), `圆形播放器没有连续向左展开：${JSON.stringify(openingFrames)}`);
+  assert(openingFrames.some((frame) => frame.width > 72 && frame.width < 232), `圆形播放器展开缺少中间宽度：${JSON.stringify(openingFrames)}`);
   let expandedLayout = await readLayout(page);
   assertCompactExpandedLayout(expandedLayout);
   const playButton = page.getByTestId('mini-player').locator('button').first();
   await playButton.click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"] button')?.getAttribute('aria-label')?.startsWith('播放'));
   assert(!(await page.getByTestId('player-view-close').isVisible().catch(() => false)), '横向 Mini 内部播放按钮误开全屏播放器');
 
-  await page.getByTestId('bottom-nav-home').click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'circle');
+  const closingFrames = await page.evaluate(async () => {
+    const home = document.querySelector('[data-testid="bottom-nav-home"]');
+    home?.click();
+    const frames = [];
+    for (let index = 0; index < 18; index += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const buttons = [...document.querySelectorAll('button[data-testid^="bottom-nav-"]')];
+      frames.push(buttons.map((button) => {
+        const rect = button.getBoundingClientRect();
+        return rect.left + rect.width / 2;
+      }));
+    }
+    return frames;
+  });
+  await waitForCompactGeometry(page, 'circle');
+  const expectedCenters = closingFrames.at(-1);
+  assert(expectedCenters && closingFrames.every((frame) => frame.every((center, index) => Math.abs(center - expectedCenters[index]) <= 1)), `Tab 图标在回弹首帧发生挤压错位：${JSON.stringify(closingFrames)}`);
   const pausedCircle = await readLayout(page);
   assert(!pausedCircle.hasEqualizer, `暂停圆形 Mini 仍显示播放音阶：${JSON.stringify(pausedCircle)}`);
 
   await page.getByTestId('mini-player').click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'expanded');
+  await waitForCompactGeometry(page, 'expanded');
   const startedButtonLabel = await page.getByTestId('mini-player').locator('button').first().getAttribute('aria-label');
   assert(startedButtonLabel?.startsWith('暂停'), `暂停时点击圆形 Mini 没有先开始播放：${startedButtonLabel}`);
   await page.getByTestId('bottom-nav-home').click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'circle');
+  await waitForCompactGeometry(page, 'circle');
   const playingCircle = await readLayout(page);
   assert(playingCircle.hasEqualizer, `播放中圆形 Mini 缺少跳动音阶：${JSON.stringify(playingCircle)}`);
 
   await page.getByTestId('mini-player').click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'expanded');
+  await waitForCompactGeometry(page, 'expanded');
   expandedLayout = await readLayout(page);
   assertCompactExpandedLayout(expandedLayout);
   const stillPlayingLabel = await page.getByTestId('mini-player').locator('button').first().getAttribute('aria-label');
@@ -397,8 +437,8 @@ const verifyLiveMiniOrigin = async (page) => {
   await page.getByTestId('player-view-close').click();
   await page.getByTestId('player-transition-shell').waitFor({ state: 'detached', timeout: 5000 });
   await page.getByTestId('bottom-nav-home').click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="mini-player"]')?.getAttribute('data-compact-player-state') === 'circle');
-  return { circleState, pausedCircle, playingCircle, expandedLayout, source, captured };
+  await waitForCompactGeometry(page, 'circle');
+  return { circleState, openingFrames, closingFrames, pausedCircle, playingCircle, expandedLayout, source, captured };
 };
 
 const browser = await chromium.launch({ headless: true });
