@@ -27,6 +27,7 @@ import {
 } from '../../../hooks/useLyricsDraft';
 import { LyricsSourcePanel } from './LyricsSourcePanel';
 import { LyricsTimingPanel } from './LyricsTimingPanel';
+import { LyricsLiveSyncPanel } from './LyricsLiveSyncPanel';
 import {
   applyLyricsOffset,
   clampSeconds,
@@ -58,6 +59,8 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
   initialLyrics = null,
   initialOffsetMs = 0,
   songId,
+  songTitle,
+  songArtist,
   draftKey,
   duration,
   audioUrl,
@@ -92,12 +95,13 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setOffsetMs,
     clearDraft,
   } = useLyricsDraft({ initialLyrics, initialOffsetMs, songId, draftKey });
-  const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
+  const [viewMode, setViewMode] = useState<'compose' | 'sync' | 'preview'>('compose');
   const [sourceText, setSourceText] = useState(() => toVisibleSourceText(content));
   const [sourceKind, setSourceKind] = useState<LyricsEditorSaveSource>('editor');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [focusRequest, setFocusRequest] = useState<LyricsEditorFocusRequest | null>(null);
   const [lastMark, setLastMark] = useState<LastMark | null>(null);
+  const [lastSkipped, setLastSkipped] = useState<{ index: number; line: LyricsLine } | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -335,6 +339,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
       setSourceKind('upload');
       setContent(text);
       setLastMark(null);
+      setLastSkipped(null);
       setSelectedIndex(0);
       setChangedMessage();
     } catch (error) {
@@ -356,6 +361,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setSourceKind('editor');
     setContent(pastedText);
     setLastMark(null);
+    setLastSkipped(null);
     setSelectedIndex(0);
     setChangedMessage();
   }, [setChangedMessage, setContent]);
@@ -365,9 +371,22 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setSourceKind('editor');
     setContent(sourceText);
     setLastMark(null);
+    setLastSkipped(null);
     setSelectedIndex(0);
     setChangedMessage();
   }, [setChangedMessage, setContent, sourceText]);
+
+  const applyOnlineLyrics = useCallback((onlineContent: string) => {
+    setInputError(null);
+    setSourceText(onlineContent);
+    setSourceKind('editor');
+    setContent(onlineContent, 'plain');
+    setLastMark(null);
+    setLastSkipped(null);
+    setSelectedIndex(0);
+    setViewMode('sync');
+    setChangedMessage();
+  }, [setChangedMessage, setContent]);
 
   const updateLineText = useCallback((index: number, text: string) => {
     const nextLines = lines.map((line, lineIndex) => (
@@ -419,6 +438,53 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     markLine(selectedIndex);
   }, [markLine, selectedIndex]);
 
+  const markLiveCurrentLine = useCallback(() => {
+    if (!lines[selectedIndex]) return;
+    const currentTimeMs = Math.round(effectiveCurrentTime * 1_000);
+    const rawTimeMs = Math.max(0, currentTimeMs - offsetMs);
+    const selectedLine = lines[selectedIndex];
+    const nextLines = lines.map((line, index) => (
+      index === selectedIndex ? { ...line, startTimeMs: rawTimeMs, endTimeMs: null } : line
+    ));
+    setSaveError(null);
+    setLastMark({ index: selectedIndex, previousTimeMs: selectedLine.startTimeMs });
+    setLastSkipped(null);
+    commitLines(nextLines, 'lrc');
+    setSelectedIndex(Math.min(selectedIndex + 1, nextLines.length - 1));
+  }, [commitLines, effectiveCurrentTime, lines, offsetMs, selectedIndex]);
+
+  const resetLiveTiming = useCallback(() => {
+    const nextLines = lines.map((line) => ({ ...line, startTimeMs: null, endTimeMs: null, words: [] }));
+    setLastMark(null);
+    setLastSkipped(null);
+    setSelectedIndex(0);
+    commitLines(nextLines, 'plain');
+    seekTo(0);
+  }, [commitLines, lines, seekTo]);
+
+  const selectLiveLine = useCallback((index: number) => {
+    const line = lines[index];
+    setSelectedIndex(index);
+    if (line?.startTimeMs !== null && line?.startTimeMs !== undefined) {
+      seekTo((line.startTimeMs + offsetMs) / 1_000);
+    }
+  }, [lines, offsetMs, seekTo]);
+
+  const nudgeLiveOffset = useCallback((deltaMs: number) => {
+    setOffsetMs(offsetMs + deltaMs);
+    setChangedMessage();
+  }, [offsetMs, setChangedMessage, setOffsetMs]);
+
+  const skipLiveLine = useCallback(() => {
+    const skippedLine = lines[selectedIndex];
+    if (!skippedLine) return;
+    const nextLines = lines.filter((_, index) => index !== selectedIndex);
+    setLastSkipped({ index: selectedIndex, line: skippedLine });
+    setLastMark(null);
+    setSelectedIndex(Math.min(selectedIndex, Math.max(0, nextLines.length - 1)));
+    commitLines(nextLines);
+  }, [commitLines, lines, selectedIndex]);
+
   const completeLine = useCallback((index: number) => {
     const line = lines[index];
     if (!line?.text.trim()) {
@@ -457,6 +523,18 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setLastMark(null);
     commitLines(nextLines);
   }, [commitLines, lastMark, lines]);
+
+  const undoLiveAction = useCallback(() => {
+    if (!lastSkipped) {
+      undoLastMark();
+      return;
+    }
+    const nextLines = [...lines];
+    nextLines.splice(Math.min(lastSkipped.index, nextLines.length), 0, lastSkipped.line);
+    setSelectedIndex(lastSkipped.index);
+    setLastSkipped(null);
+    commitLines(nextLines);
+  }, [commitLines, lastSkipped, lines, undoLastMark]);
 
   const moveSelection = useCallback((direction: -1 | 1) => {
     if (lines.length === 0) return;
@@ -554,7 +632,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
       <header className="flex min-w-0 items-center justify-between gap-3 border-b border-white/10 px-1 pb-3">
         <div className="min-w-0">
           <h2 className="truncate text-xl font-black text-white">歌词制作</h2>
-          <p className="mt-1 text-sm leading-6 text-white/50">播放、标记，逐句完成。</p>
+          <p className="mt-1 text-sm leading-6 text-white/50">{viewMode === 'sync' ? '听一遍，为 Live 录音重新对轴。' : '导入、制作，再检查播放效果。'}</p>
         </div>
         <div className="shrink-0 text-right text-xs text-white/45" aria-live="polite" data-testid="lyrics-editor-draft-status">
           <span className="block">{storageLabel}</span>
@@ -567,10 +645,14 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
         timing={timing}
         inputError={inputError}
         parseError={parseError}
+        songTitle={songTitle}
+        songArtist={songArtist}
+        disabled={saving}
         onSourceChange={handleSourceChange}
         onSourcePaste={handleSourcePaste}
         onFileChange={handleFileChange}
         onApply={applySourceText}
+        onOnlineSelect={applyOnlineLyrics}
       />
 
       <div className="flex min-h-12 items-center justify-between gap-3 border-b border-white/10 py-3" role="tablist" aria-label="歌词编辑视图">
@@ -578,16 +660,26 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           <Clock3 size={16} aria-hidden="true" />
           {formatClock(effectiveCurrentTime)} / {formatClock(effectiveDuration)}
         </div>
-        <div className="flex shrink-0 rounded-full border border-white/10 p-1">
+        <div className="grid shrink-0 grid-cols-3 rounded-full border border-white/10 p-1">
           <button
             type="button"
             role="tab"
-            aria-selected={viewMode === 'edit'}
-            onClick={() => setViewMode('edit')}
-            className={`min-h-10 cursor-pointer rounded-full px-3 text-sm font-extrabold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 ${viewMode === 'edit' ? 'bg-white text-black' : 'text-white/55 hover:bg-white/[0.06] hover:text-white'}`}
+            aria-selected={viewMode === 'compose'}
+            onClick={() => setViewMode('compose')}
+            className={`min-h-10 cursor-pointer rounded-full px-3 text-sm font-extrabold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 ${viewMode === 'compose' ? 'bg-white text-black' : 'text-white/55 hover:bg-white/[0.06] hover:text-white'}`}
             data-testid="lyrics-editor-edit-tab"
           >
-            编辑
+            制作
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'sync'}
+            onClick={() => setViewMode('sync')}
+            className={`min-h-10 cursor-pointer rounded-full px-3 text-sm font-extrabold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 ${viewMode === 'sync' ? 'bg-white text-black' : 'text-white/55 hover:bg-white/[0.06] hover:text-white'}`}
+            data-testid="lyrics-editor-sync-tab"
+          >
+            Live 对轴
           </button>
           <button
             type="button"
@@ -602,7 +694,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
         </div>
       </div>
 
-      {viewMode === 'edit' ? (
+      {viewMode === 'compose' ? (
         <LyricsTimingPanel
           lines={lines}
           selectedIndex={selectedIndex}
@@ -634,6 +726,28 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           onCompleteLine={completeLine}
           onLineRoleChange={updateLineRole}
           onRemoveLine={removeLine}
+        />
+      ) : viewMode === 'sync' ? (
+        <LyricsLiveSyncPanel
+          lines={lines}
+          selectedIndex={selectedIndex}
+          effectiveCurrentTime={effectiveCurrentTime}
+          effectiveDuration={effectiveDuration}
+          effectivePlaying={effectivePlaying}
+          canSeek={canSeek}
+          saving={saving}
+          offsetMs={offsetMs}
+          lastMarkAvailable={Boolean(lastMark || lastSkipped)}
+          audioError={audioError}
+          onSelectLine={selectLiveLine}
+          onMark={markLiveCurrentLine}
+          onTogglePlayback={togglePlayback}
+          onRestartPlayback={restartPlayback}
+          onSeekTime={seekTo}
+          onUndo={undoLiveAction}
+          onSkipLine={skipLiveLine}
+          onResetTiming={resetLiveTiming}
+          onNudgeOffset={nudgeLiveOffset}
         />
       ) : (
         <section className="border-b border-white/10 py-4" aria-labelledby="lyrics-editor-preview-title">

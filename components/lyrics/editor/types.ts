@@ -81,6 +81,9 @@ export interface LyricsEditorProps {
   initialOffsetMs?: number;
   /** 用于隔离本地草稿的歌曲 ID。 */
   songId?: string | null;
+  /** 用于在线歌词搜索的默认原曲信息。 */
+  songTitle?: string;
+  songArtist?: string;
   /** 没有歌曲 ID 时使用的本地草稿标识。 */
   draftKey?: string | null;
   /** 歌曲时长，单位为秒；用于保存前的超时校验。 */
@@ -124,10 +127,14 @@ export interface LyricsSourcePanelProps {
   timing: LyricsTiming;
   inputError: string | null;
   parseError: string | null;
+  songTitle?: string;
+  songArtist?: string;
+  disabled?: boolean;
   onSourceChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
   onSourcePaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onApply: () => void;
+  onOnlineSelect: (content: string) => void;
 }
 
 export interface LyricsTimingPanelProps {

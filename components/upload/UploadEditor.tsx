@@ -460,6 +460,8 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
             <LyricsEditor
               key={lyricsDraftKey ?? 'upload-lyrics'}
               draftKey={lyricsDraftKey}
+              songTitle={draft.title}
+              songArtist={draft.artist}
               duration={draft.duration}
               audioUrl={draft.previewUrl || undefined}
               clearDraftOnSave={false}

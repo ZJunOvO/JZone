@@ -312,6 +312,7 @@ try {
   }, null, 2));
 } catch (error) {
   console.error(`[smoke-lyrics-upload-workbench] 失败：${describeError(error)}`);
+  if (pageErrors.length) console.error(`[smoke-lyrics-upload-workbench] 页面错误：${pageErrors.join(' | ')}`);
   process.exitCode = 1;
 } finally {
   await page.close();

@@ -27,6 +27,7 @@
     "smoke:listening-recap-browser": "node scripts/smoke-listening-recap-browser.mjs",
     "smoke:cos-history-live-snapshot": "node scripts/smoke-cos-history-live-snapshot.mjs",
     "smoke:lyrics-renderer": "node scripts/smoke-lyrics-renderer.mjs",
+    "smoke:lyrics-live-sync": "node scripts/smoke-lyrics-live-sync.mjs",
     "audit:cos-history-live": "node scripts/cos-history-live-snapshot.mjs"
   },
   "dependencies": {
