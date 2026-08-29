@@ -7,7 +7,6 @@ import { supabaseApi, type SongLyricsNormalizedContent, type SongLyricsRow } fro
 import type { Song } from '../../types';
 import { LyricsEditor } from './editor';
 import type {
-  LyricsEditorAudioControls,
   LyricsEditorSavePayload,
 } from './editor';
 import { dispatchSongLyricsUpdated } from '../../utils/lyrics/events';
@@ -16,7 +15,7 @@ export interface SongLyricsEditorDialogProps {
   isOpen: boolean;
   song: Song | null;
   onClose: () => void;
-  audioControls?: LyricsEditorAudioControls;
+  audioUrl?: string;
 }
 
 type LyricsLoadState = 'idle' | 'loading' | 'ready' | 'error';
@@ -31,7 +30,7 @@ export const SongLyricsEditorDialog: React.FC<SongLyricsEditorDialogProps> = ({
   isOpen,
   song,
   onClose,
-  audioControls,
+  audioUrl,
 }) => {
   const { user } = useAuth();
   const reduceMotion = useReducedMotion();
@@ -44,10 +43,33 @@ export const SongLyricsEditorDialog: React.FC<SongLyricsEditorDialogProps> = ({
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const [editorRevision, setEditorRevision] = useState(0);
+  const [visualViewportHeight, setVisualViewportHeight] = useState<number | null>(null);
 
   const isOwner = Boolean(user?.id && song?.ownerId === user.id);
 
   useModalPresence(isOpen && Boolean(song));
+
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined' || !window.visualViewport) {
+      setVisualViewportHeight(null);
+      return undefined;
+    }
+    const viewport = window.visualViewport;
+    const updateViewport = () => {
+      setVisualViewportHeight(Math.round(viewport.height));
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLTextAreaElement) {
+        window.requestAnimationFrame(() => activeElement.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+      }
+    };
+    updateViewport();
+    viewport.addEventListener('resize', updateViewport);
+    viewport.addEventListener('scroll', updateViewport);
+    return () => {
+      viewport.removeEventListener('resize', updateViewport);
+      viewport.removeEventListener('scroll', updateViewport);
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || !song?.id) {
@@ -158,7 +180,8 @@ export const SongLyricsEditorDialog: React.FC<SongLyricsEditorDialogProps> = ({
             aria-label="关闭歌词编辑"
           />
           <motion.div
-            className="relative z-10 flex max-h-[calc(100vh-24px)] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-zinc-950/95 shadow-2xl sm:max-h-[88vh]"
+            className="relative z-10 flex max-h-[calc(100dvh-24px)] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-zinc-950/95 shadow-2xl sm:max-h-[88dvh]"
+            style={visualViewportHeight ? { maxHeight: `${Math.max(320, visualViewportHeight - 24)}px` } : undefined}
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.98, filter: 'blur(4px)' }}
             animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.985, filter: 'blur(4px)' }}
@@ -185,7 +208,7 @@ export const SongLyricsEditorDialog: React.FC<SongLyricsEditorDialogProps> = ({
               </button>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 [scroll-padding-bottom:42dvh] sm:px-6 sm:[scroll-padding-bottom:8rem]">
               {loadState === 'loading' && (
                 <div className="flex min-h-[300px] flex-col items-center justify-center text-center" data-testid="song-lyrics-editor-loading" role="status" aria-live="polite">
                   <Icons.RotateCcw size={22} className="animate-spin text-white/60" aria-hidden="true" />
@@ -219,7 +242,7 @@ export const SongLyricsEditorDialog: React.FC<SongLyricsEditorDialogProps> = ({
                   songTitle={song.title}
                   songArtist={song.artist}
                   duration={song.duration}
-                  audioControls={audioControls}
+                  audioUrl={audioUrl || song.audioUrl}
                   onSave={handleSave}
                   saving={saving}
                   version={Math.max(1, (lyrics?.version ?? 0) + 1)}

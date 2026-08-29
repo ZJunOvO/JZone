@@ -189,7 +189,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   onLyricsRequestHandled,
 }) => {
   const { user } = useAuth();
-  const { playerState, getCurrentSong, songs, togglePlay, nextSong, prevSong, cyclePlaybackMode, seek, setVolume, playSong, removeFromQueue, reorderQueue, toggleFavorite, isFavorite } = useStore();
+  const { playerState, getCurrentSong, songs, togglePlay, pausePlayback, getCurrentAudioSource, nextSong, prevSong, cyclePlaybackMode, seek, setVolume, playSong, removeFromQueue, reorderQueue, toggleFavorite, isFavorite } = useStore();
   const song = getCurrentSong();
   const initialLyricsCacheEntry = song
     ? playerLyricsUiCache.get(getPlayerLyricsUiCacheKey(user?.id, song.id))
@@ -214,8 +214,14 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const [lyricsError, setLyricsError] = useState<string | null>(null);
   const [lyricsRetryNonce, setLyricsRetryNonce] = useState(0);
   const [isLyricsEditorOpen, setIsLyricsEditorOpen] = useState(false);
+  const [lyricsEditorAudioUrl, setLyricsEditorAudioUrl] = useState('');
   const [areLyricsControlsVisible, setAreLyricsControlsVisible] = useState(true);
   const reduceMotion = useReducedMotion();
+  const openLyricsEditor = React.useCallback(() => {
+    setLyricsEditorAudioUrl(getCurrentAudioSource() || song?.audioUrl || '');
+    pausePlayback();
+    setIsLyricsEditorOpen(true);
+  }, [getCurrentAudioSource, pausePlayback, song?.audioUrl]);
   const initialInsets = getPlayerOriginInsets(transitionOrigin);
   const originInsetsRef = React.useRef(initialInsets);
   originInsetsRef.current = initialInsets;
@@ -489,7 +495,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       {isOwner && (
         <button
           type="button"
-          onClick={() => setIsLyricsEditorOpen(true)}
+          onClick={openLyricsEditor}
           className="mb-5 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-white/15 bg-white/10 px-5 text-sm font-bold text-white transition-colors hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70"
           data-testid="player-lyrics-add"
         >
@@ -966,14 +972,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           <SongLyricsEditorDialog
             isOpen
             song={song}
+            audioUrl={lyricsEditorAudioUrl}
             onClose={() => setIsLyricsEditorOpen(false)}
-            audioControls={{
-              currentTime,
-              duration: trimEnd,
-              playing: playerState.isPlaying,
-              onTogglePlay: togglePlay,
-              onSeek: seek,
-            }}
           />
         </React.Suspense>
       )}
@@ -986,7 +986,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           type="song"
           anchorPosition={menuAnchor}
           openNonce={contextMenuOpenNonce}
-          onOpenLyricsEditor={() => setIsLyricsEditorOpen(true)}
+          onOpenLyricsEditor={openLyricsEditor}
       />
     </motion.div>
   );

@@ -18,13 +18,15 @@ const scenarioModes = (process.env.JZONE_LYRICS_SMOKE_MODES || 'ready,empty,erro
 const readProjectFile = (relativePath) => fs.readFile(path.join(projectRoot, relativePath), 'utf8');
 
 const assertContract = async () => {
-  const [player, menu, shell, dialog, events, lyricsIndex] = await Promise.all([
+  const [player, menu, shell, dialog, events, lyricsIndex, editor, store] = await Promise.all([
     readProjectFile('pages/PlayerView.tsx'),
     readProjectFile('components/UniversalContextMenu.tsx'),
     readProjectFile('components/layout/AppShell.tsx'),
     readProjectFile('components/lyrics/SongLyricsEditorDialog.tsx'),
     readProjectFile('utils/lyrics/events.ts'),
     readProjectFile('utils/lyrics/index.ts'),
+    readProjectFile('components/lyrics/editor/LyricsEditor.tsx'),
+    readProjectFile('store.tsx'),
   ]);
 
   assert.match(player, /data-testid="player-cover-button"/);
@@ -51,6 +53,10 @@ const assertContract = async () => {
   assert.doesNotMatch(player, /lyrics=\{getPlayerLyricsInput\(lyricsRow\)\}/);
   assert.doesNotMatch(player, /import\s+\{\s*SongLyricsEditorDialog\s*\}/);
   assert.doesNotMatch(player, /<audio\b/i);
+  assert.match(player, /getCurrentAudioSource\(\) \|\| song\?\.audioUrl/);
+  assert.match(player, /pausePlayback\(\)/);
+  assert.match(player, /audioUrl=\{lyricsEditorAudioUrl\}/);
+  assert.doesNotMatch(player, /<SongLyricsEditorDialog[\s\S]*?audioControls=/);
 
   assert.match(menu, /label: '查看歌词'/);
   assert.match(menu, /dispatchPlayerLyricsRequest\(item\.id\)/);
@@ -58,6 +64,9 @@ const assertContract = async () => {
   assert.match(menu, /from '\.\.\/utils\/lyrics\/events'/);
   assert.match(menu, /React\.lazy\(\(\) => import\('\.\/lyrics\/SongLyricsEditorDialog'\)/);
   assert.match(menu, /<React\.Suspense fallback=\{null\}>/);
+  assert.match(menu, /playerState\.currentSongId === item\.id \? \(getCurrentAudioSource\(\) \|\| item\.audioUrl\) : item\.audioUrl/);
+  assert.match(menu, /pausePlayback\(\)/);
+  assert.match(menu, /audioUrl=\{lyricsEditorAudioUrl \|\| item\.audioUrl\}/);
   assert.doesNotMatch(menu, /import\s+\{\s*SongLyricsEditorDialog\s*\}/);
 
   assert.match(shell, /addEventListener\(PLAYER_LYRICS_REQUEST_EVENT/);
@@ -72,6 +81,10 @@ const assertContract = async () => {
   assert.match(dialog, /deleteSongLyrics\(song\.id\)/);
   assert.match(dialog, /<LyricsEditor/);
   assert.match(dialog, /dispatchSongLyricsUpdated/);
+  assert.match(dialog, /audioUrl=\{audioUrl \|\| song\.audioUrl\}/);
+
+  assert.match(editor, /preload="metadata"[\s\S]*?loop/);
+  assert.match(store, /const getCurrentAudioSource = useCallback/);
 
   assert.match(events, /export const PLAYER_LYRICS_REQUEST_EVENT/);
   assert.match(events, /export interface PlayerLyricsRequestDetail/);

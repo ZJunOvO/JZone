@@ -43,12 +43,12 @@ try {
     document.body.replaceChildren(mount);
     const root = ReactDOMClient.createRoot(mount);
     window.__lyricsLiveSavePayloads = [];
-    window.__renderLyricsLiveSmoke = (currentTime = 0, playing = true) => {
+    window.__renderLyricsLiveSmoke = (currentTime = 0, playing = true, duration = 200) => {
       root.render(React.createElement(LyricsEditor, {
         songId: 'live-sync-smoke',
         songTitle: '测试原曲 Live',
         songArtist: '现场演唱者',
-        duration: 200,
+        duration,
         currentTime,
         playing,
         onPlay: () => {},
@@ -137,6 +137,36 @@ try {
     return { times: payload?.lines.map((line) => line.startTimeMs), lineCount: payload?.lines.length };
   });
   assert.deepEqual(partial, { times: [1200], lineCount: 1 }, '录音提前结束时只能显式截断，播放结束不得清空已打时间');
+
+  await page.getByTestId('lyrics-editor-source-toggle').click();
+  await page.getByTestId('lyrics-online-synced-20260829').click();
+  await page.evaluate(() => window.__renderLyricsLiveSmoke(0, false, 12));
+  await page.waitForFunction(() => document.querySelector('[data-testid="lyrics-live-range-end"]')?.value === '1');
+  assert.match(await page.getByTestId('lyrics-live-range').textContent(), /1 行位于录音范围外/, 'Live 对轴应直接提示超出录音的歌词');
+  await page.getByTestId('lyrics-editor-preview-tab').click();
+  const previewLayout = await page.getByTestId('lyrics-editor-preview').evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      width: rect.width,
+      height: rect.height,
+      viewportWidth: innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    };
+  });
+  assert.ok(previewLayout.width <= previewLayout.viewportWidth, `手机预览宽度错位：${JSON.stringify(previewLayout)}`);
+  assert.ok(previewLayout.height >= 280 && previewLayout.height <= 421, `手机预览高度失控：${JSON.stringify(previewLayout)}`);
+  assert.ok(previewLayout.documentWidth <= previewLayout.viewportWidth + 1, `预览导致页面横向溢出：${JSON.stringify(previewLayout)}`);
+  await page.screenshot({ path: 'output/playwright/lyrics-preview-mobile-390.png', fullPage: true });
+  await page.getByTestId('lyrics-editor-save').click();
+  const autoTrimmed = await page.evaluate(() => window.__lyricsLiveSavePayloads.at(-1)?.lines.map((line) => line.startTimeMs));
+  assert.deepEqual(autoTrimmed, [5000, 10000], '保存时应自动排除超过录音时长的歌词');
+
+  await page.getByTestId('lyrics-editor-sync-tab').click();
+  await page.getByTestId('lyrics-live-range').locator('summary').click();
+  await page.getByTestId('lyrics-live-range-end').fill('0');
+  await page.getByTestId('lyrics-editor-save').click();
+  const manuallyExtended = await page.evaluate(() => window.__lyricsLiveSavePayloads.at(-1)?.lines.map((line) => line.startTimeMs));
+  assert.deepEqual(manuallyExtended, [5000], '用户应能继续手动收紧自动计算的歌词范围');
 
   await page.setViewportSize({ width: 360, height: 800 });
   const compactLayout = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth }));

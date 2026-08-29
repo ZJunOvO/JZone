@@ -51,6 +51,8 @@ interface AppContextType {
   moveQueueItem: (songId: string, targetIndex: number) => void;
   reorderQueue: (songIds: string[]) => void;
   togglePlay: () => void;
+  pausePlayback: () => void;
+  getCurrentAudioSource: () => string;
   nextSong: () => void;
   prevSong: () => void;
   cyclePlaybackMode: () => void;
@@ -732,6 +734,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
+  const pausePlayback = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    setPlayerState((previous) => ({ ...previous, isPlaying: false }));
+  }, []);
+
+  const getCurrentAudioSource = useCallback(() => {
+    const audio = audioRef.current;
+    return audio?.currentSrc || audio?.getAttribute('src') || '';
+  }, []);
+
   const playSong = useCallback(async (songId: string) => {
     const seq = ++playSeqRef.current;
     const { songs, playerState } = stateRef.current;
@@ -1218,6 +1232,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       moveQueueItem,
       reorderQueue,
       togglePlay, 
+      pausePlayback,
+      getCurrentAudioSource,
       nextSong, 
       prevSong, 
       cyclePlaybackMode,

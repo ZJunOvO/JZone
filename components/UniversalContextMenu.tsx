@@ -35,13 +35,14 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({
   onOpenLyricsEditor,
 }) => {
   const { user } = useAuth();
-  const { updateSong, deleteSong, isFavorite, toggleFavorite, playNext, playLater } = useStore();
+  const { playerState, updateSong, deleteSong, isFavorite, toggleFavorite, playNext, playLater, pausePlayback, getCurrentAudioSource } = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<number | null>(null);
   const [isClosing, setIsClosing] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showCollectionDialog, setShowCollectionDialog] = useState(false);
   const [showLyricsEditor, setShowLyricsEditor] = useState(false);
+  const [lyricsEditorAudioUrl, setLyricsEditorAudioUrl] = useState('');
 
   // Check permissions
   const isOwner = user && item.ownerId === user.id;
@@ -101,6 +102,7 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({
         <SongLyricsEditorDialog
           isOpen
           song={item}
+          audioUrl={lyricsEditorAudioUrl || item.audioUrl}
           onClose={() => {
             setShowLyricsEditor(false);
             onClose();
@@ -223,6 +225,8 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({
           requestClose();
           return;
         }
+        setLyricsEditorAudioUrl(playerState.currentSongId === item.id ? (getCurrentAudioSource() || item.audioUrl) : item.audioUrl);
+        pausePlayback();
         setShowLyricsEditor(true);
       },
       danger: false,

@@ -120,6 +120,11 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
   const [alignmentStart, setAlignmentStart] = useState<{ index: number; targetTimeMs: number } | null>(null);
   const [alignmentApplied, setAlignmentApplied] = useState(false);
   const [liveMarkedIndices, setLiveMarkedIndices] = useState<Set<number>>(() => new Set());
+  const [lyricsRange, setLyricsRange] = useState<{
+    startIndex: number;
+    endIndex: number;
+    manual: boolean;
+  } | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -184,24 +189,60 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     audioRef.current?.load();
   }, [audioUrl]);
 
+  const suggestedLyricsRange = useMemo(() => {
+    const fallback = { startIndex: 0, endIndex: Math.max(0, lines.length - 1) };
+    if (!effectiveDuration || lines.length === 0 || !lines.every((line) => line.startTimeMs !== null)) return fallback;
+    const durationMs = Math.round(effectiveDuration * 1_000);
+    const includedIndices = lines.flatMap((line, index) => {
+      const timeMs = (line.startTimeMs ?? 0) + offsetMs;
+      return timeMs >= 0 && timeMs <= durationMs ? [index] : [];
+    });
+    if (includedIndices.length === 0) return fallback;
+    return {
+      startIndex: includedIndices[0],
+      endIndex: includedIndices[includedIndices.length - 1],
+    };
+  }, [effectiveDuration, lines, offsetMs]);
+  const activeLyricsRange = useMemo(() => {
+    const maximumIndex = Math.max(0, lines.length - 1);
+    const source = lyricsRange ?? { ...suggestedLyricsRange, manual: false };
+    const startIndex = Math.max(0, Math.min(maximumIndex, source.startIndex));
+    const endIndex = Math.max(startIndex, Math.min(maximumIndex, source.endIndex));
+    return { startIndex, endIndex, manual: source.manual };
+  }, [lines.length, lyricsRange, suggestedLyricsRange]);
+  const activeLines = useMemo(
+    () => lines.slice(activeLyricsRange.startIndex, activeLyricsRange.endIndex + 1),
+    [activeLyricsRange.endIndex, activeLyricsRange.startIndex, lines],
+  );
+  const activeContent = useMemo(() => serializeLyricsLines(activeLines), [activeLines]);
+  const activeParsedLyrics = useMemo(() => {
+    if (!parsedLyrics || activeLines.length === 0) return null;
+    return createParsedLyricsFromLines(activeLines, format, timing, activeContent);
+  }, [activeContent, activeLines, format, parsedLyrics, timing]);
   const displayLyrics = useMemo(
-    () => applyLyricsOffset(parsedLyrics, offsetMs),
-    [offsetMs, parsedLyrics],
+    () => applyLyricsOffset(activeParsedLyrics, offsetMs),
+    [activeParsedLyrics, offsetMs],
   );
   const activePlaybackIndex = useMemo(() => {
     if (!displayLyrics || displayLyrics.timing === 'none') return -1;
-    return getActiveLyricsLineIndex(displayLyrics.lines, Math.round(effectiveCurrentTime * 1_000));
-  }, [displayLyrics, effectiveCurrentTime]);
+    const relativeIndex = getActiveLyricsLineIndex(displayLyrics.lines, Math.round(effectiveCurrentTime * 1_000));
+    return relativeIndex < 0 ? -1 : relativeIndex + activeLyricsRange.startIndex;
+  }, [activeLyricsRange.startIndex, displayLyrics, effectiveCurrentTime]);
   const validation = useMemo(
     () => validateLyricsDraft({
-      content,
-      lines,
+      content: activeContent,
+      lines: activeLines,
       offsetMs,
       durationSeconds: effectiveDuration,
       parseError,
     }),
-    [content, effectiveDuration, lines, offsetMs, parseError],
+    [activeContent, activeLines, effectiveDuration, offsetMs, parseError],
   );
+
+  useEffect(() => {
+    if (lyricsRange?.manual) return;
+    setLyricsRange({ ...suggestedLyricsRange, manual: false });
+  }, [lyricsRange?.manual, suggestedLyricsRange]);
   const validationVisible = submitted
     || Boolean(parseError)
     || validation.issues.some((issue) => issue.code !== 'empty');
@@ -212,6 +253,26 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setSaveMessage(null);
     setIsDirty(true);
   }, []);
+
+  const switchViewMode = useCallback((nextMode: 'compose' | 'sync' | 'preview') => {
+    if (nextMode === 'preview' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setViewMode(nextMode);
+  }, []);
+
+  const updateLyricsRange = useCallback((startIndex: number, endIndex: number) => {
+    const maximumIndex = Math.max(0, lines.length - 1);
+    const safeStart = Math.max(0, Math.min(maximumIndex, startIndex));
+    const safeEnd = Math.max(safeStart, Math.min(maximumIndex, endIndex));
+    setLyricsRange({ startIndex: safeStart, endIndex: safeEnd, manual: true });
+    setChangedMessage();
+  }, [lines.length, setChangedMessage]);
+
+  const restoreAutomaticLyricsRange = useCallback(() => {
+    setLyricsRange({ ...suggestedLyricsRange, manual: false });
+    setChangedMessage();
+  }, [setChangedMessage, suggestedLyricsRange]);
 
   const commitLines = useCallback((nextLines: readonly LyricsLine[], preferredFormat?: LyricsFormat) => {
     const lineLevelLines = toLineLevelLines(nextLines);
@@ -367,6 +428,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
       setAlignmentStart(null);
       setAlignmentApplied(false);
       setLiveMarkedIndices(new Set());
+      setLyricsRange(null);
       setLastMark(null);
       setLastSkipped(null);
       setSelectedIndex(0);
@@ -393,6 +455,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setAlignmentStart(null);
     setAlignmentApplied(false);
     setLiveMarkedIndices(new Set());
+    setLyricsRange(null);
     setLastMark(null);
     setLastSkipped(null);
     setSelectedIndex(0);
@@ -407,6 +470,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setAlignmentStart(null);
     setAlignmentApplied(false);
     setLiveMarkedIndices(new Set());
+    setLyricsRange(null);
     setLastMark(null);
     setLastSkipped(null);
     setSelectedIndex(0);
@@ -427,6 +491,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setAlignmentStart(null);
     setAlignmentApplied(false);
     setLiveMarkedIndices(new Set());
+    setLyricsRange(null);
     setLastMark(null);
     setLastSkipped(null);
     setSelectedIndex(0);
@@ -515,6 +580,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setLastMark(null);
     setLastSkipped(null);
     setSelectedIndex(0);
+    setLyricsRange(null);
     commitLines(nextLines, 'plain');
     seekTo(0);
   }, [commitLines, lines, seekTo]);
@@ -713,12 +779,12 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
       format,
       source: sourceProp ?? sourceKind,
       version: safeVersion,
-      rawContent: content,
-      content,
-      normalizedContent: createNormalizedContent(lines, format, timing, offsetMs, safeVersion),
+      rawContent: activeContent,
+      content: activeContent,
+      normalizedContent: createNormalizedContent(activeLines, format, timing, offsetMs, safeVersion),
       offsetMs,
-      lines: lines.map((line) => ({ ...line, words: line.words.map((word) => ({ ...word })) })),
-      parsedLyrics: createParsedLyricsFromLines(lines, format, timing, content),
+      lines: activeLines.map((line) => ({ ...line, words: line.words.map((word) => ({ ...word })) })),
+      parsedLyrics: createParsedLyricsFromLines(activeLines, format, timing, activeContent),
     };
     try {
       await onSave(payload);
@@ -732,7 +798,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : '歌词保存失败，请稍后重试。');
     }
-  }, [clearDraft, clearDraftOnSave, content, format, lines, offsetMs, onSave, parsedLyrics, saving, sourceKind, sourceProp, timing, validation.valid, version]);
+  }, [activeContent, activeLines, clearDraft, clearDraftOnSave, format, offsetMs, onSave, parsedLyrics, saving, sourceKind, sourceProp, timing, validation.valid, version]);
 
   const handleOffsetChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const nextOffset = Number(event.target.value);
@@ -762,6 +828,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           ref={audioRef}
           src={audioUrl}
           preload="metadata"
+          loop
           className="sr-only"
           aria-label="歌词编辑器试听音频"
           onTimeUpdate={handleAudioTimeUpdate}
@@ -809,7 +876,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
             type="button"
             role="tab"
             aria-selected={viewMode === 'compose'}
-            onClick={() => setViewMode('compose')}
+            onClick={() => switchViewMode('compose')}
             className={`min-h-10 cursor-pointer rounded-full px-3 text-sm font-extrabold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 ${viewMode === 'compose' ? 'bg-white text-black' : 'text-white/55 hover:bg-white/[0.06] hover:text-white'}`}
             data-testid="lyrics-editor-edit-tab"
           >
@@ -819,7 +886,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
             type="button"
             role="tab"
             aria-selected={viewMode === 'sync'}
-            onClick={() => setViewMode('sync')}
+            onClick={() => switchViewMode('sync')}
             className={`min-h-10 cursor-pointer rounded-full px-3 text-sm font-extrabold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 ${viewMode === 'sync' ? 'bg-white text-black' : 'text-white/55 hover:bg-white/[0.06] hover:text-white'}`}
             data-testid="lyrics-editor-sync-tab"
           >
@@ -829,7 +896,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
             type="button"
             role="tab"
             aria-selected={viewMode === 'preview'}
-            onClick={() => setViewMode('preview')}
+            onClick={() => switchViewMode('preview')}
             className={`min-h-10 cursor-pointer rounded-full px-3 text-sm font-extrabold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 ${viewMode === 'preview' ? 'bg-white text-black' : 'text-white/55 hover:bg-white/[0.06] hover:text-white'}`}
             data-testid="lyrics-editor-preview-tab"
           >
@@ -841,6 +908,8 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
       {viewMode === 'compose' ? (
         <LyricsTimingPanel
           lines={lines}
+          activeRangeStart={activeLyricsRange.startIndex}
+          activeRangeEnd={activeLyricsRange.endIndex}
           selectedIndex={selectedIndex}
           activePlaybackIndex={activePlaybackIndex}
           effectiveCurrentTime={effectiveCurrentTime}
@@ -886,6 +955,11 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           hasReferenceTimeline={Boolean(referenceTimes?.some((time) => time !== null))}
           alignmentStartIndex={alignmentStart?.index ?? null}
           alignmentApplied={alignmentApplied}
+          activeRangeStart={activeLyricsRange.startIndex}
+          activeRangeEnd={activeLyricsRange.endIndex}
+          suggestedRangeStart={suggestedLyricsRange.startIndex}
+          suggestedRangeEnd={suggestedLyricsRange.endIndex}
+          rangeIsManual={activeLyricsRange.manual}
           audioError={audioError}
           onSelectLine={selectLiveLine}
           onMark={markLiveCurrentLine}
@@ -898,6 +972,8 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           onAlignFromCurrentLine={alignLiveFromCurrentLine}
           onStretchToCurrentLine={stretchLiveToCurrentLine}
           onFinishAtLastMarkedLine={finishLiveAtLastMarkedLine}
+          onRangeChange={updateLyricsRange}
+          onRestoreAutomaticRange={restoreAutomaticLyricsRange}
           onNudgeOffset={nudgeLiveOffset}
         />
       ) : (
@@ -909,7 +985,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
             </div>
             <span className="shrink-0 text-xs font-bold text-white/45">{formatOffset(offsetMs)}</span>
           </div>
-          <div className="mt-3 min-h-[320px] overflow-hidden border-y border-white/10 bg-black/20" data-testid="lyrics-editor-preview">
+          <div className="mt-3 h-[min(52dvh,420px)] min-h-[280px] w-full overflow-hidden border-y border-white/10 bg-black/20" data-testid="lyrics-editor-preview">
             <LyricsRenderer
               lyrics={displayLyrics}
               currentTime={effectiveCurrentTime}
@@ -917,7 +993,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
               playing={effectivePlaying}
               onSeek={canSeek ? seekTo : undefined}
               lowPerformance
-              className="min-h-[320px]"
+              className="h-full w-full"
             />
           </div>
         </section>

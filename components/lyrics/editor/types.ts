@@ -139,6 +139,8 @@ export interface LyricsSourcePanelProps {
 
 export interface LyricsTimingPanelProps {
   lines: readonly LyricsLine[];
+  activeRangeStart: number;
+  activeRangeEnd: number;
   selectedIndex: number;
   activePlaybackIndex: number;
   effectiveCurrentTime: number;

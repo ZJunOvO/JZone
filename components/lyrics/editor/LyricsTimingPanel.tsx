@@ -15,6 +15,8 @@ const roleOptions: ReadonlyArray<{ value: LyricsEditorLineRole; label: string }>
 
 export const LyricsTimingPanel = ({
   lines,
+  activeRangeStart,
+  activeRangeEnd,
   selectedIndex,
   activePlaybackIndex,
   effectiveCurrentTime,
@@ -47,6 +49,13 @@ export const LyricsTimingPanel = ({
 }: LyricsTimingPanelProps) => {
   const selectedLineNumber = lines.length > 0 ? Math.min(selectedIndex, lines.length - 1) + 1 : 0;
   const lineInputRefs = useRef(new Map<number, HTMLTextAreaElement>());
+
+  const revealInputAboveKeyboard = (input: HTMLTextAreaElement) => {
+    const reveal = () => input.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    window.requestAnimationFrame(reveal);
+    window.setTimeout(reveal, 180);
+    window.setTimeout(reveal, 420);
+  };
 
   useEffect(() => {
     if (!focusRequest) return undefined;
@@ -228,6 +237,7 @@ export const LyricsTimingPanel = ({
           const effectiveLineTime = line.startTimeMs === null ? null : line.startTimeMs + offsetMs;
           const isComplete = line.startTimeMs !== null && Boolean(line.text.trim());
           const isCollapsed = isComplete && !isSelected;
+          const isOutsideActiveRange = index < activeRangeStart || index > activeRangeEnd;
 
           if (isCollapsed) {
             return (
@@ -238,7 +248,7 @@ export const LyricsTimingPanel = ({
                 data-lyrics-line-index={index}
                 data-selected="false"
                 data-line-state="complete"
-                className={`grid grid-cols-[minmax(0,1fr)_44px] items-center gap-2 border-t px-1 py-2 transition-colors ${isPlaybackActive ? 'border-cyan-200/40 bg-cyan-200/[0.04]' : 'border-emerald-200/15 bg-emerald-200/[0.025]'}`}
+                className={`grid grid-cols-[minmax(0,1fr)_44px] items-center gap-2 border-t px-1 py-2 transition-colors ${isOutsideActiveRange ? 'opacity-35' : ''} ${isPlaybackActive ? 'border-cyan-200/40 bg-cyan-200/[0.04]' : 'border-emerald-200/15 bg-emerald-200/[0.025]'}`}
               >
                 <button
                   type="button"
@@ -248,6 +258,7 @@ export const LyricsTimingPanel = ({
                   data-testid={`lyrics-editor-line-summary-${index}`}
                 >
                   <span className="block truncate">{line.text}</span>
+                  {isOutsideActiveRange ? <span className="mt-1 block text-[10px] font-bold text-white/38">录音范围外</span> : null}
                 </button>
                 <button
                   type="button"
@@ -275,7 +286,7 @@ export const LyricsTimingPanel = ({
               tabIndex={0}
               onClick={(event) => handleLineClick(event, index)}
               onKeyDown={(event) => handleLineKeyDown(event, index)}
-              className={`grid grid-cols-[56px_minmax(0,1fr)] gap-2 border-t px-1 py-3 outline-none transition-colors focus-within:border-red-300/50 focus-visible:border-red-300/50 focus-visible:ring-2 focus-visible:ring-red-300/30 ${isSelected ? 'border-red-300/60 bg-red-300/[0.06]' : isPlaybackActive ? 'border-cyan-200/40 bg-cyan-200/[0.04]' : 'border-white/10'}`}
+              className={`grid grid-cols-[56px_minmax(0,1fr)] gap-2 border-t px-1 py-3 outline-none transition-colors focus-within:border-red-300/50 focus-visible:border-red-300/50 focus-visible:ring-2 focus-visible:ring-red-300/30 ${isOutsideActiveRange ? 'opacity-45' : ''} ${isSelected ? 'border-red-300/60 bg-red-300/[0.06]' : isPlaybackActive ? 'border-cyan-200/40 bg-cyan-200/[0.04]' : 'border-white/10'}`}
             >
               <button
                 type="button"
@@ -310,8 +321,11 @@ export const LyricsTimingPanel = ({
                       onCompleteLine(index);
                     }}
                     onClick={(event) => event.stopPropagation()}
-                    onFocus={() => onSelectLine(index)}
-                    className="min-h-11 w-full resize-y rounded-lg border border-transparent bg-transparent px-2 py-2 text-base leading-7 text-white outline-none transition-colors placeholder:text-white/25 focus:border-white/20 focus:bg-white/[0.04]"
+                    onFocus={(event) => {
+                      onSelectLine(index);
+                      revealInputAboveKeyboard(event.currentTarget);
+                    }}
+                    className="min-h-11 w-full scroll-mb-[42dvh] resize-y rounded-lg border border-transparent bg-transparent px-2 py-2 text-base leading-7 text-white outline-none transition-colors placeholder:text-white/25 focus:border-white/20 focus:bg-white/[0.04]"
                     placeholder="输入这一行歌词"
                   />
                 </label>
