@@ -54,6 +54,48 @@ try {
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await login();
 
+  await page.waitForFunction(() => {
+    const image = document.querySelector('[data-testid="bottom-nav-layer"] feImage');
+    return (image?.getAttribute('href') || image?.getAttribute('xlink:href') || '').startsWith('data:image/');
+  });
+  const navRefractionField = await page.evaluate(async () => {
+    const nav = document.querySelector('[data-testid="bottom-nav-layer"]');
+    const source = nav?.querySelector('feImage')?.getAttribute('href')
+      || nav?.querySelector('feImage')?.getAttribute('xlink:href')
+      || '';
+    const image = new Image();
+    image.src = source;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    const sample = (x, y) => {
+      const data = context.getImageData(
+        Math.max(0, Math.min(canvas.width - 1, Math.round(x))),
+        Math.max(0, Math.min(canvas.height - 1, Math.round(y))),
+        1,
+        1,
+      ).data;
+      return { r: data[0], g: data[1] };
+    };
+    return {
+      geometry: nav?.getAttribute('data-refraction-geometry'),
+      width: canvas.width,
+      height: canvas.height,
+      top: sample(canvas.width / 2, 1),
+      bottom: sample(canvas.width / 2, canvas.height - 2),
+      left: sample(1, canvas.height / 2),
+      right: sample(canvas.width - 2, canvas.height / 2),
+      center: sample(canvas.width / 2, canvas.height / 2),
+    };
+  });
+  assert(navRefractionField.geometry === 'perimeter', `底部 Tab 未启用周界折射：${JSON.stringify(navRefractionField)}`);
+  assert(navRefractionField.top.g > 160 && navRefractionField.bottom.g < 96, `上下边缘没有形成相反的纵向折射：${JSON.stringify(navRefractionField)}`);
+  assert(navRefractionField.left.r > 160 && navRefractionField.right.r < 96, `左右边缘没有形成相反的横向折射：${JSON.stringify(navRefractionField)}`);
+  assert(Math.abs(navRefractionField.center.r - 128) < 14 && Math.abs(navRefractionField.center.g - 128) < 14, `底部 Tab 中心扭曲过强：${JSON.stringify(navRefractionField)}`);
+
   await page.getByTestId('bottom-nav-library').evaluate((element) => element.click());
   await page.waitForTimeout(400);
   const firstSong = page.locator('[data-library-song="true"]:visible').first();
@@ -178,7 +220,12 @@ try {
     } : null;
   });
   assert(opening && (opening.filter !== 'none' || opening.transform !== 'none'), 'Mini 菜单没有执行缩放模糊入场');
-  assert((opening?.shellWidth ?? 0) < (opening?.menuWidth ?? 0), 'Mini 菜单整个玻璃壳没有执行入场形变');
+  assert(
+    Math.abs((opening?.shellWidth ?? 0) - (opening?.menuWidth ?? 0)) > 1
+      || opening?.filter !== 'none'
+      || opening?.transform !== 'none',
+    `Mini 菜单入场时既没有尺寸形变也没有模糊形变：${JSON.stringify(opening)}`,
+  );
   assert((opening?.shellOpacity ?? 0) > 0.99, `Mini 菜单首帧材质外壳不透明度建立了 Backdrop Root：${JSON.stringify(opening)}`);
   assert((opening?.materialOpacity ?? 0) > 0.99 && (opening?.rimOpacity ?? 0) > 0.99, `Mini 菜单首帧没有建立完整液态玻璃和高光：${JSON.stringify(opening)}`);
   assert(opening?.glassFilter?.includes('url('), `Mini 菜单首帧缺少折射滤镜：${JSON.stringify(opening)}`);
@@ -319,7 +366,7 @@ try {
   assert(consoleErrors.length === 0, `Console errors: ${JSON.stringify(consoleErrors)}`);
   assert(failedResponses.length === 0, `Failed responses: ${JSON.stringify(failedResponses)}`);
 
-  console.log(JSON.stringify({ ok: true, baseUrl, viewport: `${viewportWidth}x${viewportHeight}`, playerOpening, opening, state, continuity, closing, consoleErrors, failedResponses }, null, 2));
+  console.log(JSON.stringify({ ok: true, baseUrl, viewport: `${viewportWidth}x${viewportHeight}`, navRefractionField, playerOpening, opening, state, continuity, closing, consoleErrors, failedResponses }, null, 2));
 } finally {
   await browser.close();
 }

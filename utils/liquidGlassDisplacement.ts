@@ -4,7 +4,7 @@ export type LiquidGlassDisplacementMap = {
 };
 
 export type LiquidGlassDisplacementOptions = {
-  profile?: 'adaptive' | 'shuding' | 'panel';
+  profile?: 'adaptive' | 'shuding' | 'panel' | 'perimeter';
   edgeScale?: number;
   centerStrength?: number;
   centerLensStrength?: number;
@@ -28,6 +28,36 @@ const roundedRectSdf = (x: number, y: number, width: number, height: number, rad
   return Math.min(Math.max(qx, qy), 0) + distance(Math.max(qx, 0), Math.max(qy, 0)) - radius;
 };
 
+const getRoundedRectEdge = (
+  x: number,
+  y: number,
+  halfWidth: number,
+  halfHeight: number,
+  radius: number,
+) => {
+  const coreX = Math.max(0, halfWidth - radius);
+  const coreY = Math.max(0, halfHeight - radius);
+  const qx = Math.abs(x) - coreX;
+  const qy = Math.abs(y) - coreY;
+  const outsideX = Math.max(qx, 0);
+  const outsideY = Math.max(qy, 0);
+  const outsideLength = distance(outsideX, outsideY);
+  const signedDistance = Math.min(Math.max(qx, qy), 0) + outsideLength - radius;
+
+  if (outsideLength > 0.0001) {
+    return {
+      signedDistance,
+      normalX: Math.sign(x || 1) * outsideX / outsideLength,
+      normalY: Math.sign(y || 1) * outsideY / outsideLength,
+    };
+  }
+
+  if (qx > qy) {
+    return { signedDistance, normalX: Math.sign(x || 1), normalY: 0 };
+  }
+  return { signedDistance, normalX: 0, normalY: Math.sign(y || 1) };
+};
+
 export const createLiquidGlassDisplacementMap = (
   width: number,
   height: number,
@@ -37,6 +67,7 @@ export const createLiquidGlassDisplacementMap = (
   const resolvedHeight = Math.max(1, Math.round(height));
   const isShudingProfile = options.profile === 'shuding';
   const isPanelProfile = options.profile === 'panel';
+  const isPerimeterProfile = options.profile === 'perimeter';
   const edgeScale = Math.max(0, Math.min(1.4, options.edgeScale ?? 1));
   const centerStrength = Math.max(0, Math.min(0.8, options.centerStrength ?? 0));
   const centerLensStrength = Math.max(0, Math.min(0.8, options.centerLensStrength ?? centerStrength));
@@ -69,7 +100,25 @@ export const createLiquidGlassDisplacementMap = (
     const iy = uvY - 0.5;
     let dx: number;
     let dy: number;
-    if (isPanelProfile) {
+    if (isPerimeterProfile) {
+      const halfWidth = resolvedWidth / 2;
+      const halfHeight = resolvedHeight / 2;
+      const radius = Math.max(1, Math.min(halfWidth, halfHeight) - 1);
+      const localX = x + 0.5 - halfWidth;
+      const localY = y + 0.5 - halfHeight;
+      const edge = getRoundedRectEdge(localX, localY, halfWidth, halfHeight, radius);
+      const insideDistance = Math.max(0, -edge.signedDistance);
+      const edgeBand = Math.max(8, Math.min(radius * 0.72, 24));
+      const edgeWeight = 1 - smoothStep(0, edgeBand, insideDistance);
+      const opticalCurve = Math.sin(edgeWeight * Math.PI * 0.5);
+      const edgeAmount = edgeBand * 0.42 * edgeScale * opticalCurve;
+      const centerFalloff = Math.max(0, 1 - distance(ix * 1.25, iy * 2));
+      const centerAmount = Math.min(resolvedWidth, resolvedHeight) * 0.018
+        * centerFalloff * centerLensStrength;
+
+      dx = -edge.normalX * edgeAmount + ix * centerAmount;
+      dy = -edge.normalY * edgeAmount + iy * centerAmount;
+    } else if (isPanelProfile) {
       const shortSide = Math.min(resolvedWidth, resolvedHeight);
       const edgeBand = Math.min(38, Math.max(16, shortSide * 0.16));
       const edgeX = Math.min(x, resolvedWidth - 1 - x);

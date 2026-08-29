@@ -156,11 +156,10 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   React.useEffect(() => {
     setNavMap(
       createLiquidGlassDisplacementMap(roundedNavWidth, navHeight, {
+        profile: 'perimeter',
         edgeScale: effectiveNavGlass.edgeRefraction,
-        centerStrength: 0.14,
-        sideVerticalDamp: 0.34,
-        sideHorizontalBoost: 1.12,
-        normalization: 0.74,
+        centerStrength: 0.1,
+        balancedEncoding: true,
       }),
     );
   }, [effectiveNavGlass.edgeRefraction, roundedNavWidth]);
@@ -337,6 +336,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       }}
       data-liquid-control-root
       data-layout-mode={bottomTabLayout}
+      data-refraction-geometry="perimeter"
       data-testid="bottom-nav-layer"
       data-dragging={isDraggingLens ? 'true' : 'false'}
       data-compact-presentation={isCompactHomeOnly ? 'home' : 'full'}
