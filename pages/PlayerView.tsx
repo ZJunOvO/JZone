@@ -195,6 +195,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     ? playerLyricsUiCache.get(getPlayerLyricsUiCacheKey(user?.id, song.id))
     : undefined;
   const playbackTime = usePlaybackTime();
+  const handleLyricLineActivate = React.useCallback((time: number) => {
+    seek(time);
+    if (!playerState.isPlaying) togglePlay();
+  }, [playerState.isPlaying, seek, togglePlay]);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isQueueClosing, setIsQueueClosing] = useState(false);
   const [isQueueSorting, setIsQueueSorting] = useState(false);
@@ -524,6 +528,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       duration={Math.max(0, trimEnd)}
       playing={playerState.isPlaying}
       onSeek={seek}
+      onLineActivate={handleLyricLineActivate}
       reducedMotion={Boolean(reduceMotion)}
       elasticTopPull
       className="h-full min-h-0"
@@ -980,7 +985,11 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       )}
 
       {/* Comments Sheet Overlay */}
-      <CommentsSheet isOpen={isCommentsOpen} onClose={() => setIsCommentsOpen(false)} />
+      <CommentsSheet
+        isOpen={isCommentsOpen}
+        onClose={() => setIsCommentsOpen(false)}
+        lyrics={playerLyricsInput}
+      />
 
       {isLyricsEditorOpen && (
         <React.Suspense fallback={null}>

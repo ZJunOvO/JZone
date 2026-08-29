@@ -22,6 +22,8 @@ export interface LyricsRendererProps extends Omit<React.HTMLAttributes<HTMLDivEl
   duration?: number;
   playing?: boolean;
   onSeek?: (time: number) => void;
+  /** 用户主动点击歌词行；可用于在跳转之外恢复暂停中的播放。 */
+  onLineActivate?: (time: number) => void;
   reducedMotion?: boolean;
   lowPerformance?: boolean;
   /** 全屏播放页在首行允许向下阻尼拖动，最多到歌词视窗中线。 */
@@ -305,6 +307,7 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
   duration,
   playing = true,
   onSeek,
+  onLineActivate,
   reducedMotion = false,
   lowPerformance = false,
   elasticTopPull = false,
@@ -322,10 +325,15 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
   const safeCurrentTime = normalizePlaybackTimeSeconds(currentTime, safeDuration);
   const currentTimeMs = Math.round(safeCurrentTime * 1_000);
   const durationMs = safeDuration === undefined ? undefined : Math.round(safeDuration * 1_000);
-  const seekToMs = React.useCallback((timeMs: number) => {
-    if (!onSeek || !Number.isFinite(timeMs)) return;
-    onSeek(clampSeekTimeSeconds(timeMs, safeDuration));
-  }, [onSeek, safeDuration]);
+  const activateLineAtMs = React.useCallback((timeMs: number) => {
+    if (!Number.isFinite(timeMs)) return;
+    const targetTime = clampSeekTimeSeconds(timeMs, safeDuration);
+    if (onLineActivate) {
+      onLineActivate(targetTime);
+      return;
+    }
+    onSeek?.(targetTime);
+  }, [onLineActivate, onSeek, safeDuration]);
   const amllPlayerRef = React.useRef<LyricPlayerRef>(null);
   const pullStartRef = React.useRef<{ pointerId: number; y: number; maxOffset: number } | null>(null);
   const [topPullOffset, setTopPullOffset] = React.useState(0);
@@ -333,11 +341,11 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
   const handleAmllLineClick = React.useCallback((event: LyricLineMouseEvent) => {
     const lyricPlayer = amllPlayerRef.current?.lyricPlayer;
     lyricPlayer?.resetScroll();
-    seekToMs(event.line.getLine().startTime);
+    activateLineAtMs(event.line.getLine().startTime);
     window.requestAnimationFrame(() => {
       void lyricPlayer?.calcLayout(false, false);
     });
-  }, [seekToMs]);
+  }, [activateLineAtMs]);
   const animationReduced = reducedMotion || lowPerformance || prefersReducedMotion;
   const amllAvailable = typeof window !== 'undefined'
     && typeof document !== 'undefined'
@@ -439,7 +447,7 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
       currentTimeMs={currentTimeMs}
       durationMs={durationMs}
       animate={!animationReduced}
-      onSeek={onSeek ? seekToMs : undefined}
+      onSeek={onSeek || onLineActivate ? activateLineAtMs : undefined}
     />
   );
 

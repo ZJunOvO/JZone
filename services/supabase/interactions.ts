@@ -220,6 +220,7 @@ export const createInteractionsApi = () => ({
     avatarUrl: string;
     text: string;
     playbackTime: number;
+    quotedLyric?: string | null;
     parentCommentId?: string | null;
   }): Promise<CommentRow> {
     const client = ensureSupabase();
@@ -231,12 +232,23 @@ export const createInteractionsApi = () => ({
       text: input.text,
       playback_time: input.playbackTime,
     };
+    if (input.quotedLyric) payload.quoted_lyric = input.quotedLyric;
     if (input.parentCommentId) payload.parent_comment_id = input.parentCommentId;
-    const { data, error } = await client
+    let { data, error } = await client
       .from('comments')
       .insert(payload)
       .select('*')
       .single();
+    if (error?.code === 'PGRST204' && input.quotedLyric) {
+      delete payload.quoted_lyric;
+      const legacyResult = await client
+        .from('comments')
+        .insert(payload)
+        .select('*')
+        .single();
+      data = legacyResult.data;
+      error = legacyResult.error;
+    }
     if (error) throw error;
     return data as CommentRow;
   },

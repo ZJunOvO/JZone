@@ -143,11 +143,26 @@ export const generateCommentShareImage = async (comment: Comment, song: Song): P
   context.font = '600 24px "HarmonyOS Sans SC", system-ui, sans-serif';
   context.fillText('JZone 评论', 400, 326);
 
+  let quoteMarkY = 510;
+  let commentTextY = 580;
+  let commentMaxLines = 7;
+  if (comment.quotedLyric) {
+    context.fillStyle = 'rgba(255,255,255,0.08)';
+    roundedRect(context, 130, 410, 820, 116, 28);
+    context.fill();
+    context.fillStyle = 'rgba(255,255,255,0.58)';
+    context.font = '700 27px "HarmonyOS Sans SC", system-ui, sans-serif';
+    drawWrappedText(context, `“${comment.quotedLyric}”`, 168, 456, 744, 36, 2);
+    quoteMarkY = 590;
+    commentTextY = 660;
+    commentMaxLines = 5;
+  }
+
   context.fillStyle = 'rgba(255,255,255,0.9)';
   context.font = '700 58px "HarmonyOS Sans SC", system-ui, sans-serif';
-  context.fillText('“', 126, 510);
+  context.fillText('“', 126, quoteMarkY);
   context.font = '700 48px "HarmonyOS Sans SC", system-ui, sans-serif';
-  const textBottom = drawWrappedText(context, comment.text, 150, 580, 780, 76, 7);
+  const textBottom = drawWrappedText(context, comment.text, 150, commentTextY, 780, 76, commentMaxLines);
   context.font = '700 58px "HarmonyOS Sans SC", system-ui, sans-serif';
   context.fillText('”', 894, Math.min(textBottom + 16, 1050));
 

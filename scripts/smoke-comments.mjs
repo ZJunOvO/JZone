@@ -69,6 +69,7 @@ try {
     avatar_url: avatarData,
     text: index === 0 ? longText : `分页评论 ${index + 1}`,
     playback_time: 42 + index,
+    quoted_lyric: index === 0 ? '这一句来自被引用的歌词' : null,
     parent_comment_id: null,
     deleted_at: null,
     likes_count: index === 1 ? 36 : index,
@@ -137,6 +138,26 @@ try {
   });
   await page.route('**/rest/v1/comment_likes**', (route) => route.fulfill({ status: 200, headers: jsonHeaders, body: '[]' }));
   await page.route('**/rest/v1/rpc/delete_comment', (route) => route.fulfill({ status: 200, headers: jsonHeaders, body: '"deleted"' }));
+  await page.route('**/rest/v1/song_lyrics**', (route) => {
+    const url = new URL(route.request().url());
+    const songId = url.searchParams.get('song_id')?.replace(/^eq\./, '') ?? activeSongId;
+    return route.fulfill({
+      status: 200,
+      headers: jsonHeaders,
+      body: JSON.stringify(songId ? [{
+        song_id: songId,
+        format: 'lrc',
+        source: 'editor',
+        raw_content: '[00:00.00]开场歌词\n[00:40.00]四十二秒对应歌词\n[00:50.00]下一句歌词',
+        normalized_content: null,
+        offset_ms: 0,
+        checksum: 'smoke-comment-lyrics',
+        version: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }] : []),
+    });
+  });
 
   await page.getByTestId('bottom-nav-library').evaluate((element) => element.click());
   const songRows = page.locator('[data-library-song="true"]:visible');
@@ -144,13 +165,18 @@ try {
   await songRows.first().evaluate((element) => element.click());
   await page.getByTestId('mini-player').waitFor({ state: 'visible', timeout: 15000 });
   await page.getByTestId('mini-player').click();
-  await page.getByTestId('player-transition-shell').waitFor({ state: 'visible', timeout: 3000 });
+  if (!await page.getByTestId('player-transition-shell').isVisible().catch(() => false)) {
+    await page.waitForTimeout(700);
+    await page.getByTestId('mini-player').click();
+  }
+  await page.getByTestId('player-transition-shell').waitFor({ state: 'visible', timeout: 10000 });
   await page.waitForTimeout(850);
   await page.getByTestId('player-open-comments').click();
   await page.getByTestId('comments-sheet').waitFor({ state: 'visible', timeout: 3000 });
   await page.locator(`[data-comment-id="${rootId}"]`).waitFor({ state: 'visible', timeout: 5000 });
 
   assert(await page.getByText('这是一条单层回复').isVisible(), '单层回复没有归入根评论');
+  assert(await page.getByTestId('comment-quoted-lyric').first().getByText('这一句来自被引用的歌词').isVisible(), '已有评论没有显示引用歌词');
   const avatarFrameState = await page.locator(`[data-comment-id="${rootId}"] [data-avatar-frame-id]`).first().getAttribute('data-avatar-frame-id').catch(() => null);
   assert(avatarFrameState === 'cloud_dream_v1', `评论头像挂件未显示：${JSON.stringify({ avatarFrameState, profileIntercepts })}`);
   assert(await page.getByRole('button', { name: '加载更多评论' }).isVisible(), '分页入口未显示');
@@ -177,11 +203,16 @@ try {
   await page.waitForTimeout(120);
   await rootElement.getByRole('button', { name: '回复' }).first().click();
   await page.getByText('回复 纸菌live', { exact: false }).waitFor({ state: 'visible' });
+  const lyricPreview = page.getByTestId('comment-lyric-preview');
+  await lyricPreview.getByText('四十二秒对应歌词').waitFor({ state: 'visible' });
+  await page.getByTestId('comment-quote-lyric-toggle').click();
   const input = page.locator('textarea[placeholder^="回复"]');
   await input.fill('自动化回复验证');
   await page.getByRole('button', { name: '发送回复' }).click();
   const inserted = page.locator('[data-comment-id="30000000-0000-4000-8000-000000000001"]');
   await inserted.waitFor({ state: 'visible', timeout: 5000 });
+  assert(insertedReply?.quoted_lyric === '四十二秒对应歌词', `评论引用歌词没有写入提交载荷：${JSON.stringify(insertedReply)}`);
+  assert(await inserted.getByTestId('comment-quoted-lyric').getByText('四十二秒对应歌词').isVisible(), '新评论没有显示引用歌词');
   await page.waitForFunction(() => document.querySelector('[data-testid="comments-sheet"] textarea')?.value === '');
   await inserted.getByRole('button', { name: '删除评论' }).click();
   await inserted.getByRole('button', { name: '确认删除' }).click();
@@ -214,6 +245,7 @@ try {
     sorting: true,
     longComment: true,
     shareImage: true,
+    lyricQuote: true,
     silentRefreshPreservesWindow: true,
     retryPreservesContent: true,
   }, null, 2));

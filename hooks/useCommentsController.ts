@@ -27,6 +27,7 @@ const mapCommentRow = (row: CommentRow): Comment => ({
   text: row.text,
   timestamp: new Date(row.created_at).getTime(),
   playbackTime: row.playback_time,
+  quotedLyric: row.quoted_lyric ?? null,
   parentCommentId: row.parent_comment_id ?? null,
   isDeleted: Boolean(row.deleted_at),
   likes: Number(row.likes_count) || 0,
@@ -253,6 +254,7 @@ export const useCommentsController = ({ currentSongId, authStatus, user }: UseCo
         avatarUrl: normalizedComment.avatarUrl,
         text: normalizedComment.text,
         playbackTime: normalizedComment.playbackTime,
+        quotedLyric: normalizedComment.quotedLyric,
         parentCommentId: normalizedComment.parentCommentId,
       });
       const persisted = {

@@ -270,10 +270,6 @@ const MemoryCardModalContent: React.FC<MemoryCardModalContentProps> = ({ song, o
                     </div>
                 </div>
 
-                <div className="space-y-2">
-                    <div className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">歌词片段</div>
-                    <div className="text-sm text-zinc-500 leading-relaxed min-h-[48px]">即将开放</div>
-                </div>
             </div>
 
             <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-20">

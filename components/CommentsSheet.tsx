@@ -10,6 +10,13 @@ import { AvatarWithFrame } from './AvatarWithFrame';
 import { useCurrentArtistProfile } from '../hooks/useCurrentArtistProfile';
 import { CommentItem } from './comments/CommentItem';
 import { createRuntimeUuid } from '../utils/runtimeId';
+import {
+  getActiveLyricsLineIndex,
+  isParsedLyrics,
+  parseLyrics,
+  type LyricsInput,
+  type ParsedLyrics,
+} from '../utils/lyrics';
 
 const CommentShareModal = React.lazy(() => import('./comments/CommentShareModal').then((module) => ({
   default: module.CommentShareModal,
@@ -18,6 +25,7 @@ const CommentShareModal = React.lazy(() => import('./comments/CommentShareModal'
 interface CommentsSheetProps {
   isOpen: boolean;
   onClose: () => void;
+  lyrics?: LyricsInput | ParsedLyrics | null;
 }
 
 const formatTime = (time: number) => {
@@ -28,7 +36,7 @@ const formatTime = (time: number) => {
 
 const createTemporaryCommentId = () => createRuntimeUuid();
 
-export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose }) => {
+export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose, lyrics = null }) => {
   const {
     comments,
     commentsLoading,
@@ -52,6 +60,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
   const { displayName, resolvedAvatarUrl, profile } = useCurrentArtistProfile();
   const [inputText, setInputText] = React.useState('');
   const [anchorTime, setAnchorTime] = React.useState<number | null>(null);
+  const [quoteLyric, setQuoteLyric] = React.useState(false);
   const [isFocused, setIsFocused] = React.useState(false);
   const [keyboardOffset, setKeyboardOffset] = React.useState(0);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -86,6 +95,26 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
 
   const myAvatarUrl = resolvedAvatarUrl || getQQAvatarUrl(user?.email) || getFallbackAvatarUrl(user?.id || 'me');
   const myAvatarFrameId = profile?.avatar_frame_id ?? null;
+  const parsedLyrics = React.useMemo<ParsedLyrics | null>(() => {
+    if (!lyrics) return null;
+    try {
+      return isParsedLyrics(lyrics) ? lyrics : parseLyrics(lyrics);
+    } catch {
+      return null;
+    }
+  }, [lyrics]);
+  const selectedPlaybackTime = anchorTime ?? playbackTime;
+  const lyricPreview = React.useMemo(() => {
+    if (!parsedLyrics || parsedLyrics.timing === 'none') return null;
+    const index = getActiveLyricsLineIndex(parsedLyrics.lines, Math.round(selectedPlaybackTime * 1_000));
+    if (index < 0) return null;
+    const line = parsedLyrics.lines[index];
+    return line?.text.trim() || null;
+  }, [parsedLyrics, selectedPlaybackTime]);
+
+  React.useEffect(() => {
+    if (!lyricPreview) setQuoteLyric(false);
+  }, [lyricPreview]);
 
   React.useEffect(() => {
     const viewport = window.visualViewport;
@@ -103,6 +132,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
   React.useEffect(() => {
     setReplyTarget(null);
     setShareComment(null);
+    setQuoteLyric(false);
   }, [currentSong?.id, isOpen]);
 
   const handleFocus = () => {
@@ -132,6 +162,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
       text: inputText.trim(),
       timestamp: Date.now(),
       playbackTime: anchorTime ?? playbackTime,
+      quotedLyric: quoteLyric ? lyricPreview : null,
       parentCommentId: replyTarget?.parentId ?? null,
       likes: 0,
     };
@@ -140,6 +171,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
       setInputText('');
       setAnchorTime(null);
       setReplyTarget(null);
+      setQuoteLyric(false);
       if (!newComment.parentCommentId && scrollRef.current) scrollRef.current.scrollTop = 0;
     } catch {
       // 保留输入内容与回复目标，网络恢复后可直接重试。
@@ -236,16 +268,39 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ isOpen, onClose })
               ) : null}
 
               {(isFocused || anchorTime !== null) ? (
-                <div className="mb-3 flex items-center justify-between px-2 animate-[fadeIn_0.2s_ease-out]">
-                  <div className="flex items-center gap-3">
+                <div className="mb-3 space-y-2 px-2 animate-[fadeIn_0.2s_ease-out]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                     <span className="text-[11px] font-bold uppercase text-zinc-400">评论时间点</span>
                     <div className="flex items-center rounded-lg border border-white/5 bg-zinc-800 p-0.5">
                       <button type="button" onClick={() => setAnchorTime(Math.max(0, (anchorTime ?? playbackTime) - 1))} className="grid h-6 w-6 place-items-center rounded text-zinc-400 hover:text-white"><Icons.Minus size={12} /></button>
                       <span className="w-12 text-center font-mono text-xs font-bold tabular-nums text-blue-400">{formatTime(anchorTime ?? playbackTime)}</span>
                       <button type="button" onClick={() => setAnchorTime((anchorTime ?? playbackTime) + 1)} className="grid h-6 w-6 place-items-center rounded text-zinc-400 hover:text-white"><Icons.Plus size={12} /></button>
                     </div>
+                    </div>
+                    <button type="button" onClick={() => setAnchorTime(playbackTime)} className="flex shrink-0 items-center gap-1.5 rounded-full bg-zinc-800/50 px-2 py-1 text-[10px] font-bold text-zinc-500 hover:text-red-400"><Icons.RotateCcw size={10} />回到当前</button>
                   </div>
-                  <button type="button" onClick={() => setAnchorTime(playbackTime)} className="flex items-center gap-1.5 rounded-full bg-zinc-800/50 px-2 py-1 text-[10px] font-bold text-zinc-500 hover:text-red-400"><Icons.RotateCcw size={10} />重置同步</button>
+                  <div className="flex min-h-12 items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.035] px-3 py-2" data-testid="comment-lyric-preview">
+                    <Icons.MessageSquareQuote size={15} className="shrink-0 text-red-300/75" aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-bold text-white/35">这一刻的歌词</div>
+                      <div className={`mt-0.5 truncate text-xs font-bold ${lyricPreview ? 'text-white/78' : 'text-white/28'}`}>
+                        {lyricPreview ?? (parsedLyrics ? '此时间点暂无歌词' : '当前歌曲暂无歌词')}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={quoteLyric}
+                      aria-label="引用这一句歌词"
+                      disabled={!lyricPreview}
+                      onClick={() => setQuoteLyric((value) => !value)}
+                      className={`relative h-6 w-10 shrink-0 rounded-full transition-colors duration-300 ${quoteLyric ? 'bg-red-500' : 'bg-white/10'} disabled:opacity-30`}
+                      data-testid="comment-quote-lyric-toggle"
+                    >
+                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-300 ${quoteLyric ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                    </button>
+                  </div>
                 </div>
               ) : null}
 

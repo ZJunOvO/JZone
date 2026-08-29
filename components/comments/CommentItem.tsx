@@ -80,6 +80,13 @@ export const CommentItem: React.FC<CommentItemProps> = ({
             <p className="text-sm italic text-zinc-600">该评论已删除</p>
           ) : (
             <>
+              {comment.quotedLyric ? (
+                <div className="mb-2 flex items-start gap-2 border-l-2 border-red-300/45 py-0.5 pl-2.5 text-xs font-semibold leading-5 text-white/48" data-testid="comment-quoted-lyric">
+                  <span aria-hidden="true">“</span>
+                  <span className="line-clamp-2 min-w-0">{comment.quotedLyric}</span>
+                  <span aria-hidden="true">”</span>
+                </div>
+              ) : null}
               <p
                 ref={textRef}
                 className={`break-words text-[15px] font-normal leading-relaxed text-zinc-100 ${expanded ? '' : 'line-clamp-5'}`}

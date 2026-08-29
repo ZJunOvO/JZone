@@ -38,6 +38,8 @@ const assertContract = async () => {
   assert.match(player, /currentTime=\{currentTime\}/);
   assert.match(player, /playing=\{playerState\.isPlaying\}/);
   assert.match(player, /onSeek=\{seek\}/);
+  assert.match(player, /onLineActivate=\{handleLyricLineActivate\}/);
+  assert.match(player, /if \(!playerState\.isPlaying\) togglePlay\(\)/);
   assert.match(player, /player-lyrics-loading/);
   assert.match(player, /player-lyrics-error/);
   assert.match(player, /player-lyrics-empty/);
@@ -295,7 +297,6 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
         coverButton.click();
         await wait(() => Boolean(document.querySelector('[data-testid="lyrics-renderer"]')), '歌曲信息返回后再次打开歌词');
         await settle();
-        document.querySelector('[data-testid="player-toggle-play"]')?.click();
         await new Promise((resolve) => setTimeout(resolve, 4_500));
         const lowerControls = document.querySelector('[data-testid="player-lower-controls"]');
         const controlsAfterIdle = lowerControls?.dataset.controlsVisible ?? null;

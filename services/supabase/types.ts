@@ -89,6 +89,7 @@ export interface CommentRow {
   avatar_url: string;
   text: string;
   playback_time: number;
+  quoted_lyric?: string | null;
   created_at: string;
   parent_comment_id?: string | null;
   deleted_at?: string | null;

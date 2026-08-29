@@ -160,6 +160,7 @@ try {
     mount.style.height = '600px';
     document.body.appendChild(mount);
     const seekCalls = [];
+    const lineActivateCalls = [];
     const root = ReactDOMClient.createRoot(mount);
     const convertedRoles = toAmllLyricLines(roleLyrics, 18_000).map((line) => ({
       isBG: line.isBG,
@@ -226,6 +227,18 @@ try {
       lyrics: roleLyrics,
       currentTime: 2,
       duration: 18,
+      lowPerformance: true,
+      onSeek: (time) => seekCalls.push(`fallback:${time}`),
+      onLineActivate: (time) => lineActivateCalls.push(time),
+    }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    mount.querySelector('[data-testid="lyrics-line-2"] button')?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    root.render(React.createElement(LyricsRenderer, {
+      lyrics: roleLyrics,
+      currentTime: 2,
+      duration: 18,
       onSeek: (time) => seekCalls.push(time),
     }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -272,6 +285,7 @@ try {
       amllSemanticState,
       convertedRoles,
       seekCalls,
+      lineActivateCalls,
       unmountedChildCount,
     };
   }, { fixture: ttmlFixture, roleLyrics: roleLyricsFixture });
@@ -281,6 +295,8 @@ try {
     assert.equal(rendered.lightUsesWordTiming, true, '轻量降级渲染必须保持原歌词时间模型');
     assert.equal(rendered.lightHasNoAmllNodes, true, '轻量降级渲染不能挂载 AMLL 逐字节点');
     assert.equal(rendered.seekCalls[0], 12, '点击右侧对唱行必须按行起始时间跳转');
+    assert.deepEqual(rendered.lineActivateCalls, [12], '提供歌词行激活回调时必须优先交付时间点，由播放器恢复播放');
+    assert.equal(rendered.seekCalls.includes('fallback:12'), false, '歌词行激活回调与普通跳转不能重复触发');
     assert.deepEqual(rendered.lightRoles, [
       { role: 'lead', direction: 'left', textAlign: 'left' },
       { role: 'background', direction: 'left', textAlign: 'left' },

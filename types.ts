@@ -50,6 +50,7 @@ export interface Comment {
   text: string;
   timestamp: number; // The actual time the comment was posted
   playbackTime: number; // The time in the song the comment refers to
+  quotedLyric?: string | null;
   likes: number;
   parentCommentId?: string | null;
   avatarFrameId?: string | null;
