@@ -24,6 +24,8 @@ export interface LyricsRendererProps extends Omit<React.HTMLAttributes<HTMLDivEl
   onSeek?: (time: number) => void;
   reducedMotion?: boolean;
   lowPerformance?: boolean;
+  /** 全屏播放页在首行允许向下阻尼拖动，最多到歌词视窗中线。 */
+  elasticTopPull?: boolean;
 }
 
 interface ParsedLyricsState {
@@ -305,6 +307,7 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
   onSeek,
   reducedMotion = false,
   lowPerformance = false,
+  elasticTopPull = false,
   className = '',
   style,
   ...rest
@@ -324,6 +327,9 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
     onSeek(clampSeekTimeSeconds(timeMs, safeDuration));
   }, [onSeek, safeDuration]);
   const amllPlayerRef = React.useRef<LyricPlayerRef>(null);
+  const pullStartRef = React.useRef<{ pointerId: number; y: number; maxOffset: number } | null>(null);
+  const [topPullOffset, setTopPullOffset] = React.useState(0);
+  const [isTopPulling, setIsTopPulling] = React.useState(false);
   const handleAmllLineClick = React.useCallback((event: LyricLineMouseEvent) => {
     const lyricPlayer = amllPlayerRef.current?.lyricPlayer;
     lyricPlayer?.resetScroll();
@@ -348,6 +354,65 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
     () => (parsedLyrics ? toAmllLyricLines(parsedLyrics, durationMs) : []),
     [parsedLyrics, durationMs],
   );
+  const activeLineIndex = React.useMemo(() => (
+    parsedLyrics && parsedLyrics.timing !== 'none'
+      ? getActiveLyricsLineIndex(parsedLyrics.lines, currentTimeMs)
+      : -1
+  ), [currentTimeMs, parsedLyrics]);
+  React.useEffect(() => {
+    if (elasticTopPull) return;
+    pullStartRef.current = null;
+    setIsTopPulling(false);
+    setTopPullOffset(0);
+  }, [elasticTopPull]);
+
+  const handleTopPullStart = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!elasticTopPull || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    const lyricPlayer = amllPlayerRef.current?.lyricPlayer as unknown as {
+      scrollState?: {
+        scrollOffset: number;
+        scrollBoundary: { minOffset: number };
+      };
+    } | undefined;
+    const scrollState = lyricPlayer?.scrollState;
+    const isAtFirstLineBoundary = scrollState
+      ? scrollState.scrollOffset <= scrollState.scrollBoundary.minOffset + 2
+      : activeLineIndex <= 0;
+    if (!isAtFirstLineBoundary) return;
+    pullStartRef.current = {
+      pointerId: event.pointerId,
+      y: event.clientY,
+      maxOffset: Math.max(0, event.currentTarget.clientHeight * 0.22),
+    };
+    setIsTopPulling(true);
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      // 合成事件或旧浏览器可能没有可捕获的活动指针，拖动状态仍可正常工作。
+    }
+  }, [activeLineIndex, elasticTopPull]);
+
+  const handleTopPullMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const start = pullStartRef.current;
+    if (!start || start.pointerId !== event.pointerId) return;
+    const deltaY = event.clientY - start.y;
+    if (deltaY <= 0) {
+      setTopPullOffset(0);
+      return;
+    }
+    event.preventDefault();
+    const maxOffset = start.maxOffset;
+    const resistedOffset = maxOffset * (1 - Math.exp(-deltaY / Math.max(1, maxOffset * 1.35)));
+    setTopPullOffset(Math.min(maxOffset, resistedOffset));
+  }, []);
+
+  const handleTopPullEnd = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const start = pullStartRef.current;
+    if (!start || start.pointerId !== event.pointerId) return;
+    pullStartRef.current = null;
+    setIsTopPulling(false);
+    setTopPullOffset(0);
+  }, []);
 
   if (parsedState.error) {
     return (
@@ -381,8 +446,12 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
   return (
     <div
       {...rest}
-      className={`relative h-full min-h-[240px] w-full overflow-hidden ${className}`.trim()}
+      className={`relative h-full min-h-[240px] w-full overflow-hidden ${elasticTopPull ? 'touch-none' : ''} ${className}`.trim()}
       style={style}
+      onPointerDown={handleTopPullStart}
+      onPointerMove={handleTopPullMove}
+      onPointerUp={handleTopPullEnd}
+      onPointerCancel={handleTopPullEnd}
       data-testid="lyrics-renderer"
       data-lyrics-renderer-mode={useLightweight ? 'lightweight' : 'amll'}
       data-lyrics-timing={parsedLyrics.timing}
@@ -395,48 +464,60 @@ export const LyricsRenderer: React.FC<LyricsRendererProps> = ({
           .jzone-lyrics-amll .FmKaba_lyricBgLine { opacity: 0.4; }
         `}</style>
       )}
-      {firstTimedLine?.startTimeMs !== null && firstTimedLine?.startTimeMs !== undefined && (
-        <LyricsIntroDots
-          currentTimeMs={currentTimeMs}
-          firstLineTimeMs={firstTimedLine.startTimeMs}
-          align={firstTimedLine.isDuet ? 'right' : 'left'}
-          animate={!animationReduced}
-        />
-      )}
       <div
-        className="h-full w-full [mask-image:linear-gradient(to_bottom,transparent_0,black_7%,black_88%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,black_7%,black_88%,transparent_100%)]"
-        data-testid="lyrics-edge-fade"
+        className="relative h-full w-full will-change-transform"
+        style={{
+          transform: `translate3d(0, ${topPullOffset}px, 0)`,
+          transition: isTopPulling || animationReduced
+            ? 'none'
+            : 'transform 520ms cubic-bezier(0.18, 0.86, 0.2, 1.18)',
+        }}
+        data-testid="lyrics-elastic-layer"
+        data-pull-active={isTopPulling ? 'true' : 'false'}
       >
-      {useLightweight || amllLines.length === 0 ? lightweight : (
-        <AmllErrorBoundary
-          resetKey={`${parsedLyrics.format}:${parsedLyrics.rawContent}`}
-          fallback={lightweight}
-        >
-          <AmllLyricPlayer
-            ref={amllPlayerRef}
-            className="jzone-lyrics-amll h-full w-full"
-            lyricLines={amllLines}
-            currentTime={currentTimeMs}
-            playing={playing}
-            disabled={!pageVisible}
-            enableSpring={!animationReduced}
-            enableScale={!animationReduced}
-            enableBlur={!animationReduced}
-            alignAnchor="top"
-            alignPosition={0.28}
-            wordFadeWidth={parsedLyrics.timing === 'word' ? 0.5 : 0.0001}
-            onLyricLineClick={handleAmllLineClick}
-            style={{
-              '--amll-lp-font-size': 'clamp(24px, 6.5vw, 42px)',
-              '--amll-lp-color': 'rgba(255, 255, 255, 0.94)',
-              '--amll-lp-bg-line-scale': '0.62',
-              '--amll-lp-line-width-aspect': '1',
-              '--amll-lp-line-padding-x': '0.18em',
-              fontWeight: 800,
-            } as React.CSSProperties}
+        {firstTimedLine?.startTimeMs !== null && firstTimedLine?.startTimeMs !== undefined && (
+          <LyricsIntroDots
+            currentTimeMs={currentTimeMs}
+            firstLineTimeMs={firstTimedLine.startTimeMs}
+            align={firstTimedLine.isDuet ? 'right' : 'left'}
+            animate={!animationReduced}
           />
-        </AmllErrorBoundary>
-      )}
+        )}
+        <div
+          className="h-full w-full [mask-image:linear-gradient(to_bottom,transparent_0,black_7%,black_88%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,black_7%,black_88%,transparent_100%)]"
+          data-testid="lyrics-edge-fade"
+        >
+          {useLightweight || amllLines.length === 0 ? lightweight : (
+            <AmllErrorBoundary
+              resetKey={`${parsedLyrics.format}:${parsedLyrics.rawContent}`}
+              fallback={lightweight}
+            >
+              <AmllLyricPlayer
+                ref={amllPlayerRef}
+                className="jzone-lyrics-amll h-full w-full"
+                lyricLines={amllLines}
+                currentTime={currentTimeMs}
+                playing={playing}
+                disabled={!pageVisible}
+                enableSpring={!animationReduced}
+                enableScale={!animationReduced}
+                enableBlur={!animationReduced}
+                alignAnchor="top"
+                alignPosition={0.28}
+                wordFadeWidth={parsedLyrics.timing === 'word' ? 0.5 : 0.0001}
+                onLyricLineClick={handleAmllLineClick}
+                style={{
+                  '--amll-lp-font-size': 'clamp(24px, 6.5vw, 42px)',
+                  '--amll-lp-color': 'rgba(255, 255, 255, 0.94)',
+                  '--amll-lp-bg-line-scale': '0.62',
+                  '--amll-lp-line-width-aspect': '1',
+                  '--amll-lp-line-padding-x': '0.18em',
+                  fontWeight: 800,
+                } as React.CSSProperties}
+              />
+            </AmllErrorBoundary>
+          )}
+        </div>
       </div>
     </div>
   );

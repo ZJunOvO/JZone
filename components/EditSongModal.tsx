@@ -12,6 +12,10 @@ import { CollectionCreatableSelect, type CollectionSelectValue } from './Collect
 import { attachUploadedSongToCollection } from '../utils/uploadFlow';
 import { prepareImageForEditing } from '../imageProcessing';
 
+const SongLyricsEditorDialog = React.lazy(() => import('./lyrics/SongLyricsEditorDialog').then(({ SongLyricsEditorDialog: Component }) => ({
+  default: Component,
+})));
+
 interface EditSongModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -20,7 +24,7 @@ interface EditSongModalProps {
 
 export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, song }) => {
   useModalPresence(isOpen);
-  const { updateSong } = useStore();
+  const { playerState, updateSong, pausePlayback, getCurrentAudioSource } = useStore();
   const { profile: currentArtistProfile, displayName: currentArtistName } = useCurrentArtistProfile();
   const [title, setTitle] = useState(song.title);
   const [artist, setArtist] = useState(song.artist);
@@ -33,6 +37,8 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
   const [coverUrl, setCoverUrl] = useState(song.coverUrl);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLyricsEditorOpen, setIsLyricsEditorOpen] = useState(false);
+  const [lyricsEditorAudioUrl, setLyricsEditorAudioUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -45,6 +51,7 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
       setStory(song.story || '');
       setCoverUrl(song.coverUrl);
       setCoverFile(null);
+      setIsLyricsEditorOpen(false);
     }
   }, [isOpen, song]);
 
@@ -86,6 +93,16 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
 
   const handleCoverClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const openLyricsEditor = () => {
+    setLyricsEditorAudioUrl(
+      playerState.currentSongId === song.id
+        ? (getCurrentAudioSource() || song.audioUrl)
+        : song.audioUrl,
+    );
+    pausePlayback();
+    setIsLyricsEditorOpen(true);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -159,12 +176,13 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
-      <div className="bg-zinc-900 border border-white/10 rounded-[32px] w-full max-w-lg shadow-2xl overflow-hidden animate-[scaleIn_0.3s_ease-out]">
-        <div className="p-6 space-y-6">
+    <>
+      <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/80 p-3 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out] sm:items-center sm:p-4">
+        <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-[28px] border border-white/10 bg-zinc-900 shadow-2xl animate-[scaleIn_0.3s_ease-out] sm:max-h-[88dvh]">
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5 [scrollbar-width:none] sm:p-6 [&::-webkit-scrollbar]:hidden">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-white">编辑歌曲信息</h2>
-            <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 transition">
+            <button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-white/10 transition" aria-label="关闭编辑歌曲信息">
               <Icons.X size={20} className="text-zinc-400" />
             </button>
           </div>
@@ -191,17 +209,17 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
              </div>
 
              <div className="space-y-4">
-                <div className="space-y-1.5">
-                    <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">标题</label>
-                    <input 
-                        type="text" 
-                        value={title} 
-                        onChange={e => setTitle(e.target.value)}
-                        className="w-full bg-black/40 text-white p-3 rounded-xl border border-white/5 focus:border-red-500/50 focus:outline-none text-sm font-medium transition"
-                    />
-                </div>
-                
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="min-w-0 space-y-1.5">
+                      <label className="ml-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">标题</label>
+                      <input
+                          type="text"
+                          value={title}
+                          onChange={e => setTitle(e.target.value)}
+                          className="min-h-12 w-full min-w-0 rounded-xl border border-white/5 bg-black/40 px-3 text-sm font-medium text-white outline-none transition focus:border-red-500/50"
+                          data-testid="edit-song-title"
+                      />
+                    </div>
                     <ArtistPicker
                       value={artist}
                       currentArtist={currentArtistName}
@@ -210,24 +228,44 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
                       credits={artistCredits}
                       onCreditsChange={setArtistCredits}
                     />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
                     <CollectionCreatableSelect
                       label="专辑 / 歌单"
                       value={collectionSelection}
                       onChange={setCollectionSelection}
                       placeholder="搜索或创建…"
                     />
+                    <div className="min-w-0 space-y-1.5">
+                      <label className="ml-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">流派 / 标签</label>
+                      <input
+                          type="text"
+                          value={genre}
+                          onChange={e => setGenre(e.target.value)}
+                          className="min-h-12 w-full min-w-0 rounded-xl border border-white/5 bg-black/40 px-3 text-sm font-medium text-white outline-none transition focus:border-red-500/50"
+                          placeholder="Pop、R&B…"
+                          data-testid="edit-song-genre"
+                      />
+                    </div>
                 </div>
 
-                <div className="space-y-1.5">
-                    <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">流派 / 标签</label>
-                    <input 
-                        type="text" 
-                        value={genre}
-                        onChange={e => setGenre(e.target.value)}
-                        className="w-full bg-black/40 text-white p-3 rounded-xl border border-white/5 focus:border-red-500/50 focus:outline-none text-sm font-medium transition"
-                        placeholder="Pop, R&B, Electronic..."
-                    />
-                </div>
+                <button
+                  type="button"
+                  onClick={openLyricsEditor}
+                  disabled={isSaving}
+                  className="flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.035] px-4 text-left transition-colors hover:border-white/15 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:opacity-40"
+                  data-testid="edit-song-lyrics"
+                >
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.07] text-white/72">
+                    <Icons.Music2 size={18} aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold text-white">歌词</span>
+                    <span className="mt-0.5 block truncate text-xs text-white/40">添加、导入或重新对轴</span>
+                  </span>
+                  <Icons.ChevronRight size={17} className="shrink-0 text-white/30" aria-hidden="true" />
+                </button>
 
                 <div className="space-y-1.5">
                     <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">灵感札记</label>
@@ -256,8 +294,19 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
                 {isSaving ? '保存中...' : '保存更改'}
              </button>
           </div>
+          </div>
         </div>
       </div>
-    </div>
+      {isLyricsEditorOpen ? (
+        <React.Suspense fallback={null}>
+          <SongLyricsEditorDialog
+            isOpen
+            song={{ ...song, title, artist }}
+            audioUrl={lyricsEditorAudioUrl || song.audioUrl}
+            onClose={() => setIsLyricsEditorOpen(false)}
+          />
+        </React.Suspense>
+      ) : null}
+    </>
   );
 };

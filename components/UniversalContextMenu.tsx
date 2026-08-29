@@ -9,11 +9,6 @@ import { AddSongToCollectionDialog } from './AddSongToCollectionDialog';
 import { getAnchoredMenuPlacement } from '../utils/menuPlacement';
 import { feedback } from './feedback';
 import { LIQUID_MENU_EXIT_MS, LiquidGlassMotionContent } from './LiquidGlassMotionContent';
-import { dispatchPlayerLyricsRequest } from '../utils/lyrics/events';
-
-const SongLyricsEditorDialog = React.lazy(() => import('./lyrics/SongLyricsEditorDialog').then(({ SongLyricsEditorDialog: Component }) => ({
-  default: Component,
-})));
 
 interface UniversalContextMenuProps {
   isOpen: boolean;
@@ -22,7 +17,6 @@ interface UniversalContextMenuProps {
   item: Song;
   type: 'song';
   openNonce?: number;
-  onOpenLyricsEditor?: () => void;
 }
 
 export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({
@@ -32,17 +26,14 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({
   item,
   type,
   openNonce = 0,
-  onOpenLyricsEditor,
 }) => {
   const { user } = useAuth();
-  const { playerState, updateSong, deleteSong, isFavorite, toggleFavorite, playNext, playLater, pausePlayback, getCurrentAudioSource } = useStore();
+  const { updateSong, deleteSong, playNext, playLater } = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<number | null>(null);
   const [isClosing, setIsClosing] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showCollectionDialog, setShowCollectionDialog] = useState(false);
-  const [showLyricsEditor, setShowLyricsEditor] = useState(false);
-  const [lyricsEditorAudioUrl, setLyricsEditorAudioUrl] = useState('');
 
   // Check permissions
   const isOwner = user && item.ownerId === user.id;
@@ -94,22 +85,6 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({
             }}
         />
       );
-  }
-
-  if (showLyricsEditor) {
-    return (
-      <React.Suspense fallback={null}>
-        <SongLyricsEditorDialog
-          isOpen
-          song={item}
-          audioUrl={lyricsEditorAudioUrl || item.audioUrl}
-          onClose={() => {
-            setShowLyricsEditor(false);
-            onClose();
-          }}
-        />
-      </React.Suspense>
-    );
   }
 
   // If editing, show modal instead of menu (or on top)
@@ -167,14 +142,6 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({
 
   const menuItems = [
     {
-      label: '查看歌词',
-      icon: Icons.Music2,
-      onClick: () => handleAction(() => {
-        dispatchPlayerLyricsRequest(item.id);
-      }),
-      danger: false,
-    },
-    {
       label: '下一首播放',
       icon: Icons.SkipForward,
       onClick: () => handleAction(() => {
@@ -205,30 +172,9 @@ export const UniversalContextMenu: React.FC<UniversalContextMenuProps> = ({
       danger: false,
     },
     {
-        label: isFavorite(item.id) ? '取消收藏此歌曲' : '收藏此歌曲',
-        icon: Icons.Heart,
-        onClick: () => handleAction(() => toggleFavorite(item.id)),
-        danger: false,
-    },
-    {
       label: isOwner ? '编辑歌曲信息' : null,
       icon: Icons.Edit2,
       onClick: () => setShowEditModal(true),
-      danger: false,
-    },
-    {
-      label: isOwner ? '添加歌词/编辑歌词' : null,
-      icon: Icons.Edit,
-      onClick: () => {
-        if (onOpenLyricsEditor) {
-          onOpenLyricsEditor();
-          requestClose();
-          return;
-        }
-        setLyricsEditorAudioUrl(playerState.currentSongId === item.id ? (getCurrentAudioSource() || item.audioUrl) : item.audioUrl);
-        pausePlayback();
-        setShowLyricsEditor(true);
-      },
       danger: false,
     },
     {

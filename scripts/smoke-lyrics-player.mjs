@@ -18,9 +18,10 @@ const scenarioModes = (process.env.JZONE_LYRICS_SMOKE_MODES || 'ready,empty,erro
 const readProjectFile = (relativePath) => fs.readFile(path.join(projectRoot, relativePath), 'utf8');
 
 const assertContract = async () => {
-  const [player, menu, shell, dialog, events, lyricsIndex, editor, store] = await Promise.all([
+  const [player, menu, editSong, shell, dialog, events, lyricsIndex, editor, store] = await Promise.all([
     readProjectFile('pages/PlayerView.tsx'),
     readProjectFile('components/UniversalContextMenu.tsx'),
+    readProjectFile('components/EditSongModal.tsx'),
     readProjectFile('components/layout/AppShell.tsx'),
     readProjectFile('components/lyrics/SongLyricsEditorDialog.tsx'),
     readProjectFile('utils/lyrics/events.ts'),
@@ -58,16 +59,16 @@ const assertContract = async () => {
   assert.match(player, /audioUrl=\{lyricsEditorAudioUrl\}/);
   assert.doesNotMatch(player, /<SongLyricsEditorDialog[\s\S]*?audioControls=/);
 
-  assert.match(menu, /label: '查看歌词'/);
-  assert.match(menu, /dispatchPlayerLyricsRequest\(item\.id\)/);
-  assert.match(menu, /label: isOwner \? '添加歌词\/编辑歌词' : null/);
-  assert.match(menu, /from '\.\.\/utils\/lyrics\/events'/);
-  assert.match(menu, /React\.lazy\(\(\) => import\('\.\/lyrics\/SongLyricsEditorDialog'\)/);
-  assert.match(menu, /<React\.Suspense fallback=\{null\}>/);
-  assert.match(menu, /playerState\.currentSongId === item\.id \? \(getCurrentAudioSource\(\) \|\| item\.audioUrl\) : item\.audioUrl/);
-  assert.match(menu, /pausePlayback\(\)/);
-  assert.match(menu, /audioUrl=\{lyricsEditorAudioUrl \|\| item\.audioUrl\}/);
-  assert.doesNotMatch(menu, /import\s+\{\s*SongLyricsEditorDialog\s*\}/);
+  assert.doesNotMatch(menu, /label: '查看歌词'/);
+  assert.doesNotMatch(menu, /收藏此歌曲|取消收藏此歌曲/);
+  assert.doesNotMatch(menu, /添加歌词\/编辑歌词/);
+
+  assert.match(editSong, /React\.lazy\(\(\) => import\('\.\/lyrics\/SongLyricsEditorDialog'\)/);
+  assert.match(editSong, /data-testid="edit-song-lyrics"/);
+  assert.match(editSong, /getCurrentAudioSource\(\) \|\| song\.audioUrl/);
+  assert.match(editSong, /pausePlayback\(\)/);
+  assert.match(editSong, /audioUrl=\{lyricsEditorAudioUrl \|\| song\.audioUrl\}/);
+  assert.match(editSong, /className="grid grid-cols-2 gap-3"/);
 
   assert.match(shell, /addEventListener\(PLAYER_LYRICS_REQUEST_EVENT/);
   assert.match(shell, /removeEventListener\(PLAYER_LYRICS_REQUEST_EVENT/);
@@ -138,7 +139,6 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
       const { AuthProvider } = await import('/auth.tsx');
       const { AppProvider, useStore } = await import('/store.tsx');
       const { AppShell } = await import('/components/layout/AppShell.tsx');
-      const { UniversalContextMenu } = await import('/components/UniversalContextMenu.tsx');
       const { dispatchPlayerLyricsRequest, PLAYER_LYRICS_REQUEST_EVENT } = await import('/utils/lyrics/events.ts');
       const { supabaseApi } = await import('/supabaseApi.ts');
 
@@ -179,21 +179,15 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
       };
       const smokeSongs = [smokeSong, nextSmokeSong];
 
-      const MenuProbe = () => {
+      const SongSeeder = () => {
         const { songs, addSong } = useStore();
-        const song = songs.find((item) => item.id === smokeSong.id) ?? smokeSong;
         React.useEffect(() => {
           smokeSongs.forEach((candidate) => {
             if (!songs.some((item) => item.id === candidate.id)) addSong(candidate);
           });
         }, [addSong, songs]);
-        return React.createElement(UniversalContextMenu, {
-          isOpen: true,
-          item: song,
-          type: 'song',
-          anchorPosition: { x: 12, y: 12 },
-          onClose: () => {},
-        });
+        const ready = smokeSongs.every((candidate) => songs.some((item) => item.id === candidate.id));
+        return React.createElement('span', { 'data-testid': 'lyrics-song-seeder', 'data-ready': ready ? 'true' : 'false' });
       };
 
       const mount = document.querySelector('#root');
@@ -204,7 +198,7 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
         React.createElement(AppProvider, null,
           React.createElement(React.Fragment, null,
             React.createElement(AppShell),
-            React.createElement(MenuProbe),
+            React.createElement(SongSeeder),
           ),
         ),
       ));
@@ -222,15 +216,13 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
       const readRect = (selector) => document.querySelector(selector)?.getBoundingClientRect().toJSON() ?? null;
 
       await wait(() => Boolean(document.querySelector('[data-testid="bottom-nav-home"]')), '应用壳');
-      await wait(() => [...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === '查看歌词'), '歌曲更多菜单');
+      await wait(() => document.querySelector('[data-testid="lyrics-song-seeder"]')?.getAttribute('data-ready') === 'true', '测试歌曲写入');
 
       const requests = [];
       const onLyricsRequest = (event) => requests.push(event.detail);
       window.addEventListener(PLAYER_LYRICS_REQUEST_EVENT, onLyricsRequest);
       const readPlayerTitle = () => document.querySelector('[data-testid="player-transition-shell"] h2')?.textContent?.trim() ?? '';
-      const viewButton = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === '查看歌词');
-      if (!viewButton) throw new Error('未找到查看歌词菜单项');
-      viewButton.click();
+      dispatchPlayerLyricsRequest(smokeSong.id);
       await wait(() => Boolean(document.querySelector('[data-testid="player-transition-shell"]')), '全屏播放器');
       await wait(() => readPlayerTitle() === smokeSong.title, '首个播放器歌曲');
 
@@ -307,11 +299,33 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
         await new Promise((resolve) => setTimeout(resolve, 4_500));
         const lowerControls = document.querySelector('[data-testid="player-lower-controls"]');
         const controlsAfterIdle = lowerControls?.dataset.controlsVisible ?? null;
+        const controlsLockedAfterIdle = lowerControls?.dataset.controlsLocked ?? null;
         const introTopAfterIdle = document.querySelector('[data-testid="lyrics-intro-dots"]')?.getBoundingClientRect().top ?? null;
         document.querySelector('[data-testid="player-transition-shell"]')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
         await settle();
         const controlsAfterActivity = lowerControls?.dataset.controlsVisible ?? null;
         const introTopAfterActivity = document.querySelector('[data-testid="lyrics-intro-dots"]')?.getBoundingClientRect().top ?? null;
+        const elasticLayer = document.querySelector('[data-testid="lyrics-elastic-layer"]');
+        const elasticRenderer = document.querySelector('[data-testid="lyrics-renderer"]');
+        let elasticPullOffset = null;
+        let elasticPullSettledOffset = null;
+        let elasticViewportHeight = null;
+        if (elasticLayer instanceof HTMLElement && elasticRenderer instanceof HTMLElement) {
+          elasticViewportHeight = elasticRenderer.clientHeight;
+          const initialTop = elasticLayer.getBoundingClientRect().top;
+          elasticRenderer.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 21, pointerType: 'touch', clientY: 120 }));
+          elasticRenderer.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 21, pointerType: 'touch', clientY: 520 }));
+          await settle();
+          elasticPullOffset = elasticLayer.getBoundingClientRect().top - initialTop;
+          elasticRenderer.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 21, pointerType: 'touch', clientY: 520 }));
+          await new Promise((resolve) => setTimeout(resolve, 620));
+          elasticPullSettledOffset = elasticLayer.getBoundingClientRect().top - initialTop;
+        }
+        songInfoButton.click();
+        await wait(() => !document.querySelector('[data-testid="player-lyrics-panel"]'), '锁定后返回封面');
+        coverButton.click();
+        await wait(() => Boolean(document.querySelector('[data-testid="lyrics-renderer"]')), '锁定后重新进入歌词');
+        const controlsAfterReentry = document.querySelector('[data-testid="player-lower-controls"]')?.dataset.controlsVisible ?? null;
         readyLayout = {
           smallState,
           largeCover,
@@ -322,9 +336,14 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
           songInfoReturnedCover,
           lyricsRestored: Boolean(document.querySelector('[data-testid="player-lyrics-panel"]')),
           controlsAfterIdle,
+          controlsLockedAfterIdle,
           controlsAfterActivity,
+          controlsAfterReentry,
           introTopAfterIdle,
           introTopAfterActivity,
+          elasticPullOffset,
+          elasticPullSettledOffset,
+          elasticViewportHeight,
         };
       }
 
@@ -399,7 +418,7 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
     } else if (initialMode === 'error') {
       assert.equal(result.retryRecovered, true, '歌词失败状态必须支持重试并恢复空状态');
     } else {
-      const { smallState, largeCover, rendererAfterClose, coverStateLabel, openingWidths, reopenedCover, songInfoReturnedCover, lyricsRestored, controlsAfterIdle, controlsAfterActivity, introTopAfterIdle, introTopAfterActivity } = result.readyLayout;
+      const { smallState, largeCover, rendererAfterClose, coverStateLabel, openingWidths, reopenedCover, songInfoReturnedCover, lyricsRestored, controlsAfterIdle, controlsLockedAfterIdle, controlsAfterActivity, controlsAfterReentry, introTopAfterIdle, introTopAfterActivity, elasticPullOffset, elasticPullSettledOffset, elasticViewportHeight } = result.readyLayout;
       assert.equal(smallState.ariaLabel, '查看封面', '歌词态小封面必须提供返回名称');
       assert.equal(smallState.visibleText, '', '封面切换入口不能显示“查看歌词/查看封面”文字');
       assert.equal(smallState.introFirstLineTimeMs, 8_000, '播放器必须按第一句有效时间显示前奏三点');
@@ -418,7 +437,12 @@ const runBrowserScenario = async (browser, viewport, initialMode) => {
       assert.equal(songInfoReturnedCover, true, '歌词态点击歌名艺人区域必须返回封面态');
       assert.equal(result.lyricsFetchSongIds.filter((songId) => songId === 'smoke-lyrics-player-song').length, 1, '同一歌曲反复开关歌词视图不得重复拉取');
       assert.equal(controlsAfterIdle, 'false', '播放中的歌词页停留后必须自动淡出下方控制区');
-      assert.equal(controlsAfterActivity, 'true', '触摸歌词页后必须立即恢复下方控制区');
+      assert.equal(controlsLockedAfterIdle, 'true', '歌词进入全屏后必须锁定控制区');
+      assert.equal(controlsAfterActivity, 'false', '歌词全屏锁定后，触摸面板不得恢复控制区');
+      assert.equal(controlsAfterReentry, 'true', '返回封面再进入歌词后必须重新开始 4.2 秒倒计时');
+      assert(elasticPullOffset !== null && elasticPullOffset > 8, `首行下拉必须产生可见阻尼位移：${elasticPullOffset}`);
+      assert(elasticViewportHeight !== null && elasticPullOffset <= elasticViewportHeight * 0.22 + 3, `首行下拉不得越过歌词视窗中线：${JSON.stringify({ elasticPullOffset, elasticViewportHeight })}`);
+      assert(elasticPullSettledOffset !== null && Math.abs(elasticPullSettledOffset) <= 2, `首行下拉松手后必须弹性归位：${elasticPullSettledOffset}`);
       assert(smallState.introTop !== null && introTopAfterIdle !== null && introTopAfterActivity !== null, '前奏三点在控制区切换期间不得卸载');
       assert(Math.abs(introTopAfterIdle - smallState.introTop) <= 1 && Math.abs(introTopAfterActivity - smallState.introTop) <= 1, `控制区收放导致前奏三点错位：${JSON.stringify({ initial: smallState.introTop, introTopAfterIdle, introTopAfterActivity })}`);
       assert(openingWidths.length >= 5, '必须采集到封面缩放动画帧');

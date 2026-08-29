@@ -216,6 +216,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const [isLyricsEditorOpen, setIsLyricsEditorOpen] = useState(false);
   const [lyricsEditorAudioUrl, setLyricsEditorAudioUrl] = useState('');
   const [areLyricsControlsVisible, setAreLyricsControlsVisible] = useState(true);
+  const lyricsFullscreenLockedRef = React.useRef(false);
   const reduceMotion = useReducedMotion();
   const openLyricsEditor = React.useCallback(() => {
     setLyricsEditorAudioUrl(getCurrentAudioSource() || song?.audioUrl || '');
@@ -279,23 +280,35 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   currentLyricsCacheKeyRef.current = song ? getPlayerLyricsUiCacheKey(user?.id, song.id) : null;
 
   const revealLyricsControls = React.useCallback(() => {
+    if (isLyricsViewOpen && lyricsFullscreenLockedRef.current) return;
     if (lyricsControlsTimerRef.current) window.clearTimeout(lyricsControlsTimerRef.current);
     lyricsControlsTimerRef.current = null;
     setAreLyricsControlsVisible(true);
-    if (!isLyricsViewOpen || !playerState.isPlaying || isSeeking || isChangingVolume) return;
+    if (!isLyricsViewOpen || isSeeking || isChangingVolume) return;
     lyricsControlsTimerRef.current = window.setTimeout(() => {
+      lyricsFullscreenLockedRef.current = true;
       setAreLyricsControlsVisible(false);
       lyricsControlsTimerRef.current = null;
     }, 4_200);
-  }, [isChangingVolume, isLyricsViewOpen, isSeeking, playerState.isPlaying]);
+  }, [isChangingVolume, isLyricsViewOpen, isSeeking]);
 
   React.useEffect(() => {
-    revealLyricsControls();
+    if (lyricsControlsTimerRef.current) window.clearTimeout(lyricsControlsTimerRef.current);
+    lyricsControlsTimerRef.current = null;
+    lyricsFullscreenLockedRef.current = false;
+    setAreLyricsControlsVisible(true);
+    if (isLyricsViewOpen) {
+      lyricsControlsTimerRef.current = window.setTimeout(() => {
+        lyricsFullscreenLockedRef.current = true;
+        setAreLyricsControlsVisible(false);
+        lyricsControlsTimerRef.current = null;
+      }, 4_200);
+    }
     return () => {
       if (lyricsControlsTimerRef.current) window.clearTimeout(lyricsControlsTimerRef.current);
       lyricsControlsTimerRef.current = null;
     };
-  }, [revealLyricsControls, song?.id]);
+  }, [isLyricsViewOpen, song?.id]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -512,6 +525,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       playing={playerState.isPlaying}
       onSeek={seek}
       reducedMotion={Boolean(reduceMotion)}
+      elasticTopPull
       className="h-full min-h-0"
       data-testid="player-lyrics-renderer"
     />
@@ -731,6 +745,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           aria-hidden={isLyricsViewOpen && !areLyricsControlsVisible ? 'true' : undefined}
           data-testid="player-lower-controls"
           data-controls-visible={areLyricsControlsVisible ? 'true' : 'false'}
+          data-controls-locked={lyricsFullscreenLockedRef.current ? 'true' : 'false'}
         >
           {/* 5. Progress Bar - Apple style with Thickening Animation */}
           <motion.div
@@ -986,7 +1001,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           type="song"
           anchorPosition={menuAnchor}
           openNonce={contextMenuOpenNonce}
-          onOpenLyricsEditor={openLyricsEditor}
       />
     </motion.div>
   );
