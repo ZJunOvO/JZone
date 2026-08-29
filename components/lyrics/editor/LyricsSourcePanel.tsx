@@ -40,7 +40,7 @@ export const LyricsSourcePanel = ({
         data-testid="lyrics-editor-source-panel"
         className="group"
       >
-        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-xl px-1 text-sm font-extrabold text-white/75 outline-none transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-red-300/60 [&::-webkit-details-marker]:hidden">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-xl px-1 text-sm font-extrabold text-white/75 outline-none transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-red-300/60 [&::-webkit-details-marker]:hidden" data-testid="lyrics-editor-source-toggle">
           <FileText size={18} className="shrink-0 text-red-300" aria-hidden="true" />
           <span id="lyrics-editor-source-title">获取歌词</span>
           <span className="ml-auto text-xs font-bold text-white/35 group-open:hidden">展开</span>
@@ -78,8 +78,8 @@ export const LyricsSourcePanel = ({
               songTitle={songTitle}
               songArtist={songArtist}
               disabled={disabled}
-              onSelect={(content) => {
-                onOnlineSelect(content);
+              onSelect={(content, hasTiming) => {
+                onOnlineSelect(content, hasTiming);
                 setExpanded(false);
               }}
             />

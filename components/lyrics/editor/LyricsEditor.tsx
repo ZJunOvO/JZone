@@ -14,7 +14,7 @@ import {
   Save,
 } from 'lucide-react';
 import { LyricsRenderer } from '../LyricsRenderer';
-import { getActiveLyricsLineIndex } from '../../../utils/lyrics';
+import { getActiveLyricsLineIndex, parseLyrics } from '../../../utils/lyrics';
 import type {
   LyricsFormat,
   LyricsLine,
@@ -54,6 +54,15 @@ const toVisibleSourceText = (value: string): string => value
   .split(/\r?\n/)
   .filter((line) => !/^\s*\[jzone:role:\d+:(?:lead|duet|background)\]\s*$/i.test(line))
   .join('\n');
+
+const readLrcReferenceTimes = (value: string): Array<number | null> | null => {
+  try {
+    const imported = parseLyrics(value);
+    return imported.format === 'lrc' ? imported.lines.map((line) => line.startTimeMs) : null;
+  } catch {
+    return null;
+  }
+};
 
 export const LyricsEditor: FC<LyricsEditorProps> = ({
   initialLyrics = null,
@@ -101,7 +110,16 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [focusRequest, setFocusRequest] = useState<LyricsEditorFocusRequest | null>(null);
   const [lastMark, setLastMark] = useState<LastMark | null>(null);
-  const [lastSkipped, setLastSkipped] = useState<{ index: number; line: LyricsLine } | null>(null);
+  const [lastSkipped, setLastSkipped] = useState<{
+    index: number;
+    line: LyricsLine;
+    referenceTime: number | null;
+    wasManuallyMarked: boolean;
+  } | null>(null);
+  const [referenceTimes, setReferenceTimes] = useState<Array<number | null> | null>(null);
+  const [alignmentStart, setAlignmentStart] = useState<{ index: number; targetTimeMs: number } | null>(null);
+  const [alignmentApplied, setAlignmentApplied] = useState(false);
+  const [liveMarkedIndices, setLiveMarkedIndices] = useState<Set<number>>(() => new Set());
   const [submitted, setSubmitted] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -147,6 +165,13 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
       return Math.min(previous, lines.length - 1);
     });
   }, [lines.length]);
+
+  useEffect(() => {
+    if (!isRestored || isDirty || referenceTimes || format !== 'lrc' || lines.length === 0) return;
+    if (lines.every((line) => line.startTimeMs !== null)) {
+      setReferenceTimes(lines.map((line) => line.startTimeMs));
+    }
+  }, [format, isDirty, isRestored, lines, referenceTimes]);
 
   useEffect(() => () => {
     audioRef.current?.pause();
@@ -338,6 +363,10 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
       setSourceText(text);
       setSourceKind('upload');
       setContent(text);
+      setReferenceTimes(readLrcReferenceTimes(text));
+      setAlignmentStart(null);
+      setAlignmentApplied(false);
+      setLiveMarkedIndices(new Set());
       setLastMark(null);
       setLastSkipped(null);
       setSelectedIndex(0);
@@ -360,6 +389,10 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setSourceText(pastedText);
     setSourceKind('editor');
     setContent(pastedText);
+    setReferenceTimes(readLrcReferenceTimes(pastedText));
+    setAlignmentStart(null);
+    setAlignmentApplied(false);
+    setLiveMarkedIndices(new Set());
     setLastMark(null);
     setLastSkipped(null);
     setSelectedIndex(0);
@@ -370,17 +403,30 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setInputError(null);
     setSourceKind('editor');
     setContent(sourceText);
+    setReferenceTimes(readLrcReferenceTimes(sourceText));
+    setAlignmentStart(null);
+    setAlignmentApplied(false);
+    setLiveMarkedIndices(new Set());
     setLastMark(null);
     setLastSkipped(null);
     setSelectedIndex(0);
     setChangedMessage();
   }, [setChangedMessage, setContent, sourceText]);
 
-  const applyOnlineLyrics = useCallback((onlineContent: string) => {
+  const applyOnlineLyrics = useCallback((onlineContent: string, hasTiming: boolean) => {
     setInputError(null);
     setSourceText(onlineContent);
     setSourceKind('editor');
-    setContent(onlineContent, 'plain');
+    setContent(onlineContent, hasTiming ? 'lrc' : 'plain');
+    if (hasTiming) {
+      const imported = parseLyrics(onlineContent, 'lrc');
+      setReferenceTimes(imported.lines.map((line) => line.startTimeMs));
+    } else {
+      setReferenceTimes(null);
+    }
+    setAlignmentStart(null);
+    setAlignmentApplied(false);
+    setLiveMarkedIndices(new Set());
     setLastMark(null);
     setLastSkipped(null);
     setSelectedIndex(0);
@@ -449,18 +495,86 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setSaveError(null);
     setLastMark({ index: selectedIndex, previousTimeMs: selectedLine.startTimeMs });
     setLastSkipped(null);
+    setLiveMarkedIndices((previous) => new Set(previous).add(selectedIndex));
+    setAlignmentApplied(false);
     commitLines(nextLines, 'lrc');
-    setSelectedIndex(Math.min(selectedIndex + 1, nextLines.length - 1));
-  }, [commitLines, effectiveCurrentTime, lines, offsetMs, selectedIndex]);
+    if (selectedIndex >= nextLines.length - 1) {
+      pausePlayback();
+      return;
+    }
+    setSelectedIndex(selectedIndex + 1);
+  }, [commitLines, effectiveCurrentTime, lines, offsetMs, pausePlayback, selectedIndex]);
 
   const resetLiveTiming = useCallback(() => {
+    if (!window.confirm('清除全部歌词时间并从头重新打点？歌词文字会保留。')) return;
     const nextLines = lines.map((line) => ({ ...line, startTimeMs: null, endTimeMs: null, words: [] }));
+    setReferenceTimes(null);
+    setAlignmentStart(null);
+    setAlignmentApplied(false);
+    setLiveMarkedIndices(new Set());
     setLastMark(null);
     setLastSkipped(null);
     setSelectedIndex(0);
     commitLines(nextLines, 'plain');
     seekTo(0);
   }, [commitLines, lines, seekTo]);
+
+  const alignLiveFromCurrentLine = useCallback(() => {
+    const sourceTimeMs = referenceTimes?.[selectedIndex];
+    if (sourceTimeMs === null || sourceTimeMs === undefined) {
+      setSaveError('当前歌词没有可用于整体对齐的原始时间。');
+      return;
+    }
+    const targetTimeMs = Math.round(effectiveCurrentTime * 1_000);
+    setOffsetMs(targetTimeMs - sourceTimeMs);
+    setAlignmentStart({ index: selectedIndex, targetTimeMs });
+    setAlignmentApplied(true);
+    setLastMark(null);
+    setLastSkipped(null);
+    setChangedMessage();
+  }, [effectiveCurrentTime, referenceTimes, selectedIndex, setChangedMessage, setOffsetMs]);
+
+  const stretchLiveToCurrentLine = useCallback(() => {
+    if (!alignmentStart || !referenceTimes) return;
+    const sourceStartMs = referenceTimes[alignmentStart.index];
+    const sourceEndMs = referenceTimes[selectedIndex];
+    const targetEndMs = Math.round(effectiveCurrentTime * 1_000);
+    if (sourceStartMs === null || sourceStartMs === undefined || sourceEndMs === null || sourceEndMs === undefined) return;
+    if (sourceEndMs <= sourceStartMs || targetEndMs <= alignmentStart.targetTimeMs) {
+      setSaveError('结尾锚点必须位于开头锚点之后。');
+      return;
+    }
+    const ratio = (targetEndMs - alignmentStart.targetTimeMs) / (sourceEndMs - sourceStartMs);
+    if (ratio < 0.5 || ratio > 2) {
+      setSaveError('两次标记的跨度差异过大，请检查选中的歌词和播放位置。');
+      return;
+    }
+    const nextLines = lines.map((line, index) => {
+      const sourceTime = referenceTimes[index];
+      if (sourceTime === null || sourceTime === undefined) return line;
+      return {
+        ...line,
+        startTimeMs: Math.max(0, Math.round(alignmentStart.targetTimeMs + ((sourceTime - sourceStartMs) * ratio))),
+        endTimeMs: null,
+        words: [],
+      };
+    });
+    setOffsetMs(0);
+    setAlignmentApplied(true);
+    setSaveError(null);
+    commitLines(nextLines, 'lrc');
+  }, [alignmentStart, commitLines, effectiveCurrentTime, lines, referenceTimes, selectedIndex, setOffsetMs]);
+
+  const finishLiveAtLastMarkedLine = useCallback(() => {
+    const lastMarkedIndex = Math.max(-1, ...liveMarkedIndices);
+    if (lastMarkedIndex < 0 || lastMarkedIndex >= lines.length - 1) return;
+    if (!window.confirm(`将删除第 ${lastMarkedIndex + 2} 行之后未演唱的歌词，已打点内容会保留。`)) return;
+    const nextLines = lines.slice(0, lastMarkedIndex + 1);
+    setReferenceTimes((previous) => previous?.slice(0, lastMarkedIndex + 1) ?? null);
+    setAlignmentStart(null);
+    setSelectedIndex(lastMarkedIndex);
+    commitLines(nextLines, 'lrc');
+  }, [commitLines, lines, liveMarkedIndices]);
 
   const selectLiveLine = useCallback((index: number) => {
     const line = lines[index];
@@ -479,11 +593,24 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     const skippedLine = lines[selectedIndex];
     if (!skippedLine) return;
     const nextLines = lines.filter((_, index) => index !== selectedIndex);
-    setLastSkipped({ index: selectedIndex, line: skippedLine });
+    setLastSkipped({
+      index: selectedIndex,
+      line: skippedLine,
+      referenceTime: referenceTimes?.[selectedIndex] ?? null,
+      wasManuallyMarked: liveMarkedIndices.has(selectedIndex),
+    });
+    setReferenceTimes((previous) => previous?.filter((_, index) => index !== selectedIndex) ?? null);
+    setLiveMarkedIndices((previous) => new Set(
+      [...previous]
+        .filter((index) => index !== selectedIndex)
+        .map((index) => (index > selectedIndex ? index - 1 : index)),
+    ));
+    setAlignmentStart(null);
+    setAlignmentApplied(false);
     setLastMark(null);
     setSelectedIndex(Math.min(selectedIndex, Math.max(0, nextLines.length - 1)));
     commitLines(nextLines);
-  }, [commitLines, lines, selectedIndex]);
+  }, [commitLines, lines, liveMarkedIndices, referenceTimes, selectedIndex]);
 
   const completeLine = useCallback((index: number) => {
     const line = lines[index];
@@ -520,6 +647,11 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
         : line
     ));
     setSelectedIndex(lastMark.index);
+    setLiveMarkedIndices((previous) => {
+      const next = new Set(previous);
+      next.delete(lastMark.index);
+      return next;
+    });
     setLastMark(null);
     commitLines(nextLines);
   }, [commitLines, lastMark, lines]);
@@ -531,6 +663,18 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     }
     const nextLines = [...lines];
     nextLines.splice(Math.min(lastSkipped.index, nextLines.length), 0, lastSkipped.line);
+    setReferenceTimes((previous) => {
+      if (!previous) return null;
+      const next = [...previous];
+      next.splice(Math.min(lastSkipped.index, next.length), 0, lastSkipped.referenceTime);
+      return next;
+    });
+    setLiveMarkedIndices((previous) => {
+      const next = new Set<number>();
+      previous.forEach((index) => next.add(index >= lastSkipped.index ? index + 1 : index));
+      if (lastSkipped.wasManuallyMarked) next.add(lastSkipped.index);
+      return next;
+    });
     setSelectedIndex(lastSkipped.index);
     setLastSkipped(null);
     commitLines(nextLines);
@@ -632,7 +776,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
       <header className="flex min-w-0 items-center justify-between gap-3 border-b border-white/10 px-1 pb-3">
         <div className="min-w-0">
           <h2 className="truncate text-xl font-black text-white">歌词制作</h2>
-          <p className="mt-1 text-sm leading-6 text-white/50">{viewMode === 'sync' ? '听一遍，为 Live 录音重新对轴。' : '导入、制作，再检查播放效果。'}</p>
+          <p className="mt-1 text-sm leading-6 text-white/50">{viewMode === 'sync' ? '复用 LRC 或文本，为 Live 录音快速对轴。' : '原创歌词，从零打点并填写内容。'}</p>
         </div>
         <div className="shrink-0 text-right text-xs text-white/45" aria-live="polite" data-testid="lyrics-editor-draft-status">
           <span className="block">{storageLabel}</span>
@@ -738,6 +882,10 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           saving={saving}
           offsetMs={offsetMs}
           lastMarkAvailable={Boolean(lastMark || lastSkipped)}
+          manualMarkedCount={liveMarkedIndices.size}
+          hasReferenceTimeline={Boolean(referenceTimes?.some((time) => time !== null))}
+          alignmentStartIndex={alignmentStart?.index ?? null}
+          alignmentApplied={alignmentApplied}
           audioError={audioError}
           onSelectLine={selectLiveLine}
           onMark={markLiveCurrentLine}
@@ -747,6 +895,9 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           onUndo={undoLiveAction}
           onSkipLine={skipLiveLine}
           onResetTiming={resetLiveTiming}
+          onAlignFromCurrentLine={alignLiveFromCurrentLine}
+          onStretchToCurrentLine={stretchLiveToCurrentLine}
+          onFinishAtLastMarkedLine={finishLiveAtLastMarkedLine}
           onNudgeOffset={nudgeLiveOffset}
         />
       ) : (

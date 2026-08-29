@@ -69,25 +69,38 @@ try {
   await page.getByTestId('lyrics-online-result-20260829').waitFor({ state: 'visible' });
   await mkdir('output/playwright', { recursive: true });
   await page.screenshot({ path: 'output/playwright/lyrics-online-search-390.png', fullPage: true });
-  await page.getByTestId('lyrics-online-result-20260829').click();
+  assert.match(await page.getByTestId('lyrics-online-result-20260829').textContent(), /含 LRC 时间轴/, '搜索结果必须明确标出同步歌词');
+  await page.getByTestId('lyrics-online-synced-20260829').click();
 
   assert.equal(await page.getByTestId('lyrics-editor-sync-tab').getAttribute('aria-selected'), 'true', '导入在线歌词后应直接进入 Live 对轴');
+  assert.equal(await page.getByTestId('lyrics-editor').getAttribute('data-lyrics-format'), 'lrc', '同步歌词必须保留 LRC 格式');
   assert.match(await page.getByTestId('lyrics-live-current-line').textContent(), /第一句/, '第一句应成为待打点歌词');
-  await page.getByTestId('lyrics-live-skip').click();
-  assert.match(await page.getByTestId('lyrics-live-current-line').textContent(), /第二句/, '跳过现场未唱歌词后应推进到下一句');
-  await page.getByTestId('lyrics-live-undo').click();
-  assert.match(await page.getByTestId('lyrics-live-current-line').textContent(), /第一句/, '撤销跳过后应恢复原歌词顺序');
+
+  await page.evaluate(() => window.__renderLyricsLiveSmoke(7, true));
+  await page.getByTestId('lyrics-live-align-start').click();
+  assert.match(await page.getByTestId('lyrics-live-offset-value').textContent(), /\+2000/, '单锚点应整体平移原始 LRC 时间轴');
+  await page.getByTestId('lyrics-live-line-list-toggle').click();
+  await page.getByTestId('lyrics-live-line-2').click();
+  await page.evaluate(() => window.__renderLyricsLiveSmoke(19, true));
+  await page.getByTestId('lyrics-live-align-end').click();
+  await page.getByTestId('lyrics-editor-save').click();
+
+  const aligned = await page.evaluate(() => {
+    const payload = window.__lyricsLiveSavePayloads.at(-1);
+    return { format: payload?.format, times: payload?.lines.map((line) => line.startTimeMs) };
+  });
+  assert.equal(aligned.format, 'lrc', '整体对齐后仍应保存为 LRC');
+  assert.deepEqual(aligned.times, [7000, 13000, 19000], '双锚点应按 Live 首尾跨度线性校正整条时间轴');
+
+  await page.getByTestId('lyrics-editor-source-toggle').click();
+  await page.getByTestId('lyrics-source-online-tab').click();
+  await page.getByTestId('lyrics-online-result-20260829').waitFor({ state: 'visible' });
+  await page.getByTestId('lyrics-online-plain-20260829').click();
+  assert.equal(await page.getByTestId('lyrics-editor').getAttribute('data-lyrics-format'), 'plain', '纯文本导入必须进入无时间轴状态');
 
   await page.evaluate(() => window.__renderLyricsLiveSmoke(1.2, true));
   await page.getByTestId('lyrics-live-mark').click();
-  assert.match(await page.getByTestId('lyrics-live-current-line').textContent(), /第二句/, '第一次打点后应连续推进到第二句');
-
-  await page.evaluate(() => window.__renderLyricsLiveSmoke(2.8, true));
-  await page.getByTestId('lyrics-live-mark').click();
-  assert.match(await page.getByTestId('lyrics-live-current-line').textContent(), /第三句/, '第二次打点后应连续推进到第三句');
-  await page.getByTestId('lyrics-live-undo').click();
-  assert.match(await page.getByTestId('lyrics-live-current-line').textContent(), /第二句/, '撤销后应回到刚刚标记的歌词');
-
+  assert.match(await page.getByTestId('lyrics-live-current-line').textContent(), /第二句/, '纯文本第一次打点后应连续推进');
   await page.evaluate(() => window.__renderLyricsLiveSmoke(2.8, true));
   await page.getByTestId('lyrics-live-mark').click();
   await page.evaluate(() => window.__renderLyricsLiveSmoke(4.4, true));
@@ -108,8 +121,23 @@ try {
   });
   assert.equal(result.format, 'lrc', 'Live 对轴保存格式应为 LRC');
   assert.deepEqual(result.times, [1200, 2800, 4400], 'Live 对轴应记录新的现场时间而不是在线 LRC 时间');
-  assert.ok(!result.rawContent.includes('00:05.00'), '在线 CD 时间轴不应写入 Live 录音');
+  assert.ok(!result.rawContent.includes('00:05.00'), '纯文本逐句打点不应混入上一份 LRC 时间轴');
   assert.ok(result.documentWidth <= result.viewportWidth + 1, `手机端出现横向溢出：${JSON.stringify(result)}`);
+
+  await page.getByTestId('lyrics-editor-source-toggle').click();
+  await page.getByTestId('lyrics-online-plain-20260829').click();
+  await page.evaluate(() => window.__renderLyricsLiveSmoke(1.2, true));
+  await page.getByTestId('lyrics-live-mark').click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByTestId('lyrics-live-finish-here').click();
+  await page.evaluate(() => window.__renderLyricsLiveSmoke(200, false));
+  await page.getByTestId('lyrics-editor-save').click();
+  const partial = await page.evaluate(() => {
+    const payload = window.__lyricsLiveSavePayloads.at(-1);
+    return { times: payload?.lines.map((line) => line.startTimeMs), lineCount: payload?.lines.length };
+  });
+  assert.deepEqual(partial, { times: [1200], lineCount: 1 }, '录音提前结束时只能显式截断，播放结束不得清空已打时间');
+
   await page.setViewportSize({ width: 360, height: 800 });
   const compactLayout = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth }));
   assert.ok(compactLayout.width <= compactLayout.viewport + 1, `360px 手机端出现横向溢出：${JSON.stringify(compactLayout)}`);

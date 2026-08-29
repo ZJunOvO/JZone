@@ -7,7 +7,7 @@ interface OnlineLyricsSearchProps {
   songTitle?: string;
   songArtist?: string;
   disabled?: boolean;
-  onSelect: (content: string, result: LrcLibLyricsResult) => void;
+  onSelect: (content: string, hasTiming: boolean, result: LrcLibLyricsResult) => void;
 }
 
 const formatDuration = (duration: number | null) => {
@@ -125,28 +125,49 @@ export const OnlineLyricsSearch = ({
       {results.length > 0 ? (
         <div className="mt-3 divide-y divide-white/8 border-y border-white/10" role="list" aria-label="在线歌词搜索结果">
           {results.map((result) => {
-            const content = toUntimedLyricsText(result);
-            const lineCount = content.split(/\r?\n/).filter((line) => line.trim()).length;
+            const plainContent = toUntimedLyricsText(result);
+            const syncedContent = result.syncedLyrics;
+            const lineCount = plainContent.split(/\r?\n/).filter((line) => line.trim()).length;
             return (
-              <button
+              <div
                 key={result.id}
-                type="button"
                 role="listitem"
-                onClick={() => onSelect(content, result)}
-                disabled={disabled || !content}
-                className="flex min-h-[72px] w-full cursor-pointer items-center gap-3 px-1 py-3 text-left transition-colors hover:bg-white/[0.045] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-300/60 disabled:opacity-40"
+                className="px-1 py-3"
                 data-testid={`lyrics-online-result-${result.id}`}
               >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-extrabold text-white">{result.trackName}</p>
-                  <p className="mt-1 truncate text-xs text-white/48">{result.artistName || '未知艺人'}{result.albumName ? ` · ${result.albumName}` : ''}</p>
-                  <p className="mt-1 text-[11px] font-bold text-white/30">{lineCount} 行{result.duration ? ` · ${formatDuration(result.duration)}` : ''}</p>
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-extrabold text-white">{result.trackName}</p>
+                    <p className="mt-1 truncate text-xs text-white/48">{result.artistName || '未知艺人'}{result.albumName ? ` · ${result.albumName}` : ''}</p>
+                    <p className="mt-1 text-[11px] font-bold text-white/30">{lineCount} 行{result.duration ? ` · ${formatDuration(result.duration)}` : ''}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-white/12 px-2 py-1 text-[10px] font-bold text-white/55">
+                    {syncedContent ? '含 LRC 时间轴' : '仅纯文本'}
+                  </span>
                 </div>
-                <span className="shrink-0 rounded-full border border-white/12 px-2 py-1 text-[10px] font-bold text-white/55">
-                  {result.syncedLyrics ? '同步歌词' : '文本歌词'}
-                </span>
-                <Icons.ChevronRight size={17} className="shrink-0 text-white/35" aria-hidden="true" />
-              </button>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {syncedContent ? (
+                    <button
+                      type="button"
+                      onClick={() => onSelect(syncedContent, true, result)}
+                      disabled={disabled}
+                      className="min-h-11 cursor-pointer rounded-xl bg-white px-3 text-xs font-black text-black transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70 disabled:opacity-40"
+                      data-testid={`lyrics-online-synced-${result.id}`}
+                    >
+                      导入同步 LRC
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => onSelect(plainContent, false, result)}
+                    disabled={disabled || !plainContent}
+                    className={`min-h-11 cursor-pointer rounded-xl border border-white/12 px-3 text-xs font-bold text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:opacity-35 ${syncedContent ? '' : 'col-span-2'}`}
+                    data-testid={`lyrics-online-plain-${result.id}`}
+                  >
+                    仅导入纯文本
+                  </button>
+                </div>
+              </div>
             );
           })}
         </div>

@@ -134,7 +134,7 @@ export interface LyricsSourcePanelProps {
   onSourcePaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onApply: () => void;
-  onOnlineSelect: (content: string) => void;
+  onOnlineSelect: (content: string, hasTiming: boolean) => void;
 }
 
 export interface LyricsTimingPanelProps {

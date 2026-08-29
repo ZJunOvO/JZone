@@ -13,6 +13,10 @@ interface LyricsLiveSyncPanelProps {
   saving: boolean;
   offsetMs: number;
   lastMarkAvailable: boolean;
+  manualMarkedCount: number;
+  hasReferenceTimeline: boolean;
+  alignmentStartIndex: number | null;
+  alignmentApplied: boolean;
   audioError: string | null;
   onSelectLine: (index: number) => void;
   onMark: () => void;
@@ -22,6 +26,9 @@ interface LyricsLiveSyncPanelProps {
   onUndo: () => void;
   onSkipLine: () => void;
   onResetTiming: () => void;
+  onAlignFromCurrentLine: () => void;
+  onStretchToCurrentLine: () => void;
+  onFinishAtLastMarkedLine: () => void;
   onNudgeOffset: (deltaMs: number) => void;
 }
 
@@ -35,6 +42,10 @@ export const LyricsLiveSyncPanel = ({
   saving,
   offsetMs,
   lastMarkAvailable,
+  manualMarkedCount,
+  hasReferenceTimeline,
+  alignmentStartIndex,
+  alignmentApplied,
   audioError,
   onSelectLine,
   onMark,
@@ -44,10 +55,16 @@ export const LyricsLiveSyncPanel = ({
   onUndo,
   onSkipLine,
   onResetTiming,
+  onAlignFromCurrentLine,
+  onStretchToCurrentLine,
+  onFinishAtLastMarkedLine,
   onNudgeOffset,
 }: LyricsLiveSyncPanelProps) => {
   const markedCount = useMemo(() => lines.filter((line) => line.startTimeMs !== null).length, [lines]);
-  const allMarked = lines.length > 0 && markedCount === lines.length;
+  const allMarked = lines.length > 0 && (manualMarkedCount === lines.length || alignmentApplied);
+  const progressLabel = hasReferenceTimeline
+    ? alignmentApplied ? '已整体对齐' : `原轴 ${lines.length} 句`
+    : `${manualMarkedCount} / ${lines.length}`;
   const selectedLine = lines[selectedIndex] ?? null;
   const previousLine = selectedIndex > 0 ? lines[selectedIndex - 1] : null;
   const nextLine = selectedIndex + 1 < lines.length ? lines[selectedIndex + 1] : null;
@@ -58,9 +75,9 @@ export const LyricsLiveSyncPanel = ({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 id="lyrics-live-sync-title" className="text-sm font-extrabold text-white">Live 对轴</h3>
-          <p className="mt-1 text-xs leading-5 text-white/42">开口时轻点一次，播放会继续前进。</p>
+          <p className="mt-1 text-xs leading-5 text-white/42">已有 LRC 可整体对齐，纯文本可连续打点。</p>
         </div>
-        <span className="shrink-0 text-xs font-black tabular-nums text-white/45">{markedCount} / {lines.length}</span>
+        <span className="shrink-0 text-xs font-black tabular-nums text-white/45">{progressLabel}</span>
       </div>
 
       <div className="mt-4 flex items-center gap-3">
@@ -143,7 +160,27 @@ export const LyricsLiveSyncPanel = ({
             {allMarked ? `重新标记第 ${selectedIndex + 1} 句` : `标记第 ${selectedIndex + 1} 句`}
           </button>
 
-          <div className="mt-2 grid grid-cols-3 gap-2">
+          {hasReferenceTimeline ? (
+            <div className="mt-3 rounded-2xl bg-white/[0.04] p-2" data-testid="lyrics-live-align-tools">
+              <button
+                type="button"
+                onClick={alignmentStartIndex === null ? onAlignFromCurrentLine : onStretchToCurrentLine}
+                disabled={saving || !selectedLine}
+                className="flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-black text-black transition-transform active:scale-[0.985] disabled:opacity-35"
+                data-testid={alignmentStartIndex === null ? 'lyrics-live-align-start' : 'lyrics-live-align-end'}
+              >
+                <Icons.Repeat size={17} aria-hidden="true" />
+                {alignmentStartIndex === null ? '以当前句整体对齐' : '再标一处，校正整体速度'}
+              </button>
+              <p className="mt-2 px-1 text-center text-[11px] leading-5 text-white/40">
+                {alignmentStartIndex === null
+                  ? '把播放条停在这句开口处，保留原歌词间隔。'
+                  : `已标记第 ${alignmentStartIndex + 1} 句；选择后面的歌词并停在实际开口处。`}
+              </p>
+            </div>
+          ) : null}
+
+          <div className="mt-2 grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={onUndo}
@@ -162,16 +199,19 @@ export const LyricsLiveSyncPanel = ({
             >
               跳过此句
             </button>
+          </div>
+
+          {manualMarkedCount > 0 && manualMarkedCount < lines.length ? (
             <button
               type="button"
-              onClick={onResetTiming}
-              disabled={saving || markedCount === 0}
-              className="min-h-11 cursor-pointer rounded-xl text-xs font-bold text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white disabled:opacity-25"
-              data-testid="lyrics-live-reset"
+              onClick={onFinishAtLastMarkedLine}
+              disabled={saving}
+              className="mt-1 min-h-11 w-full cursor-pointer rounded-xl text-xs font-bold text-white/48 transition-colors hover:bg-white/[0.06] hover:text-white disabled:opacity-25"
+              data-testid="lyrics-live-finish-here"
             >
-              重新对轴
+              录音到此结束
             </button>
-          </div>
+          ) : null}
 
           {allMarked ? (
             <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-xl bg-white/[0.035] p-1" aria-label="整体歌词偏移校正">
@@ -198,7 +238,7 @@ export const LyricsLiveSyncPanel = ({
           ) : null}
 
           <details className="mt-3 border-t border-white/8 pt-2">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center px-1 text-sm font-bold text-white/45 outline-none hover:text-white focus-visible:ring-2 focus-visible:ring-red-300/60 [&::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center px-1 text-sm font-bold text-white/45 outline-none hover:text-white focus-visible:ring-2 focus-visible:ring-red-300/60 [&::-webkit-details-marker]:hidden" data-testid="lyrics-live-line-list-toggle">
               查看歌词顺序
               <Icons.ChevronDown size={15} className="ml-auto" aria-hidden="true" />
             </summary>
@@ -217,6 +257,22 @@ export const LyricsLiveSyncPanel = ({
                 </button>
               ))}
             </div>
+          </details>
+
+          <details className="mt-1 border-t border-white/8 pt-1">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center px-1 text-xs font-bold text-white/32 outline-none hover:text-white/60 focus-visible:ring-2 focus-visible:ring-red-300/60 [&::-webkit-details-marker]:hidden">
+              高级操作
+              <Icons.ChevronDown size={14} className="ml-auto" aria-hidden="true" />
+            </summary>
+            <button
+              type="button"
+              onClick={onResetTiming}
+              disabled={saving || markedCount === 0}
+              className="min-h-11 w-full cursor-pointer rounded-xl px-3 text-left text-xs font-bold text-red-200/65 transition-colors hover:bg-red-300/[0.06] hover:text-red-100 disabled:opacity-25"
+              data-testid="lyrics-live-reset"
+            >
+              清除全部时间，重新打点
+            </button>
           </details>
         </>
       )}
