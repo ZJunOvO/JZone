@@ -8,6 +8,8 @@ import { hasSupabaseConfig } from '../../supabaseClient';
 import { useModalPresence } from '../../modalPresence';
 import type { Song } from '../../types';
 import type { SongLyricsNormalizedContent, SongLyricsRow } from '../../services/supabase/types';
+import { getStoredLyricsModel } from '../../utils/lyrics';
+import { useKeyboardViewport } from '../../hooks/useKeyboardViewport';
 
 export interface LyricsWorkbenchDialogProps {
   isOpen: boolean;
@@ -40,6 +42,7 @@ export const LyricsWorkbenchDialog: React.FC<LyricsWorkbenchDialogProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const loadSequenceRef = useRef(0);
+  const { scrollRef, overlayStyle, panelMaxHeight } = useKeyboardViewport(isOpen);
 
   useModalPresence(isOpen);
 
@@ -47,10 +50,8 @@ export const LyricsWorkbenchDialog: React.FC<LyricsWorkbenchDialogProps> = ({
     () => songs.find((song) => song.id === selectedSongId) ?? null,
     [selectedSongId, songs],
   );
-  const initialLyrics = useMemo(
-    () => lyricsRow
-      ? { format: lyricsRow.format, content: lyricsRow.raw_content }
-      : null,
+  const storedLyricsModel = useMemo(
+    () => lyricsRow ? getStoredLyricsModel(lyricsRow) : null,
     [lyricsRow],
   );
 
@@ -164,14 +165,16 @@ export const LyricsWorkbenchDialog: React.FC<LyricsWorkbenchDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[280] flex items-start justify-center overflow-y-auto bg-black/85 px-3 py-4 backdrop-blur-xl sm:px-6 sm:py-8"
+      className="fixed inset-0 z-[280] flex items-end justify-center overflow-hidden bg-black/85 px-3 py-3 backdrop-blur-xl sm:items-center sm:px-6 sm:py-8"
+      style={overlayStyle}
       data-testid="lyrics-workbench-dialog"
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="lyrics-workbench-title"
-        className="my-auto flex max-h-[calc(100vh-2rem)] w-full min-w-0 max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-zinc-950 shadow-2xl sm:max-h-[calc(100vh-4rem)]"
+        className="flex max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-zinc-950 shadow-2xl sm:max-h-[calc(100dvh-4rem)]"
+        style={panelMaxHeight ? { maxHeight: `${panelMaxHeight}px` } : undefined}
       >
         <header className="flex min-w-0 shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-6">
           <div className="min-w-0">
@@ -191,7 +194,7 @@ export const LyricsWorkbenchDialog: React.FC<LyricsWorkbenchDialogProps> = ({
           </button>
         </header>
 
-        <div className="min-w-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5">
+        <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto px-3 py-4 [scroll-padding-bottom:42dvh] sm:px-6 sm:py-5 sm:[scroll-padding-bottom:8rem]">
           {songs.length === 0 ? (
             <div className="py-12 text-center" role="status">
               <Icons.Music2 size={24} className="mx-auto text-white/35" aria-hidden="true" />
@@ -242,7 +245,8 @@ export const LyricsWorkbenchDialog: React.FC<LyricsWorkbenchDialogProps> = ({
               ) : selectedSong ? (
                 <LyricsEditor
                   key={selectedSong.id}
-                  initialLyrics={initialLyrics}
+                  initialLyrics={storedLyricsModel?.editorLyrics ?? null}
+                  initialActiveRange={storedLyricsModel?.activeRange ?? null}
                   initialOffsetMs={lyricsRow?.offset_ms ?? 0}
                   songId={selectedSong.id}
                   songTitle={selectedSong.title}

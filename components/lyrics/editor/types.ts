@@ -20,6 +20,11 @@ export type LyricsEditorSaveSource = 'upload' | 'embedded' | 'editor';
 export type LyricsEditorAudioAction = () => void | Promise<void>;
 export type LyricsEditorLineRole = 'lead' | 'duet' | 'background';
 
+export interface LyricsEditorActiveRange {
+  startIndex: number;
+  endIndex: number;
+}
+
 export interface LyricsEditorFocusRequest {
   id: number;
   index: number;
@@ -60,6 +65,7 @@ export interface LyricsEditorNormalizedContent {
   timing: LyricsTiming;
   offsetMs: number;
   lines: LyricsEditorNormalizedLine[];
+  activeRange?: LyricsEditorActiveRange;
 }
 
 export interface LyricsEditorSavePayload {
@@ -77,6 +83,8 @@ export interface LyricsEditorSavePayload {
 export interface LyricsEditorProps {
   /** 初始歌词，可以是纯文本、统一歌词输入或已经解析的歌词模型。 */
   initialLyrics?: LyricsInput | ParsedLyrics | null;
+  /** 已保存的歌词截止范围；范围外歌词保留供后续编辑，但不进入播放视图。 */
+  initialActiveRange?: LyricsEditorActiveRange | null;
   /** 初始全局偏移，单位为毫秒。 */
   initialOffsetMs?: number;
   /** 用于隔离本地草稿的歌曲 ID。 */
@@ -169,6 +177,7 @@ export interface LyricsTimingPanelProps {
   onLineTextChange: (index: number, text: string) => void;
   onCompleteLine: (index: number) => void;
   onLineRoleChange: (index: number, role: LyricsEditorLineRole) => void;
+  onInsertLine: (index: number, position: 'before' | 'after') => void;
   onRemoveLine: (index: number) => void;
 }
 

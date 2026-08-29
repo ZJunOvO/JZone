@@ -66,6 +66,7 @@ const readLrcReferenceTimes = (value: string): Array<number | null> | null => {
 
 export const LyricsEditor: FC<LyricsEditorProps> = ({
   initialLyrics = null,
+  initialActiveRange = null,
   initialOffsetMs = 0,
   songId,
   songTitle,
@@ -124,7 +125,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     startIndex: number;
     endIndex: number;
     manual: boolean;
-  } | null>(null);
+  } | null>(() => initialActiveRange ? { ...initialActiveRange, manual: true } : null);
   const [submitted, setSubmitted] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -243,6 +244,11 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     if (lyricsRange?.manual) return;
     setLyricsRange({ ...suggestedLyricsRange, manual: false });
   }, [lyricsRange?.manual, suggestedLyricsRange]);
+
+  useEffect(() => {
+    if (!initialActiveRange) return;
+    setLyricsRange({ ...initialActiveRange, manual: true });
+  }, [initialActiveRange?.endIndex, initialActiveRange?.startIndex]);
   const validationVisible = submitted
     || Boolean(parseError)
     || validation.issues.some((issue) => issue.code !== 'empty');
@@ -273,6 +279,20 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     setLyricsRange({ ...suggestedLyricsRange, manual: false });
     setChangedMessage();
   }, [setChangedMessage, suggestedLyricsRange]);
+
+  const includeInsertedLineInRange = useCallback((insertIndex: number) => {
+    const shiftedStart = activeLyricsRange.startIndex >= insertIndex
+      ? activeLyricsRange.startIndex + 1
+      : activeLyricsRange.startIndex;
+    const shiftedEnd = activeLyricsRange.endIndex >= insertIndex
+      ? activeLyricsRange.endIndex + 1
+      : activeLyricsRange.endIndex;
+    setLyricsRange({
+      startIndex: Math.min(shiftedStart, insertIndex),
+      endIndex: Math.max(shiftedEnd, insertIndex),
+      manual: true,
+    });
+  }, [activeLyricsRange.endIndex, activeLyricsRange.startIndex]);
 
   const commitLines = useCallback((nextLines: readonly LyricsLine[], preferredFormat?: LyricsFormat) => {
     const lineLevelLines = toLineLevelLines(nextLines);
@@ -520,12 +540,70 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     commitLines(nextLines);
   }, [commitLines, lines]);
 
+  const insertLine = useCallback((index: number, position: 'before' | 'after') => {
+    const insertIndex = Math.max(0, Math.min(lines.length, index + (position === 'after' ? 1 : 0)));
+    const referenceLine = lines[index];
+    const previousTimeMs = lines[insertIndex - 1]?.startTimeMs ?? null;
+    const nextTimeMs = lines[insertIndex]?.startTimeMs ?? null;
+    const inferredTimeMs = previousTimeMs !== null && nextTimeMs !== null
+      ? Math.round((previousTimeMs + nextTimeMs) / 2)
+      : previousTimeMs !== null
+        ? previousTimeMs + 1_000
+        : nextTimeMs !== null
+          ? Math.max(0, nextTimeMs - 1_000)
+          : null;
+    const nextLine = {
+      ...createEditorLine(insertIndex),
+      startTimeMs: inferredTimeMs,
+      isDuet: Boolean(referenceLine?.isDuet),
+      isBackground: Boolean(referenceLine?.isBackground),
+    };
+    const nextLines = [...lines];
+    nextLines.splice(insertIndex, 0, nextLine);
+    setReferenceTimes((previous) => {
+      if (!previous) return null;
+      const next = [...previous];
+      next.splice(insertIndex, 0, null);
+      return next;
+    });
+    setLiveMarkedIndices((previous) => new Set(
+      [...previous].map((lineIndex) => lineIndex >= insertIndex ? lineIndex + 1 : lineIndex),
+    ));
+    setAlignmentStart(null);
+    setAlignmentApplied(false);
+    setLastMark(null);
+    includeInsertedLineInRange(insertIndex);
+    commitLines(nextLines);
+    selectAndFocusLine(insertIndex);
+  }, [commitLines, includeInsertedLineInRange, lines, selectAndFocusLine]);
+
   const removeLine = useCallback((index: number) => {
     const nextLines = lines.filter((_, lineIndex) => lineIndex !== index);
+    setReferenceTimes((previous) => previous?.filter((_, lineIndex) => lineIndex !== index) ?? null);
+    setLiveMarkedIndices((previous) => new Set(
+      [...previous]
+        .filter((lineIndex) => lineIndex !== index)
+        .map((lineIndex) => lineIndex > index ? lineIndex - 1 : lineIndex),
+    ));
+    if (nextLines.length === 0) {
+      setLyricsRange(null);
+    } else {
+      let startIndex = activeLyricsRange.startIndex;
+      let endIndex = activeLyricsRange.endIndex;
+      if (index < startIndex) {
+        startIndex -= 1;
+        endIndex -= 1;
+      } else if (index <= endIndex) {
+        endIndex -= 1;
+      }
+      startIndex = Math.max(0, Math.min(nextLines.length - 1, startIndex));
+      endIndex = Math.max(startIndex, Math.min(nextLines.length - 1, endIndex));
+      setLyricsRange({ startIndex, endIndex, manual: activeLyricsRange.manual });
+    }
     setLastMark(null);
     setSelectedIndex((previous) => Math.min(previous, Math.max(0, nextLines.length - 1)));
     commitLines(nextLines);
-  }, [commitLines, lines]);
+  }, [activeLyricsRange, commitLines, lines]);
 
   const markLine = useCallback((targetIndex: number) => {
     const workingLines = lines.length > 0 ? [...lines] : [createEditorLine(0)];
@@ -634,13 +712,14 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
   const finishLiveAtLastMarkedLine = useCallback(() => {
     const lastMarkedIndex = Math.max(-1, ...liveMarkedIndices);
     if (lastMarkedIndex < 0 || lastMarkedIndex >= lines.length - 1) return;
-    if (!window.confirm(`将删除第 ${lastMarkedIndex + 2} 行之后未演唱的歌词，已打点内容会保留。`)) return;
-    const nextLines = lines.slice(0, lastMarkedIndex + 1);
-    setReferenceTimes((previous) => previous?.slice(0, lastMarkedIndex + 1) ?? null);
-    setAlignmentStart(null);
+    setLyricsRange({
+      startIndex: Math.min(activeLyricsRange.startIndex, lastMarkedIndex),
+      endIndex: lastMarkedIndex,
+      manual: true,
+    });
     setSelectedIndex(lastMarkedIndex);
-    commitLines(nextLines, 'lrc');
-  }, [commitLines, lines, liveMarkedIndices]);
+    setChangedMessage();
+  }, [activeLyricsRange.startIndex, lines.length, liveMarkedIndices, setChangedMessage]);
 
   const selectLiveLine = useCallback((index: number) => {
     const line = lines[index];
@@ -698,12 +777,13 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           isBackground: line.isBackground,
         },
       ];
+      includeInsertedLineInRange(nextIndex);
     }
     setSaveError(null);
     commitLines(nextLines);
     selectAndFocusLine(nextIndex);
     resumePlayback();
-  }, [commitLines, lines, resumePlayback, selectAndFocusLine]);
+  }, [commitLines, includeInsertedLineInRange, lines, resumePlayback, selectAndFocusLine]);
 
   const undoLastMark = useCallback(() => {
     if (!lastMark || !lines[lastMark.index]) return;
@@ -779,11 +859,14 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
       format,
       source: sourceProp ?? sourceKind,
       version: safeVersion,
-      rawContent: activeContent,
-      content: activeContent,
-      normalizedContent: createNormalizedContent(activeLines, format, timing, offsetMs, safeVersion),
+      rawContent: content,
+      content,
+      normalizedContent: createNormalizedContent(lines, format, timing, offsetMs, safeVersion, {
+        startIndex: activeLyricsRange.startIndex,
+        endIndex: activeLyricsRange.endIndex,
+      }),
       offsetMs,
-      lines: activeLines.map((line) => ({ ...line, words: line.words.map((word) => ({ ...word })) })),
+      lines: lines.map((line) => ({ ...line, words: line.words.map((word) => ({ ...word })) })),
       parsedLyrics: createParsedLyricsFromLines(activeLines, format, timing, activeContent),
     };
     try {
@@ -798,7 +881,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : '歌词保存失败，请稍后重试。');
     }
-  }, [activeContent, activeLines, clearDraft, clearDraftOnSave, format, offsetMs, onSave, parsedLyrics, saving, sourceKind, sourceProp, timing, validation.valid, version]);
+  }, [activeContent, activeLines, activeLyricsRange.endIndex, activeLyricsRange.startIndex, clearDraft, clearDraftOnSave, content, format, lines, offsetMs, onSave, parsedLyrics, saving, sourceKind, sourceProp, timing, validation.valid, version]);
 
   const handleOffsetChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const nextOffset = Number(event.target.value);
@@ -938,6 +1021,7 @@ export const LyricsEditor: FC<LyricsEditorProps> = ({
           onLineTextChange={updateLineText}
           onCompleteLine={completeLine}
           onLineRoleChange={updateLineRole}
+          onInsertLine={insertLine}
           onRemoveLine={removeLine}
         />
       ) : viewMode === 'sync' ? (

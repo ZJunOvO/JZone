@@ -5,6 +5,7 @@ import type {
   ParsedLyrics,
 } from '../../../utils/lyrics';
 import type {
+  LyricsEditorActiveRange,
   LyricsEditorNormalizedContent,
 } from './types';
 
@@ -91,11 +92,13 @@ export const createNormalizedContent = (
   timing: LyricsTiming,
   offsetMs: number,
   version: number,
+  activeRange?: LyricsEditorActiveRange,
 ): LyricsEditorNormalizedContent => ({
   version,
   format,
   timing,
   offsetMs,
+  ...(activeRange ? { activeRange } : {}),
   lines: lines.map((line) => ({
     id: line.id,
     text: line.text,

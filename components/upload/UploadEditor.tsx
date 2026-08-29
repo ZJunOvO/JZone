@@ -61,6 +61,12 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
     [draft.file, ownerId],
   );
   const activeStagedLyrics = stagedLyrics?.draftKey === lyricsDraftKey ? stagedLyrics.payload : null;
+  const stagedLyricsInput = useMemo(() => activeStagedLyrics ? ({
+    format: activeStagedLyrics.format,
+    timing: activeStagedLyrics.normalizedContent.timing,
+    rawContent: activeStagedLyrics.rawContent,
+    lines: activeStagedLyrics.lines,
+  }) : null, [activeStagedLyrics]);
 
   const persistPendingFiles = useCallback((persistOwnerId: string | undefined, files: File[]) => {
     if (!persistOwnerId) return;
@@ -459,6 +465,8 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
             <p className="mb-3 text-xs leading-5 text-zinc-500">歌词会先暂存到当前音频，歌曲保存成功后再同步到资料库。</p>
             <LyricsEditor
               key={lyricsDraftKey ?? 'upload-lyrics'}
+              initialLyrics={stagedLyricsInput}
+              initialActiveRange={activeStagedLyrics?.normalizedContent.activeRange ?? null}
               draftKey={lyricsDraftKey}
               songTitle={draft.title}
               songArtist={draft.artist}

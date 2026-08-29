@@ -23,7 +23,7 @@ import {
 } from 'framer-motion';
 import type { Song } from '../types';
 import { supabaseApi, type SongLyricsRow } from '../supabaseApi';
-import { parseLyrics, type LyricsInput, type ParsedLyrics } from '../utils/lyrics';
+import { getStoredLyricsModel, isParsedLyrics, parseLyrics, type LyricsInput, type ParsedLyrics } from '../utils/lyrics';
 import { SONG_LYRICS_UPDATED_EVENT, type SongLyricsUpdatedEvent } from '../utils/lyrics/events';
 import { PlayerSharedElement } from '../components/motion/PlayerSharedElement';
 import { PlayerArtworkTransition } from '../components/motion/PlayerArtworkTransition';
@@ -70,11 +70,11 @@ const shiftLyricsTime = (timeMs: number | null, offsetMs: number) => (
 );
 
 const getPlayerLyricsInput = (row: SongLyricsRow): LyricsInput | ParsedLyrics => {
-  const input: LyricsInput = { format: row.format, content: row.raw_content };
+  const input = getStoredLyricsModel(row).playbackLyrics;
   if (!row.offset_ms) return input;
 
   try {
-    const parsed = parseLyrics(input);
+    const parsed = isParsedLyrics(input) ? input : parseLyrics(input);
     return {
       ...parsed,
       lines: parsed.lines.map((line) => ({

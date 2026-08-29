@@ -25,6 +25,8 @@ export {
   PLAYER_LYRICS_REQUEST_EVENT,
   SONG_LYRICS_UPDATED_EVENT,
 } from './events';
+export { getStoredLyricsModel } from './storedLyrics';
+export type { StoredLyricsActiveRange, StoredLyricsModel } from './storedLyrics';
 export type {
   PlayerLyricsRequestDetail,
   PlayerLyricsRequestEvent,

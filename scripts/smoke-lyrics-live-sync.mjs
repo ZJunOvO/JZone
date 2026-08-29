@@ -74,12 +74,11 @@ try {
 
   assert.equal(await page.getByTestId('lyrics-editor-sync-tab').getAttribute('aria-selected'), 'true', '导入在线歌词后应直接进入 Live 对轴');
   assert.equal(await page.getByTestId('lyrics-editor').getAttribute('data-lyrics-format'), 'lrc', '同步歌词必须保留 LRC 格式');
-  assert.match(await page.getByTestId('lyrics-live-current-line').textContent(), /第一句/, '第一句应成为待打点歌词');
+  assert.match(await page.getByTestId('lyrics-live-line-0').textContent(), /第一句/, '第一句应成为待打点歌词');
 
   await page.evaluate(() => window.__renderLyricsLiveSmoke(7, true));
   await page.getByTestId('lyrics-live-align-start').click();
   assert.match(await page.getByTestId('lyrics-live-offset-value').textContent(), /\+2000/, '单锚点应整体平移原始 LRC 时间轴');
-  await page.getByTestId('lyrics-live-line-list-toggle').click();
   await page.getByTestId('lyrics-live-line-2').click();
   await page.evaluate(() => window.__renderLyricsLiveSmoke(19, true));
   await page.getByTestId('lyrics-live-align-end').click();
@@ -100,7 +99,7 @@ try {
 
   await page.evaluate(() => window.__renderLyricsLiveSmoke(1.2, true));
   await page.getByTestId('lyrics-live-mark').click();
-  assert.match(await page.getByTestId('lyrics-live-current-line').textContent(), /第二句/, '纯文本第一次打点后应连续推进');
+  assert.match(await page.getByTestId('lyrics-live-line-1').textContent(), /第二句/, '纯文本第一次打点后应连续推进');
   await page.evaluate(() => window.__renderLyricsLiveSmoke(2.8, true));
   await page.getByTestId('lyrics-live-mark').click();
   await page.evaluate(() => window.__renderLyricsLiveSmoke(4.4, true));
@@ -128,21 +127,30 @@ try {
   await page.getByTestId('lyrics-online-plain-20260829').click();
   await page.evaluate(() => window.__renderLyricsLiveSmoke(1.2, true));
   await page.getByTestId('lyrics-live-mark').click();
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByTestId('lyrics-live-finish-here').click();
   await page.evaluate(() => window.__renderLyricsLiveSmoke(200, false));
   await page.getByTestId('lyrics-editor-save').click();
   const partial = await page.evaluate(() => {
     const payload = window.__lyricsLiveSavePayloads.at(-1);
-    return { times: payload?.lines.map((line) => line.startTimeMs), lineCount: payload?.lines.length };
+    return {
+      allTimes: payload?.lines.map((line) => line.startTimeMs),
+      playbackTimes: payload?.parsedLyrics.lines.map((line) => line.startTimeMs),
+      range: payload?.normalizedContent.activeRange,
+    };
   });
-  assert.deepEqual(partial, { times: [1200], lineCount: 1 }, '录音提前结束时只能显式截断，播放结束不得清空已打时间');
+  assert.deepEqual(partial, {
+    allTimes: [1200, null, null],
+    playbackTimes: [1200],
+    range: { startIndex: 0, endIndex: 0 },
+  }, '录音提前结束时应移动结束截止线，并保留未演唱歌词供后续编辑');
 
   await page.getByTestId('lyrics-editor-source-toggle').click();
   await page.getByTestId('lyrics-online-synced-20260829').click();
   await page.evaluate(() => window.__renderLyricsLiveSmoke(0, false, 12));
-  await page.waitForFunction(() => document.querySelector('[data-testid="lyrics-live-range-end"]')?.value === '1');
-  assert.match(await page.getByTestId('lyrics-live-range').textContent(), /1 行位于录音范围外/, 'Live 对轴应直接提示超出录音的歌词');
+  await page.waitForFunction(() => document.querySelector('[data-testid="lyrics-live-line-2"]')?.className.includes('opacity-25'));
+  assert.ok(await page.getByTestId('lyrics-live-range-start-boundary').isVisible(), '歌词轨道应显示开始截止线');
+  assert.ok(await page.getByTestId('lyrics-live-range-end-boundary').isVisible(), '歌词轨道应显示结束截止线');
+  await page.screenshot({ path: 'output/playwright/lyrics-range-track-mobile-390.png', fullPage: true });
   await page.getByTestId('lyrics-editor-preview-tab').click();
   const previewLayout = await page.getByTestId('lyrics-editor-preview').evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -158,15 +166,72 @@ try {
   assert.ok(previewLayout.documentWidth <= previewLayout.viewportWidth + 1, `预览导致页面横向溢出：${JSON.stringify(previewLayout)}`);
   await page.screenshot({ path: 'output/playwright/lyrics-preview-mobile-390.png', fullPage: true });
   await page.getByTestId('lyrics-editor-save').click();
-  const autoTrimmed = await page.evaluate(() => window.__lyricsLiveSavePayloads.at(-1)?.lines.map((line) => line.startTimeMs));
-  assert.deepEqual(autoTrimmed, [5000, 10000], '保存时应自动排除超过录音时长的歌词');
+  const autoTrimmed = await page.evaluate(() => {
+    const payload = window.__lyricsLiveSavePayloads.at(-1);
+    return {
+      allTimes: payload?.lines.map((line) => line.startTimeMs),
+      playbackTimes: payload?.parsedLyrics.lines.map((line) => line.startTimeMs),
+      range: payload?.normalizedContent.activeRange,
+      rawContent: payload?.rawContent,
+    };
+  });
+  assert.deepEqual(autoTrimmed.allTimes, [5000, 10000, 15000], '保存必须保留截止线外的完整歌词');
+  assert.deepEqual(autoTrimmed.playbackTimes, [5000, 10000], '播放模型只应包含截止线内歌词');
+  assert.deepEqual(autoTrimmed.range, { startIndex: 0, endIndex: 1 }, '保存内容必须记录双截止线位置');
+  assert.match(autoTrimmed.rawContent, /第三句/, '截止线外歌词必须保存在原始内容中');
 
   await page.getByTestId('lyrics-editor-sync-tab').click();
-  await page.getByTestId('lyrics-live-range').locator('summary').click();
-  await page.getByTestId('lyrics-live-range-end').fill('0');
+  const endBoundary = await page.getByTestId('lyrics-live-range-end-boundary').boundingBox();
+  const firstLine = await page.getByTestId('lyrics-live-line-0').boundingBox();
+  assert.ok(endBoundary && firstLine, '截止线和歌词行必须可测量');
+  await page.mouse.move(endBoundary.x + (endBoundary.width / 2), endBoundary.y + (endBoundary.height / 2));
+  await page.mouse.down();
+  await page.mouse.move(firstLine.x + (firstLine.width / 2), firstLine.y + (firstLine.height / 2), { steps: 6 });
+  await page.mouse.up();
   await page.getByTestId('lyrics-editor-save').click();
-  const manuallyExtended = await page.evaluate(() => window.__lyricsLiveSavePayloads.at(-1)?.lines.map((line) => line.startTimeMs));
-  assert.deepEqual(manuallyExtended, [5000], '用户应能继续手动收紧自动计算的歌词范围');
+  const manuallyTrimmed = await page.evaluate(() => {
+    const payload = window.__lyricsLiveSavePayloads.at(-1);
+    return {
+      allTimes: payload?.lines.map((line) => line.startTimeMs),
+      playbackTimes: payload?.parsedLyrics.lines.map((line) => line.startTimeMs),
+      range: payload?.normalizedContent.activeRange,
+    };
+  });
+  assert.deepEqual(manuallyTrimmed.allTimes, [5000, 10000, 15000], '手动截止后仍不得删除完整歌词');
+  assert.deepEqual(manuallyTrimmed.playbackTimes, [5000], '结束截止线应控制播放歌词范围');
+  assert.deepEqual(manuallyTrimmed.range, { startIndex: 0, endIndex: 0 }, '拖动结束截止线应写入新范围');
+
+  await page.getByTestId('lyrics-editor-edit-tab').click();
+  await page.getByTestId('lyrics-editor-line-insert-after-0').click();
+  await page.getByTestId('lyrics-editor-line-input-1').fill('DIY 新增歌词');
+  await page.getByTestId('lyrics-editor-save').click();
+  const diyRoundTrip = await page.evaluate(async () => {
+    const payload = window.__lyricsLiveSavePayloads.at(-1);
+    const { getStoredLyricsModel } = await import('/utils/lyrics/storedLyrics.ts');
+    const row = {
+      song_id: 'live-sync-smoke',
+      format: payload.format,
+      source: payload.source,
+      raw_content: payload.rawContent,
+      normalized_content: payload.normalizedContent,
+      offset_ms: payload.offsetMs,
+      checksum: 'smoke',
+      version: payload.version,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const restored = getStoredLyricsModel(row);
+    return {
+      rawContent: payload.rawContent,
+      allTexts: restored.editorLyrics.lines?.map((line) => line.text),
+      playbackTexts: restored.playbackLyrics.lines?.map((line) => line.text),
+      range: restored.activeRange,
+    };
+  });
+  assert.match(diyRoundTrip.rawContent, /DIY 新增歌词/, 'DIY 歌词必须进入保存原文');
+  assert.deepEqual(diyRoundTrip.allTexts, ['第一句', 'DIY 新增歌词', '第二句', '第三句'], '重新打开编辑器必须恢复完整歌词');
+  assert.deepEqual(diyRoundTrip.playbackTexts, ['第一句', 'DIY 新增歌词'], '播放器必须只读取截止线内歌词');
+  assert.deepEqual(diyRoundTrip.range, { startIndex: 0, endIndex: 1 }, '插入有效范围内歌词后应同步扩展截止线');
 
   await page.setViewportSize({ width: 360, height: 800 });
   const compactLayout = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth }));

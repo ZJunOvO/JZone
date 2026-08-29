@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Icons } from '../../Icons';
 import { formatClock, formatOffset } from './lyricsEditorUtils';
 import type { LyricsLine } from '../../../utils/lyrics';
+import { LyricsRangeTrack } from './LyricsRangeTrack';
 
 interface LyricsLiveSyncPanelProps {
   lines: readonly LyricsLine[];
@@ -80,12 +81,7 @@ export const LyricsLiveSyncPanel = ({
     ? alignmentApplied ? '已整体对齐' : `原轴 ${lines.length} 句`
     : `${manualMarkedCount} / ${lines.length}`;
   const selectedLine = lines[selectedIndex] ?? null;
-  const previousLine = selectedIndex > 0 ? lines[selectedIndex - 1] : null;
-  const nextLine = selectedIndex + 1 < lines.length ? lines[selectedIndex + 1] : null;
   const sliderMax = Math.max(0.1, effectiveDuration ?? effectiveCurrentTime ?? 0.1);
-  const excludedBeforeCount = activeRangeStart;
-  const excludedAfterCount = Math.max(0, lines.length - activeRangeEnd - 1);
-  const excludedCount = excludedBeforeCount + excludedAfterCount;
 
   return (
     <section className="border-b border-white/10 py-4" aria-labelledby="lyrics-live-sync-title" data-testid="lyrics-live-sync-panel">
@@ -96,61 +92,6 @@ export const LyricsLiveSyncPanel = ({
         </div>
         <span className="shrink-0 text-xs font-black tabular-nums text-white/45">{progressLabel}</span>
       </div>
-
-      {lines.length > 1 && effectiveDuration ? (
-        <details className="mt-3 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-1" data-testid="lyrics-live-range">
-          <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 text-sm font-bold text-white/70 outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 [&::-webkit-details-marker]:hidden">
-            <span className="min-w-0 flex-1">
-              {excludedCount > 0 ? `${excludedCount} 行位于录音范围外` : '歌词有效范围'}
-            </span>
-            <span className="shrink-0 text-xs tabular-nums text-white/38">{activeRangeStart + 1}–{activeRangeEnd + 1}</span>
-            <Icons.ChevronDown size={15} className="shrink-0 text-white/35" aria-hidden="true" />
-          </summary>
-          <div className="border-t border-white/8 pb-3 pt-3">
-            <p className="text-xs leading-5 text-white/45">
-              录音外歌词仍会保留在编辑器中，保存时只写入有效范围。
-            </p>
-            <label className="mt-3 grid grid-cols-[42px_minmax(0,1fr)_34px] items-center gap-2 text-xs font-bold text-white/55">
-              <span>起点</span>
-              <input
-                type="range"
-                min="0"
-                max={Math.max(0, activeRangeEnd)}
-                step="1"
-                value={activeRangeStart}
-                onChange={(event) => onRangeChange(Number(event.target.value), activeRangeEnd)}
-                className="h-9 w-full cursor-pointer accent-red-300"
-                data-testid="lyrics-live-range-start"
-              />
-              <span className="text-right tabular-nums">{activeRangeStart + 1}</span>
-            </label>
-            <label className="mt-1 grid grid-cols-[42px_minmax(0,1fr)_34px] items-center gap-2 text-xs font-bold text-white/55">
-              <span>终点</span>
-              <input
-                type="range"
-                min={activeRangeStart}
-                max={Math.max(activeRangeStart, lines.length - 1)}
-                step="1"
-                value={activeRangeEnd}
-                onChange={(event) => onRangeChange(activeRangeStart, Number(event.target.value))}
-                className="h-9 w-full cursor-pointer accent-red-300"
-                data-testid="lyrics-live-range-end"
-              />
-              <span className="text-right tabular-nums">{activeRangeEnd + 1}</span>
-            </label>
-            {rangeIsManual && (activeRangeStart !== suggestedRangeStart || activeRangeEnd !== suggestedRangeEnd) ? (
-              <button
-                type="button"
-                onClick={onRestoreAutomaticRange}
-                className="mt-2 min-h-10 cursor-pointer rounded-full px-3 text-xs font-bold text-white/48 transition-colors hover:bg-white/[0.06] hover:text-white"
-                data-testid="lyrics-live-range-auto"
-              >
-                恢复按录音时长裁切
-              </button>
-            ) : null}
-          </div>
-        </details>
-      ) : null}
 
       <div className="mt-4 flex items-center gap-3">
         <button
@@ -201,18 +142,18 @@ export const LyricsLiveSyncPanel = ({
         </div>
       ) : (
         <>
-          <div className="mt-5 overflow-hidden border-y border-white/10 py-5 text-center" aria-live="polite">
-            <p className="min-h-6 truncate px-4 text-sm font-bold text-white/28">{previousLine?.text || ' '}</p>
-            <button
-              type="button"
-              onClick={() => onSelectLine(selectedIndex)}
-              className="my-4 w-full cursor-pointer px-4 text-center text-[clamp(1.45rem,7vw,2.15rem)] font-black leading-tight text-white outline-none transition-colors hover:text-red-100 focus-visible:ring-2 focus-visible:ring-red-300/60"
-              data-testid="lyrics-live-current-line"
-            >
-              {selectedLine?.text || '当前行为空'}
-            </button>
-            <p className="min-h-6 truncate px-4 text-sm font-bold text-white/42">{nextLine?.text || (allMarked ? '对轴完成' : '最后一句')}</p>
-          </div>
+          <LyricsRangeTrack
+            lines={lines}
+            selectedIndex={selectedIndex}
+            activeRangeStart={activeRangeStart}
+            activeRangeEnd={activeRangeEnd}
+            suggestedRangeStart={suggestedRangeStart}
+            suggestedRangeEnd={suggestedRangeEnd}
+            rangeIsManual={rangeIsManual}
+            onSelectLine={onSelectLine}
+            onRangeChange={onRangeChange}
+            onRestoreAutomaticRange={onRestoreAutomaticRange}
+          />
 
           <button
             type="button"
@@ -308,29 +249,6 @@ export const LyricsLiveSyncPanel = ({
               </button>
             </div>
           ) : null}
-
-          <details className="mt-3 border-t border-white/8 pt-2">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center px-1 text-sm font-bold text-white/45 outline-none hover:text-white focus-visible:ring-2 focus-visible:ring-red-300/60 [&::-webkit-details-marker]:hidden" data-testid="lyrics-live-line-list-toggle">
-              查看歌词顺序
-              <Icons.ChevronDown size={15} className="ml-auto" aria-hidden="true" />
-            </summary>
-            <div className="max-h-56 overflow-y-auto overscroll-contain border-y border-white/8">
-              {lines.map((line, index) => (
-                <button
-                  key={line.id}
-                  type="button"
-                  onClick={() => onSelectLine(index)}
-                  className={`flex min-h-11 w-full cursor-pointer items-center gap-3 border-t border-white/5 px-2 text-left text-sm transition-colors first:border-t-0 ${index < activeRangeStart || index > activeRangeEnd ? 'opacity-35' : ''} ${index === selectedIndex ? 'bg-red-300/[0.08] text-white' : 'text-white/48 hover:bg-white/[0.04] hover:text-white/75'}`}
-                  data-testid={`lyrics-live-line-${index}`}
-                >
-                  <span className="w-7 shrink-0 text-right text-[11px] font-bold tabular-nums text-white/28">{index + 1}</span>
-                  <span className="min-w-0 flex-1 truncate font-semibold">{line.text || '空白歌词'}</span>
-                  {index < activeRangeStart || index > activeRangeEnd ? <span className="shrink-0 text-[10px] font-bold text-white/35">录音外</span> : null}
-                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${line.startTimeMs === null ? 'bg-white/15' : 'bg-emerald-300/80'}`} aria-hidden="true" />
-                </button>
-              ))}
-            </div>
-          </details>
 
           <details className="mt-1 border-t border-white/8 pt-1">
             <summary className="flex min-h-11 cursor-pointer list-none items-center px-1 text-xs font-bold text-white/32 outline-none hover:text-white/60 focus-visible:ring-2 focus-visible:ring-red-300/60 [&::-webkit-details-marker]:hidden">

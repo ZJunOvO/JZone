@@ -45,17 +45,11 @@ export const LyricsTimingPanel = ({
   onLineTextChange,
   onCompleteLine,
   onLineRoleChange,
+  onInsertLine,
   onRemoveLine,
 }: LyricsTimingPanelProps) => {
   const selectedLineNumber = lines.length > 0 ? Math.min(selectedIndex, lines.length - 1) + 1 : 0;
   const lineInputRefs = useRef(new Map<number, HTMLTextAreaElement>());
-
-  const revealInputAboveKeyboard = (input: HTMLTextAreaElement) => {
-    const reveal = () => input.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    window.requestAnimationFrame(reveal);
-    window.setTimeout(reveal, 180);
-    window.setTimeout(reveal, 420);
-  };
 
   useEffect(() => {
     if (!focusRequest) return undefined;
@@ -321,15 +315,14 @@ export const LyricsTimingPanel = ({
                       onCompleteLine(index);
                     }}
                     onClick={(event) => event.stopPropagation()}
-                    onFocus={(event) => {
+                    onFocus={() => {
                       onSelectLine(index);
-                      revealInputAboveKeyboard(event.currentTarget);
                     }}
                     className="min-h-11 w-full scroll-mb-[42dvh] resize-y rounded-lg border border-transparent bg-transparent px-2 py-2 text-base leading-7 text-white outline-none transition-colors placeholder:text-white/25 focus:border-white/20 focus:bg-white/[0.04]"
                     placeholder="输入这一行歌词"
                   />
                 </label>
-                <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                   <label className="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3 text-xs font-bold text-white/55">
                     <span className="sr-only">第 {index + 1} 行演唱角色</span>
                     <select
@@ -345,6 +338,40 @@ export const LyricsTimingPanel = ({
                     <Icons.ChevronDown size={13} aria-hidden="true" />
                   </label>
                   <div className="flex justify-end gap-1">
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onInsertLine(index, 'before');
+                      }}
+                      className="grid min-h-11 min-w-11 cursor-pointer place-items-center rounded-lg text-white/42 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:opacity-25"
+                      aria-label={`在第 ${index + 1} 行前插入歌词`}
+                      title="在上方插入"
+                      data-testid={`lyrics-editor-line-insert-before-${index}`}
+                    >
+                      <span className="relative block h-5 w-5" aria-hidden="true">
+                        <Icons.Plus size={14} className="absolute left-0.5 top-0" />
+                        <Icons.ChevronDown size={12} className="absolute bottom-0 right-0 rotate-180" />
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onInsertLine(index, 'after');
+                      }}
+                      className="grid min-h-11 min-w-11 cursor-pointer place-items-center rounded-lg text-white/42 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60 disabled:opacity-25"
+                      aria-label={`在第 ${index + 1} 行后插入歌词`}
+                      title="在下方插入"
+                      data-testid={`lyrics-editor-line-insert-after-${index}`}
+                    >
+                      <span className="relative block h-5 w-5" aria-hidden="true">
+                        <Icons.Plus size={14} className="absolute bottom-0.5 left-0.5" />
+                        <Icons.ChevronDown size={12} className="absolute right-0 top-0" />
+                      </span>
+                    </button>
                     <button
                       type="button"
                       disabled={saving || !line.text.trim() || line.startTimeMs === null}

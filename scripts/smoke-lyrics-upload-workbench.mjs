@@ -204,6 +204,19 @@ try {
   assert.match(await page.getByTestId('lyrics-workbench-status').textContent(), /已有歌词/, '工作台应加载已有歌词状态');
   assert.equal(await page.getByTestId('lyrics-editor-source').inputValue(), '[00:01.00]已有歌词 A', '工作台应载入歌词正文且不暴露内部角色元数据');
   assert.equal(await page.getByTestId('lyrics-editor-line-role-0').inputValue(), 'duet', '仅依靠后端原文再次打开时也必须恢复对唱角色');
+  await page.getByTestId('lyrics-editor-line-input-0').focus();
+  await page.setViewportSize({ width: 390, height: 520 });
+  await page.waitForTimeout(650);
+  const keyboardLayout = await page.getByTestId('lyrics-editor-line-input-0').evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { top: rect.top, bottom: rect.bottom, viewportHeight: innerHeight, scrollY };
+  });
+  assert.ok(keyboardLayout.top >= 0 && keyboardLayout.bottom <= keyboardLayout.viewportHeight - 16, `键盘视口内输入框不可见：${JSON.stringify(keyboardLayout)}`);
+  assert.equal(keyboardLayout.scrollY, 0, '输入框聚焦不得推动整个应用页面');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => scrollY), 0, '键盘收起后页面必须回到原始位置');
   await assertFitsViewport('歌词工作台');
   await page.setViewportSize({ width: 360, height: 800 });
   await assertFitsViewport('歌词工作台 360px');

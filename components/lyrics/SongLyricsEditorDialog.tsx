@@ -10,6 +10,8 @@ import type {
   LyricsEditorSavePayload,
 } from './editor';
 import { dispatchSongLyricsUpdated } from '../../utils/lyrics/events';
+import { getStoredLyricsModel } from '../../utils/lyrics';
+import { useKeyboardViewport } from '../../hooks/useKeyboardViewport';
 
 export interface SongLyricsEditorDialogProps {
   isOpen: boolean;
@@ -43,33 +45,15 @@ export const SongLyricsEditorDialog: React.FC<SongLyricsEditorDialogProps> = ({
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const [editorRevision, setEditorRevision] = useState(0);
-  const [visualViewportHeight, setVisualViewportHeight] = useState<number | null>(null);
+  const { scrollRef, overlayStyle, panelMaxHeight } = useKeyboardViewport(isOpen && Boolean(song));
 
   const isOwner = Boolean(user?.id && song?.ownerId === user.id);
+  const storedLyricsModel = React.useMemo(
+    () => lyrics ? getStoredLyricsModel(lyrics) : null,
+    [lyrics],
+  );
 
   useModalPresence(isOpen && Boolean(song));
-
-  useEffect(() => {
-    if (!isOpen || typeof window === 'undefined' || !window.visualViewport) {
-      setVisualViewportHeight(null);
-      return undefined;
-    }
-    const viewport = window.visualViewport;
-    const updateViewport = () => {
-      setVisualViewportHeight(Math.round(viewport.height));
-      const activeElement = document.activeElement;
-      if (activeElement instanceof HTMLTextAreaElement) {
-        window.requestAnimationFrame(() => activeElement.scrollIntoView({ block: 'center', behavior: 'smooth' }));
-      }
-    };
-    updateViewport();
-    viewport.addEventListener('resize', updateViewport);
-    viewport.addEventListener('scroll', updateViewport);
-    return () => {
-      viewport.removeEventListener('resize', updateViewport);
-      viewport.removeEventListener('scroll', updateViewport);
-    };
-  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || !song?.id) {
@@ -164,6 +148,7 @@ export const SongLyricsEditorDialog: React.FC<SongLyricsEditorDialogProps> = ({
         <motion.div
           key={song.id}
           className="fixed inset-0 z-[280] flex items-end justify-center overflow-hidden p-3 sm:items-center sm:p-6"
+          style={overlayStyle}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -181,7 +166,7 @@ export const SongLyricsEditorDialog: React.FC<SongLyricsEditorDialogProps> = ({
           />
           <motion.div
             className="relative z-10 flex max-h-[calc(100dvh-24px)] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-zinc-950/95 shadow-2xl sm:max-h-[88dvh]"
-            style={visualViewportHeight ? { maxHeight: `${Math.max(320, visualViewportHeight - 24)}px` } : undefined}
+            style={panelMaxHeight ? { maxHeight: `${panelMaxHeight}px` } : undefined}
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.98, filter: 'blur(4px)' }}
             animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.985, filter: 'blur(4px)' }}
@@ -208,7 +193,7 @@ export const SongLyricsEditorDialog: React.FC<SongLyricsEditorDialogProps> = ({
               </button>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 [scroll-padding-bottom:42dvh] sm:px-6 sm:[scroll-padding-bottom:8rem]">
+            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 [scroll-padding-bottom:42dvh] sm:px-6 sm:[scroll-padding-bottom:8rem]">
               {loadState === 'loading' && (
                 <div className="flex min-h-[300px] flex-col items-center justify-center text-center" data-testid="song-lyrics-editor-loading" role="status" aria-live="polite">
                   <Icons.RotateCcw size={22} className="animate-spin text-white/60" aria-hidden="true" />
@@ -236,7 +221,8 @@ export const SongLyricsEditorDialog: React.FC<SongLyricsEditorDialogProps> = ({
               {loadState === 'ready' && isOwner && (
                 <LyricsEditor
                   key={`${song.id}:${editorRevision}`}
-                  initialLyrics={lyrics ? { format: lyrics.format, content: lyrics.raw_content } : null}
+                  initialLyrics={storedLyricsModel?.editorLyrics ?? null}
+                  initialActiveRange={storedLyricsModel?.activeRange ?? null}
                   initialOffsetMs={lyrics?.offset_ms ?? 0}
                   songId={song.id}
                   songTitle={song.title}
