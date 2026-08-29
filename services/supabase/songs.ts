@@ -234,21 +234,29 @@ export const createSongsApi = () => ({
     await cosClient.deleteFiles(filesToDelete).catch(() => {});
   },
 
-  async uploadSongCover(songId: string, ownerId: string, file: File, oldCoverPath?: string): Promise<{ path: string; signedUrl: string }> {
+  async uploadSongCover(_songId: string, _ownerId: string, file: File, _oldCoverPath?: string): Promise<{ path: string; signedUrl: string }> {
     if (!cosClient.isEnabled) throw new Error('COS 未配置');
     const compressed = await downscaleImageBlob(file, { maxWidth: 1024, maxHeight: 1024, mimeType: 'image/jpeg', quality: 0.86 });
     const path = await createSharedCoverPath(compressed);
     await cosClient.uploadFileIfAbsent(compressed, path, 'image/jpeg');
 
-    if (oldCoverPath && oldCoverPath !== path && !/^https?:\/\//i.test(oldCoverPath) && !isSharedCoverPath(oldCoverPath)) {
-      try {
-        await cosClient.deleteFiles([oldCoverPath]);
-      } catch (error) {
-        console.warn('Failed to delete old cover:', error);
-      }
-    }
-
     const signedUrl = await createSignedCoverUrl(path);
     return { path, signedUrl };
+  },
+
+  async deleteCoverIfUnreferenced(path?: string | null): Promise<'deleted' | 'retained' | 'skipped'> {
+    const normalizedPath = path?.trim();
+    if (!normalizedPath || /^https?:\/\//i.test(normalizedPath)) return 'skipped';
+    if (!cosClient.isEnabled) throw new Error('COS 未配置');
+
+    const client = ensureSupabase();
+    const { data, error } = await client.rpc('get_media_cover_reference_count', { p_path: normalizedPath });
+    if (error) throw error;
+    const referenceCount = Number(data);
+    if (!Number.isFinite(referenceCount)) throw new Error('封面引用计数无效');
+    if (referenceCount > 0) return 'retained';
+
+    await cosClient.deleteFiles([normalizedPath]);
+    return 'deleted';
   },
 });

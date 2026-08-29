@@ -140,6 +140,10 @@ export const AppShell: React.FC = () => {
   const miniPlayerLayerRef = React.useRef<HTMLDivElement>(null);
   const profileRouteRef = React.useRef<HTMLDivElement>(null);
   const [miniSettlePulse, setMiniSettlePulse] = useState(0);
+  const appShellRef = React.useRef<HTMLDivElement>(null);
+  const [appShellWidth, setAppShellWidth] = useState(() => (
+    typeof window === 'undefined' ? 390 : Math.min(448, window.innerWidth)
+  ));
   const miniSettleTimerRef = React.useRef<number | null>(null);
   const miniSettleResetTimerRef = React.useRef<number | null>(null);
   const routeFallbackControls = useAnimationControls();
@@ -153,6 +157,16 @@ export const AppShell: React.FC = () => {
     return listenModalPresence((delta) => {
       setModalCount((count) => Math.max(0, count + delta));
     });
+  }, []);
+
+  React.useLayoutEffect(() => {
+    const element = appShellRef.current;
+    if (!element) return;
+    const updateWidth = () => setAppShellWidth(Math.max(1, element.getBoundingClientRect().width));
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
 
   React.useEffect(() => {
@@ -410,14 +424,18 @@ export const AppShell: React.FC = () => {
     setIsCompactPlayerExpanded(false);
   }, [setActiveTab, setProfileUserId]);
 
+  const availableDockWidth = Math.max(1, appShellWidth - BOTTOM_DOCK_GEOMETRY.viewportGutter * 2);
+  const modalPlayerWidth = Math.min(320, availableDockWidth);
+  const widePlayerWidth = Math.min(BOTTOM_DOCK_GEOMETRY.wideMaxWidth, availableDockWidth);
+
   const miniPlayerLayoutTarget = isModalActive
     ? {
         top: 'calc(env(safe-area-inset-top) + 12px)',
         bottom: 'auto',
-        left: '12px',
-        right: '12px',
-        width: 'min(320px, calc(100% - 24px))',
-        x: '0%',
+        left: '50%',
+        right: 'auto',
+        width: `${modalPlayerWidth}px`,
+        x: -modalPlayerWidth / 2,
         opacity: 1,
       }
     : isCompactDockPair
@@ -439,17 +457,17 @@ export const AppShell: React.FC = () => {
           bottom: isListeningRecap
             ? `calc(env(safe-area-inset-bottom) + ${BOTTOM_DOCK_GEOMETRY.wideNavBottom}px)`
             : `calc(env(safe-area-inset-bottom) + ${getBottomDockMiniBottom(liquidGlassSettings.bottomTabLayout)}px)`,
-          left: isCompactBottomTabLayout && !isListeningRecap ? '50%' : `${BOTTOM_DOCK_GEOMETRY.viewportGutter}px`,
-          right: isCompactBottomTabLayout && !isListeningRecap ? 'auto' : `${BOTTOM_DOCK_GEOMETRY.viewportGutter}px`,
-          width: isCompactBottomTabLayout && !isListeningRecap
-            ? `min(${BOTTOM_DOCK_GEOMETRY.compactMaxWidth}px, calc(100% - ${BOTTOM_DOCK_GEOMETRY.viewportGutter * 2}px))`
-            : `min(${BOTTOM_DOCK_GEOMETRY.wideMaxWidth}px, calc(100% - ${BOTTOM_DOCK_GEOMETRY.viewportGutter * 2}px))`,
-          x: isCompactBottomTabLayout && !isListeningRecap ? '-50%' : '0%',
+          left: '50%',
+          right: 'auto',
+          width: `${isCompactBottomTabLayout && !isListeningRecap ? Math.min(BOTTOM_DOCK_GEOMETRY.compactMaxWidth, availableDockWidth) : widePlayerWidth}px`,
+          x: -(isCompactBottomTabLayout && !isListeningRecap
+            ? Math.min(BOTTOM_DOCK_GEOMETRY.compactMaxWidth, availableDockWidth)
+            : widePlayerWidth) / 2,
           opacity: 1,
         };
 
   return (
-    <div className="jzone-app-shell max-w-md mx-auto bg-black h-screen overflow-hidden relative shadow-2xl flex flex-col" style={liquidGlassCssVars}>
+    <div ref={appShellRef} className="jzone-app-shell max-w-md mx-auto bg-black h-screen overflow-hidden relative shadow-2xl flex flex-col" style={liquidGlassCssVars}>
       <SharedElementLayer>
       <div className="jzone-glass-source flex-1 overflow-y-auto no-scrollbar scroll-smooth bg-black">
         <motion.div
@@ -516,9 +534,9 @@ export const AppShell: React.FC = () => {
           ref={miniPlayerLayerRef}
           data-testid="mini-player-layer"
           aria-hidden={isPlayerOpen && playerTransitionPhase !== 'closing'}
-          initial={reduceMotion ? miniPlayerLayoutTarget : { ...miniPlayerLayoutTarget, opacity: 0, scale: 0.94, filter: 'blur(8px)' }}
-          animate={{ ...miniPlayerLayoutTarget, scale: 1, filter: 'blur(0px)' }}
-          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, filter: 'blur(6px)' }}
+          initial={reduceMotion ? miniPlayerLayoutTarget : { ...miniPlayerLayoutTarget, opacity: 0, scale: 0.94 }}
+          animate={{ ...miniPlayerLayoutTarget, scale: 1 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
           transition={{
             top: { type: 'spring', damping: 26, stiffness: 320 },
             bottom: { type: 'spring', damping: 26, stiffness: 320 },
@@ -527,9 +545,8 @@ export const AppShell: React.FC = () => {
             x: { type: 'spring', damping: 30, stiffness: 380, mass: 0.78 },
             opacity: { duration: 0.12 },
             scale: { type: 'spring', damping: 24, stiffness: 360, mass: 0.72 },
-            filter: { duration: reduceMotion ? 0 : 0.24 },
           }}
-          className="fixed z-[160] mx-auto"
+          className="fixed z-[160]"
           data-layout-mode={liquidGlassSettings.bottomTabLayout}
           data-compact-player-expanded={isCompactDockPair ? String(isCompactPlayerExpanded) : undefined}
           data-player-transition-origin={playerTransitionOrigin ? JSON.stringify(playerTransitionOrigin) : undefined}

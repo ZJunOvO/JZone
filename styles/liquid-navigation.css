@@ -74,6 +74,32 @@ svg.liquid-glass-semantic {
   display: none;
 }
 
+/*
+ * Mini 播放器的 SVG 位移与模糊分层渲染。部分移动端 Chromium 在同一条
+ * backdrop-filter 中组合 url(#filter) 与 blur() 时会丢弃整条背景滤镜。
+ * 该底层只负责稳定采样和模糊，上一层仍保留 SVG 折射与高光。
+ */
+.liquid-mini-player [data-liquid-material="settings"] > .liquid-glass-mobile-backstop {
+  display: block;
+  z-index: 0;
+  background: rgba(255, 255, 255, var(--lg-f-tint-alpha, 0.035));
+  backdrop-filter:
+    blur(var(--lg-f-blur, 3px))
+    contrast(var(--lg-f-contrast, 1))
+    brightness(var(--lg-f-brightness, 1.05))
+    saturate(var(--lg-f-saturation, 1.6));
+  -webkit-backdrop-filter:
+    blur(var(--lg-f-blur, 3px))
+    contrast(var(--lg-f-contrast, 1))
+    brightness(var(--lg-f-brightness, 1.05))
+    saturate(var(--lg-f-saturation, 1.6));
+  transform: translateZ(0);
+}
+
+.liquid-mini-player [data-liquid-material="settings"] > .liquid-tab-surface {
+  z-index: 1;
+}
+
 @media (hover: none) and (pointer: coarse) {
   .liquid-glass-mobile-backstop {
     display: block;

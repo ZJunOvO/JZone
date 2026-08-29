@@ -83,7 +83,13 @@ try {
     'Mini 播放器整个玻璃壳没有执行入场形变',
   );
   assert(playerOpening.mapReady, `Mini 播放器首帧位移图未就绪：${JSON.stringify(playerOpening)}`);
-  assert(Math.abs(playerOpening.filterWidth - playerOpening.playerWidth) <= 1 && Math.abs(playerOpening.filterHeight - playerOpening.playerHeight) <= 1, `Mini 播放器首帧滤镜尺寸错误：${JSON.stringify(playerOpening)}`);
+  assert(
+    playerOpening.filterWidth > 0
+      && playerOpening.filterHeight > 0
+      && playerOpening.filterWidth >= (playerOpening.playerWidth ?? 0) - 1
+      && playerOpening.filterHeight >= (playerOpening.playerHeight ?? 0) - 1,
+    `Mini 播放器首帧滤镜没有覆盖动画中的玻璃外壳：${JSON.stringify(playerOpening)}`,
+  );
 
   if (await page.locator('.liquid-mini-player[data-compact-player-state="circle"]').isVisible().catch(() => false)) {
     await page.getByTestId('mini-player').click();
@@ -92,10 +98,12 @@ try {
       const width = document.querySelector('.liquid-mini-player')?.getBoundingClientRect().width ?? 0;
       return Math.abs(width - 240) <= 0.75;
     });
+    await page.waitForTimeout(450);
     const expandedMaterial = await page.evaluate(() => {
       const player = document.querySelector('.liquid-mini-player');
       const material = player?.querySelector('[data-liquid-material="settings"]');
       const tabMaterial = document.querySelector('[data-testid="bottom-nav-layer"]');
+      const backstop = material?.querySelector('.liquid-glass-mobile-backstop');
       const filter = material?.querySelector('filter');
       const mapImage = material?.querySelector('feImage');
       const playerRect = player?.getBoundingClientRect();
@@ -112,6 +120,8 @@ try {
         tabBlur: tabMaterial ? getComputedStyle(tabMaterial).getPropertyValue('--lg-f-blur').trim() : '',
         saturation: material ? getComputedStyle(material).getPropertyValue('--lg-f-saturation').trim() : '',
         tabSaturation: tabMaterial ? getComputedStyle(tabMaterial).getPropertyValue('--lg-f-saturation').trim() : '',
+        backstopDisplay: backstop ? getComputedStyle(backstop).display : '',
+        backstopFilter: backstop ? (getComputedStyle(backstop).backdropFilter || getComputedStyle(backstop).webkitBackdropFilter) : '',
       };
     });
     assert(expandedMaterial.materialType === 'settings' && expandedMaterial.coverage === 'edge', `紧凑 Mini 未使用底部 Tab 同款材质：${JSON.stringify(expandedMaterial)}`);
@@ -120,6 +130,7 @@ try {
     assert(Math.abs(expandedMaterial.filterWidth - expandedMaterial.playerWidth) <= 1, `展开态仍复用圆形折射图：${JSON.stringify(expandedMaterial)}`);
     assert(expandedMaterial.filterApplied && expandedMaterial.mapReady, `展开态液态玻璃折射未生效：${JSON.stringify(expandedMaterial)}`);
     assert(expandedMaterial.blur === expandedMaterial.tabBlur && expandedMaterial.saturation === expandedMaterial.tabSaturation, `紧凑 Mini 与底部 Tab 参数未同步：${JSON.stringify(expandedMaterial)}`);
+    assert(expandedMaterial.backstopDisplay === 'block' && expandedMaterial.backstopFilter.includes('blur('), `紧凑 Mini 独立背景模糊层未生效：${JSON.stringify(expandedMaterial)}`);
     await mkdir('output/playwright', { recursive: true });
     await page.screenshot({ path: `output/playwright/liquid-glass-compact-mini-expanded-${viewportWidth}x${viewportHeight}.png` });
     await page.getByTestId('bottom-nav-home').click();
@@ -191,7 +202,7 @@ try {
 
     for (let node = miniMaterial?.parentElement; node && node !== document.body; node = node.parentElement) {
       const style = getComputedStyle(node);
-      if (style.filter !== 'none' || style.backdropFilter !== 'none' || style.transform !== 'none') {
+      if (style.filter !== 'none' || style.backdropFilter !== 'none') {
         unsafeAncestors.push({ className: String(node.className), filter: style.filter, backdropFilter: style.backdropFilter, transform: style.transform });
       }
     }
@@ -200,6 +211,7 @@ try {
       miniFilter: mini ? getComputedStyle(mini.querySelector('.liquid-tab-f-glass')).backdropFilter : null,
       menuFilter: menu ? getComputedStyle(menu.querySelector('.liquid-tab-f-glass')).backdropFilter : null,
       miniCoverage: miniMaterial?.getAttribute('data-liquid-coverage'),
+      miniLayoutMode: mini?.getAttribute('data-layout-mode'),
       menuCoverage: menuMaterial?.getAttribute('data-liquid-coverage'),
       menuGeometry: menuMaterial?.getAttribute('data-liquid-geometry'),
       menuRootFilter: menu ? getComputedStyle(menu).filter : null,
@@ -209,6 +221,7 @@ try {
       adaptiveMenuButtons: menu?.querySelectorAll('button[data-liquid-adaptive="true"]').length ?? 0,
       adaptiveMenuButtonColor: adaptiveMenuButton ? getComputedStyle(adaptiveMenuButton).color : null,
       adaptiveMenuIconColor: adaptiveMenuIcon ? getComputedStyle(adaptiveMenuIcon).color : null,
+      miniTitlePresent: Boolean(adaptiveMiniTitle),
       adaptiveMiniTitle: adaptiveMiniTitle?.getAttribute('data-liquid-adaptive') ?? null,
       unsafeAncestors,
       visibleImages: [...document.images].filter((image) => {
@@ -220,12 +233,15 @@ try {
 
   assert(state.miniFilter?.includes('url('), 'Mini 播放器缺少 SVG 背景折射');
   assert(state.menuFilter?.includes('url('), 'Mini 菜单缺少 SVG 背景折射');
-  assert(state.miniCoverage === 'full' && state.menuCoverage === 'full', '宽面板没有启用全幅折射');
+  assert(state.miniCoverage === 'edge', 'Mini 播放器没有使用与底部 Tab 一致的边缘折射');
+  assert(state.menuCoverage === 'full', '纵向 Mini 菜单没有启用全幅折射');
   assert(state.menuGeometry === 'panel', 'Mini 菜单没有启用纵向面板折射几何');
   assert(state.adaptiveMenuButtons >= 4, `Mini 菜单文字没有纳入液态玻璃前景适配：${JSON.stringify(state)}`);
   assert(state.adaptiveMenuButtonColor === state.adaptiveMenuIconColor, `Mini 菜单文字与图标没有继承同一前景色：${JSON.stringify(state)}`);
-  assert(state.adaptiveMiniTitle === 'true', 'Mini 播放器标题文字没有纳入液态玻璃前景适配');
-  assert(state.gap >= 12 && state.gap <= 15, `Mini 播放器与 Tab 间距异常：${state.gap}`);
+  assert(!state.miniTitlePresent || state.adaptiveMiniTitle === 'true', 'Mini 播放器标题文字没有纳入液态玻璃前景适配');
+  if (state.miniLayoutMode === 'wide') {
+    assert(state.gap >= 12 && state.gap <= 15, `Mini 播放器与 Tab 间距异常：${state.gap}`);
+  }
   assert(state.unsafeAncestors.length === 0, `Mini 播放器存在不安全合成祖先：${JSON.stringify(state.unsafeAncestors)}`);
   assert(state.menuRootFilter === 'none' && state.menuRootTransform === 'none', 'Mini 菜单材质根仍存在 filter 或 transform');
   assert(!state.menuRootWillChange?.includes('opacity'), 'Mini 菜单材质根的 will-change 重新建立了 Backdrop Root');

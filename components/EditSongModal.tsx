@@ -108,10 +108,12 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
   const handleSave = async () => {
     if (isSaving) return;
     setIsSaving(true);
+    let uploadedCoverPath: string | null = null;
     try {
       let coverUpdates: Partial<Song> = {};
       if (coverFile && hasSupabaseConfig && song.ownerId) {
         const result = await supabaseApi.uploadSongCover(song.id, song.ownerId, coverFile, song.coverPath);
+        uploadedCoverPath = result.path;
         coverUpdates = { coverPath: result.path, coverUrl: result.signedUrl };
       }
 
@@ -135,9 +137,17 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
       if (hasSupabaseConfig && artistCredits.length) {
         await supabaseApi.upsertSongArtists(song.id, artistCredits, artist);
       }
+      if (uploadedCoverPath && song.coverPath && song.coverPath !== uploadedCoverPath) {
+        supabaseApi.deleteCoverIfUnreferenced(song.coverPath).catch((error) => {
+          console.warn('旧封面清理失败，将由历史资源审计继续处理:', error);
+        });
+      }
       feedback.success('歌曲信息已更新');
       onClose();
     } catch (e) {
+      if (uploadedCoverPath && uploadedCoverPath !== song.coverPath) {
+        supabaseApi.deleteCoverIfUnreferenced(uploadedCoverPath).catch(() => {});
+      }
       const msg = typeof (e as any)?.message === 'string' ? (e as any).message : '';
       console.error(e);
       feedback.error(msg || '保存失败，请检查存储配置后重试');

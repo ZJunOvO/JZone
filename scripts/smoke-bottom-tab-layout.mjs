@@ -27,7 +27,7 @@ const loginIfNeeded = async (page) => {
     return Boolean(button && !button.disabled);
   });
   await page.getByTestId('auth-submit').click();
-  await page.getByText('现在就听').first().waitFor({ timeout: 30000 });
+  await page.getByTestId('bottom-nav-home').waitFor({ state: 'visible', timeout: 30000 });
 };
 
 const setLayoutMode = async (page, mode) => {
@@ -105,6 +105,7 @@ const readLayout = (page) => page.evaluate(() => {
   const miniArtist = miniPlayer?.querySelector('[data-player-shared-source="artist"]');
   const miniControls = [...(miniPlayer?.querySelectorAll('button') ?? [])];
   const miniMaterial = miniPlayer?.querySelector('[data-liquid-material="settings"]');
+  const miniBackstop = miniMaterial?.querySelector('.liquid-glass-mobile-backstop');
   const miniMaterialFilter = miniMaterial?.querySelector('filter');
   const buttons = [...document.querySelectorAll('button[data-testid^="bottom-nav-"]')];
   const lens = document.querySelector('[data-testid="bottom-nav-lens"]');
@@ -126,6 +127,8 @@ const readLayout = (page) => page.evaluate(() => {
     miniMaterial: rect(miniMaterial),
     miniMaterialType: miniMaterial?.getAttribute('data-liquid-material') ?? null,
     miniMaterialCoverage: miniMaterial?.getAttribute('data-liquid-coverage') ?? null,
+    miniBackstopDisplay: miniBackstop ? getComputedStyle(miniBackstop).display : null,
+    miniBackstopFilter: miniBackstop ? (getComputedStyle(miniBackstop).backdropFilter || getComputedStyle(miniBackstop).webkitBackdropFilter) : null,
     miniMaterialFilterWidth: Number.parseFloat(miniMaterialFilter?.getAttribute('width') ?? 'NaN'),
     miniMaterialFilterApplied: Boolean(miniMaterial && getComputedStyle(miniMaterial).getPropertyValue('--liquid-tab-filter').includes('url(')),
     miniLayoutMode: miniPlayer?.getAttribute('data-layout-mode') ?? null,
@@ -166,6 +169,7 @@ const assertLayout = (layout, mode) => {
   assert(layout.miniInlineBottom.includes('safe-area-inset-bottom'), `${mode} Mini 播放器未纳入底部安全区：${JSON.stringify(layout)}`);
   if (mini.height > 0) {
     assert(miniPlayer && Math.abs(miniPlayer.width - mini.width) <= 1, `${mode} Mini 内容未填满容器：${JSON.stringify(layout)}`);
+    assert(layout.miniBackstopDisplay === 'block' && layout.miniBackstopFilter?.includes('blur('), `${mode} Mini 缺少独立背景模糊层：${JSON.stringify(layout)}`);
     if (mode === 'compact') {
       assert(Math.abs(mini.width - 64) <= 1, `紧凑收起态 Mini 不是圆形入口：${JSON.stringify(layout)}`);
       assert(Math.abs(mini.left - nav.right - 10) <= 1, `紧凑收起态横向间距错误：${JSON.stringify(layout)}`);
@@ -215,9 +219,29 @@ const assertCompactExpandedLayout = (layout) => {
   assert(layout.miniMaterial && Math.abs(layout.miniMaterial.width - 240) <= 1, `横向 Mini 液态玻璃表面没有覆盖完整宽度：${JSON.stringify(layout)}`);
   assert(Math.abs(layout.miniMaterialFilterWidth - 240) <= 1, `横向 Mini 仍在复用圆形折射图：${JSON.stringify(layout)}`);
   assert(layout.miniMaterialFilterApplied, `横向 Mini 没有应用液态玻璃折射滤镜：${JSON.stringify(layout)}`);
+  assert(layout.miniBackstopDisplay === 'block' && layout.miniBackstopFilter?.includes('blur('), `横向 Mini 独立背景模糊层未生效：${JSON.stringify(layout)}`);
   assert(buttonRects[0]?.width >= 50, `首页圆钮点击区域过小：${JSON.stringify(layout)}`);
   assert(buttonRects.slice(1).every((rect) => rect.left >= nav.right - 1), `隐藏入口没有留在稳定轨道外：${JSON.stringify(layout)}`);
   assert(layout.overflow <= 0, `紧凑展开态横向溢出：${JSON.stringify(layout)}`);
+};
+
+const sampleMiniCenterTransition = (page, frameCount = 28) => page.evaluate(async (count) => {
+  const frames = [];
+  for (let index = 0; index < count; index += 1) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const player = document.querySelector('[data-testid="mini-player-layer"]');
+    const rect = player?.getBoundingClientRect();
+    if (rect) frames.push({ centerX: rect.left + rect.width / 2, width: rect.width });
+  }
+  return { viewportCenter: window.innerWidth / 2, frames };
+}, frameCount);
+
+const assertCenteredMiniTransition = ({ viewportCenter, frames }, label) => {
+  assert(frames.length > 8, `${label} 缺少足够动画帧：${JSON.stringify(frames)}`);
+  const minimumCenter = Math.min(...frames.map((frame) => frame.centerX));
+  const finalCenter = frames.at(-1)?.centerX ?? Number.NaN;
+  assert(minimumCenter >= viewportCenter - 1.5, `${label} Mini 动画越过中心后从左侧回弹：${JSON.stringify({ viewportCenter, minimumCenter, frames })}`);
+  assert(Math.abs(finalCenter - viewportCenter) <= 1.5, `${label} Mini 最终没有居中：${JSON.stringify({ viewportCenter, finalCenter, frames })}`);
 };
 
 const waitForCompactGeometry = (page, state) => page.waitForFunction((expectedState) => {
@@ -499,6 +523,9 @@ try {
       assertLayout(compactEndLayout, 'compact');
       results.push({ viewport: `${viewport.width}x${viewport.height}`, mode: 'compact-last-item', layout: compactEndLayout });
       await page.getByTestId('profile-settings-button').click();
+      const settingsMiniTransition = await sampleMiniCenterTransition(page);
+      assertCenteredMiniTransition(settingsMiniTransition, '打开设置');
+      results.push({ viewport: `${viewport.width}x${viewport.height}`, mode: 'settings-mini-transition', settingsMiniTransition });
       await page.getByRole('button', { name: /高级设置/ }).click();
       const compactOption = page.getByTestId('bottom-tab-layout-compact');
       await compactOption.waitFor({ state: 'visible', timeout: 5000 });
