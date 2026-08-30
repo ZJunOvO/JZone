@@ -107,6 +107,27 @@ const formatTime = (time: number) => {
   return `${min}:${sec < 10 ? '0' : ''}${sec}`;
 };
 
+const PLAYER_LANDSCAPE_QUERY = '(orientation: landscape) and (max-height: 600px)';
+
+const usePlayerMediaQuery = (query: string) => {
+  const [matches, setMatches] = React.useState(() => (
+    typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(query).matches
+  ));
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mediaQuery = window.matchMedia(query);
+    const update = () => setMatches(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener?.('change', update);
+    return () => mediaQuery.removeEventListener?.('change', update);
+  }, [query]);
+
+  return matches;
+};
+
 const QueueSongRow: React.FC<{
   song: Song;
   currentSongId: string;
@@ -224,6 +245,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const [areLyricsControlsVisible, setAreLyricsControlsVisible] = useState(true);
   const lyricsFullscreenLockedRef = React.useRef(false);
   const reduceMotion = useReducedMotion();
+  const isLandscapeLayout = usePlayerMediaQuery(PLAYER_LANDSCAPE_QUERY);
+  const isCompactLandscapeLayout = usePlayerMediaQuery('(orientation: landscape) and (max-height: 360px)');
   const openLyricsEditor = React.useCallback(() => {
     setLyricsEditorAudioUrl(getCurrentAudioSource() || song?.audioUrl || '');
     pausePlayback();
@@ -286,6 +309,11 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   currentLyricsCacheKeyRef.current = song ? getPlayerLyricsUiCacheKey(user?.id, song.id) : null;
 
   const revealLyricsControls = React.useCallback(() => {
+    if (isLandscapeLayout) {
+      lyricsFullscreenLockedRef.current = false;
+      setAreLyricsControlsVisible(true);
+      return;
+    }
     if (isLyricsViewOpen && lyricsFullscreenLockedRef.current) return;
     if (lyricsControlsTimerRef.current) window.clearTimeout(lyricsControlsTimerRef.current);
     lyricsControlsTimerRef.current = null;
@@ -296,14 +324,14 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       setAreLyricsControlsVisible(false);
       lyricsControlsTimerRef.current = null;
     }, 4_200);
-  }, [isChangingVolume, isLyricsViewOpen, isSeeking]);
+  }, [isChangingVolume, isLandscapeLayout, isLyricsViewOpen, isSeeking]);
 
   React.useEffect(() => {
     if (lyricsControlsTimerRef.current) window.clearTimeout(lyricsControlsTimerRef.current);
     lyricsControlsTimerRef.current = null;
     lyricsFullscreenLockedRef.current = false;
     setAreLyricsControlsVisible(true);
-    if (isLyricsViewOpen) {
+    if (isLyricsViewOpen && !isLandscapeLayout) {
       lyricsControlsTimerRef.current = window.setTimeout(() => {
         lyricsFullscreenLockedRef.current = true;
         setAreLyricsControlsVisible(false);
@@ -314,7 +342,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       if (lyricsControlsTimerRef.current) window.clearTimeout(lyricsControlsTimerRef.current);
       lyricsControlsTimerRef.current = null;
     };
-  }, [isLyricsViewOpen, song?.id]);
+  }, [isLandscapeLayout, isLyricsViewOpen, song?.id]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -483,19 +511,21 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const progressPct = Math.max(0, Math.min(100, ((currentTime - trimStart) / playableDuration) * 100));
   const remainingTime = Math.max(0, trimEnd - currentTime);
   const volumePct = playerState.volume * 100;
+  const usePortraitLyricsLayout = isLyricsViewOpen && !isLandscapeLayout;
+  const showLyricsPanel = isLyricsViewOpen || isLandscapeLayout;
 
   // Only show songs that are in the queue
   const queueSongs = songs.filter(s => playerState.queue.includes(s.id))
     .sort((a, b) => playerState.queue.indexOf(a.id) - playerState.queue.indexOf(b.id));
   const isOwner = Boolean(user?.id && song.ownerId === user.id);
   const lyricsContent = lyricsLoadState === 'loading' ? (
-    <div className="flex h-full min-h-[240px] flex-col items-center justify-center px-6 text-center" data-testid="player-lyrics-loading" role="status" aria-live="polite">
+    <div className={`flex h-full flex-col items-center justify-center px-6 text-center ${isLandscapeLayout ? 'min-h-0' : 'min-h-[240px]'}`} data-testid="player-lyrics-loading" role="status" aria-live="polite">
       <Icons.RotateCcw size={24} className="animate-spin text-white/55" aria-hidden="true" />
       <p className="mt-4 text-sm font-bold text-white/75">正在加载歌词…</p>
       <p className="mt-2 text-xs leading-5 text-white/40">正在读取当前歌曲的歌词。</p>
     </div>
   ) : lyricsLoadState === 'error' ? (
-    <div className="flex h-full min-h-[240px] flex-col items-center justify-center px-6 text-center" data-testid="player-lyrics-error" role="alert">
+    <div className={`flex h-full flex-col items-center justify-center px-6 text-center ${isLandscapeLayout ? 'min-h-0' : 'min-h-[240px]'}`} data-testid="player-lyrics-error" role="alert">
       <p className="text-base font-bold text-red-200">歌词加载失败</p>
       <p className="mt-2 max-w-xs text-sm leading-6 text-white/55">{lyricsError}</p>
       <button
@@ -509,7 +539,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       </button>
     </div>
   ) : lyricsLoadState === 'empty' ? (
-    <div className="flex h-full min-h-[240px] flex-col items-center justify-center px-4 text-center" data-testid="player-lyrics-empty">
+    <div className={`flex h-full flex-col items-center justify-center px-4 text-center ${isLandscapeLayout ? 'min-h-0' : 'min-h-[240px]'}`} data-testid="player-lyrics-empty">
       <LyricsEmptyState className="min-h-0 flex-1" />
       {isOwner && (
         <button
@@ -533,7 +563,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       onLineActivate={handleLyricLineActivate}
       reducedMotion={Boolean(reduceMotion)}
       elasticTopPull
-      className="h-full min-h-0"
+      className={`h-full ${isLandscapeLayout ? '!min-h-0' : 'min-h-0'}`}
       data-testid="player-lyrics-renderer"
     />
   ) : (
@@ -557,7 +587,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
 
   return (
     <motion.div
-      className="fixed inset-0 z-[200] flex flex-col h-screen justify-between py-8 overflow-hidden"
+      className={`fixed inset-0 z-[200] flex h-screen flex-col justify-between overflow-hidden ${isLandscapeLayout ? 'py-3' : 'py-8'}`}
       style={{ clipPath, willChange: 'clip-path', transform: 'translateZ(0)', backfaceVisibility: 'hidden', contain: 'paint' }}
       data-testid="player-transition-shell"
       data-player-transition-phase={transitionPhase}
@@ -591,7 +621,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       {/* Top Handle indicator */}
       <motion.button
         type="button"
-        className="flex justify-center pt-2 pb-2 cursor-pointer relative z-10"
+        className={`flex cursor-pointer justify-center relative z-10 ${isLandscapeLayout ? 'absolute left-1/2 top-[calc(env(safe-area-inset-top)+4px)] ml-[-22px] h-11 w-11 items-center' : 'pt-2 pb-2'}`}
         onClick={onClose}
         aria-label="收起播放页"
         data-testid="player-view-close"
@@ -603,7 +633,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       </motion.button>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col px-8 justify-between mt-2 relative z-10">
+      <div
+        className={`relative z-10 mx-auto flex min-h-0 w-full flex-1 flex-col justify-between ${isLandscapeLayout ? 'mt-0 max-w-[1180px] px-[max(28px,env(safe-area-inset-left))] pr-[max(28px,env(safe-area-inset-right))]' : 'mt-2 px-8'}`}
+        data-player-layout={isLandscapeLayout ? 'landscape' : 'portrait'}
+      >
         {transitionPhase === 'opening' && !reduceMotion && (
           <motion.div
             aria-hidden
@@ -623,8 +656,16 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         {/* Cover / lyrics shared layout */}
         <motion.section
           layout={!reduceMotion}
-          className={`relative grid min-h-0 ${isLyricsViewOpen ? 'flex-1 gap-x-4 gap-y-3' : 'flex-grow-[2] gap-y-3'}`}
-          style={isLyricsViewOpen ? {
+          className={`relative grid min-h-0 ${isLandscapeLayout ? 'flex-1 gap-y-2' : usePortraitLyricsLayout ? 'flex-1 gap-x-4 gap-y-3' : 'flex-grow-[2] gap-y-3'}`}
+          style={isCompactLandscapeLayout ? {
+            gridTemplateColumns: '80px minmax(110px, 0.72fr) minmax(240px, 1.28fr)',
+            gridTemplateRows: 'minmax(0, 1fr) 148px',
+            columnGap: '16px',
+          } : isLandscapeLayout ? {
+            gridTemplateColumns: 'minmax(180px, 0.92fr) minmax(240px, 1.08fr)',
+            gridTemplateRows: 'minmax(0, 1fr) auto 148px',
+            columnGap: 'clamp(28px, 5vw, 72px)',
+          } : usePortraitLyricsLayout ? {
             gridTemplateColumns: '76px minmax(0, 1fr)',
             gridTemplateRows: '76px minmax(0, 1fr)',
           } : {
@@ -638,7 +679,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         >
           <motion.div
             layout={!reduceMotion}
-            className={`relative self-center justify-self-center ${isLyricsViewOpen ? 'h-[76px] w-[76px]' : 'aspect-square w-[96%] max-w-[400px]'}`}
+            className={`relative self-center justify-self-center ${isCompactLandscapeLayout ? 'col-start-1 row-start-1 h-[min(25dvh,80px)] max-h-full aspect-square' : isLandscapeLayout ? 'col-start-1 row-start-1 h-[min(46dvh,300px)] max-h-full aspect-square' : usePortraitLyricsLayout ? 'h-[76px] w-[76px]' : 'aspect-square w-[96%] max-w-[400px]'}`}
             transition={{ layout: reduceMotion ? { duration: 0 } : { duration: 0.46, ease: [0.22, 0.74, 0.22, 1] } }}
             data-testid="player-cover-layout"
           >
@@ -650,15 +691,17 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             >
               <button
                 type="button"
-                onClick={() => setIsLyricsViewOpen((value) => !value)}
-                className="group relative block h-full w-full cursor-pointer rounded-[14px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80 focus-visible:ring-offset-4 focus-visible:ring-offset-black/40"
+                onClick={() => {
+                  if (!isLandscapeLayout) setIsLyricsViewOpen((value) => !value);
+                }}
+                className={`group relative block h-full w-full rounded-[14px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80 focus-visible:ring-offset-4 focus-visible:ring-offset-black/40 ${isLandscapeLayout ? 'cursor-default' : 'cursor-pointer'}`}
                 aria-pressed={isLyricsViewOpen}
-                aria-label={isLyricsViewOpen ? '查看封面' : '查看歌词'}
+                aria-label={isLandscapeLayout ? '当前歌曲封面' : isLyricsViewOpen ? '查看封面' : '查看歌词'}
                 data-testid="player-cover-button"
               >
                 <div
                   className={`pointer-events-none absolute inset-[7%] translate-y-[8%] rounded-[24px] bg-black/65 transition-[transform,opacity,filter] duration-500 ease-out ${
-                    isLyricsViewOpen
+                    usePortraitLyricsLayout
                       ? 'scale-[0.82] opacity-25 blur-[16px]'
                       : playerState.isPlaying
                         ? 'scale-100 opacity-[0.55] blur-[32px]'
@@ -669,7 +712,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                 />
                 <PlayerArtworkTransition artworkKey={song.id} direction={artworkDirection}>
                   <div
-                    className={`relative h-full w-full transition-[transform,opacity] duration-500 ease-out ${isLyricsViewOpen || playerState.isPlaying ? 'scale-100 opacity-100' : 'scale-[0.88] opacity-80'}`}
+                    className={`relative h-full w-full transition-[transform,opacity] duration-500 ease-out ${usePortraitLyricsLayout || playerState.isPlaying ? 'scale-100 opacity-100' : 'scale-[0.88] opacity-80'}`}
                     data-testid="player-cover-visual"
                   >
                     <ResilientCoverImage
@@ -689,35 +732,35 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           {/* Song Info & Action Buttons */}
           <motion.div
             layout={!reduceMotion}
-            className="flex min-w-0 items-center justify-between"
+            className={`flex min-w-0 ${isCompactLandscapeLayout ? 'col-start-2 row-start-1 flex-col items-start justify-center gap-1' : `items-center justify-between ${isLandscapeLayout ? 'col-start-1 row-start-2' : ''}`}`}
             transition={{ layout: reduceMotion ? { duration: 0 } : { duration: 0.42, ease: [0.22, 0.74, 0.22, 1] } }}
             data-testid="player-song-info"
           >
           <button
             type="button"
-            className={`flex-1 min-w-0 pr-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70 ${isLyricsViewOpen ? 'cursor-pointer rounded-xl' : 'cursor-default'}`}
+            className={`flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70 ${isCompactLandscapeLayout ? 'w-full pr-0' : 'pr-4'} ${usePortraitLyricsLayout ? 'cursor-pointer rounded-xl' : 'cursor-default'}`}
             onClick={() => {
-              if (isLyricsViewOpen) setIsLyricsViewOpen(false);
+              if (usePortraitLyricsLayout) setIsLyricsViewOpen(false);
             }}
-            aria-label={isLyricsViewOpen ? '返回封面' : undefined}
+            aria-label={usePortraitLyricsLayout ? '返回封面' : undefined}
             data-testid="player-song-info-button"
           >
             <PlayerSharedElement sourceRect={sharedOrigin.title} phase={transitionPhase} name="title">
-              <h2 className={`${isLyricsViewOpen ? 'text-lg' : 'text-2xl'} truncate font-bold tracking-tight text-white transition-[font-size] duration-300`}>{song.title}</h2>
+              <h2 className={`${isCompactLandscapeLayout ? 'text-base' : usePortraitLyricsLayout || isLandscapeLayout ? 'text-lg' : 'text-2xl'} truncate font-bold tracking-tight text-white transition-[font-size] duration-300`}>{song.title}</h2>
             </PlayerSharedElement>
             <PlayerSharedElement sourceRect={sharedOrigin.artist} phase={transitionPhase} name="artist">
-              <p className={`${isLyricsViewOpen ? 'text-sm' : 'text-lg'} truncate font-medium text-white/60 transition-[font-size] duration-300`}>{song.artist}</p>
+              <p className={`${isCompactLandscapeLayout ? 'text-xs' : usePortraitLyricsLayout || isLandscapeLayout ? 'text-sm' : 'text-lg'} truncate font-medium text-white/60 transition-[font-size] duration-300`}>{song.artist}</p>
             </PlayerSharedElement>
           </button>
           <motion.div
-            className="flex items-center gap-2"
+            className={`flex items-center ${isCompactLandscapeLayout ? 'gap-1' : 'gap-2'}`}
             initial={secondaryInitial}
             animate={secondaryAnimate}
             transition={secondaryTransition(1)}
           >
             <button
               onClick={() => toggleFavorite(song.id)}
-              className={`w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition ${isFav ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-white/90'}`}
+              className={`${isCompactLandscapeLayout ? 'h-9 w-9' : 'w-10 h-10'} rounded-full flex items-center justify-center active:scale-90 transition ${isFav ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-white/90'}`}
               aria-label={isFav ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
             >
               <Icons.Heart size={18} strokeWidth={1.5} fill={isFav ? 'currentColor' : 'none'} />
@@ -729,7 +772,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                   setContextMenuOpenNonce((value) => value + 1);
                   setContextMenuOpen(true);
                 }}
-                className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/90 active:scale-90 transition"
+                className={`${isCompactLandscapeLayout ? 'h-9 w-9' : 'w-10 h-10'} rounded-full bg-white/10 flex items-center justify-center text-white/90 active:scale-90 transition`}
                 aria-label={`打开 ${song.title} 的更多操作`}
                 data-testid="player-more-menu"
             >
@@ -738,9 +781,9 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           </motion.div>
           </motion.div>
 
-          {isLyricsViewOpen && (
+          {showLyricsPanel && (
             <motion.div
-              className="col-span-2 min-h-0 overflow-hidden"
+              className={isCompactLandscapeLayout ? 'col-start-3 row-start-1 row-span-2 min-h-0 overflow-hidden' : isLandscapeLayout ? 'col-start-2 row-start-1 row-span-3 min-h-0 overflow-hidden' : 'col-span-2 min-h-0 overflow-hidden'}
               initial={reduceMotion ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={reduceMotion ? { duration: 0.1 } : { duration: 0.3, delay: 0.08, ease: 'easeOut' }}
@@ -752,15 +795,19 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         </motion.section>
 
         <div
-          className={`overflow-hidden transition-[max-height,opacity,transform] ease-[cubic-bezier(0.22,0.74,0.22,1)] ${reduceMotion ? 'duration-100' : 'duration-500'} ${isLyricsViewOpen && !areLyricsControlsVisible ? 'pointer-events-none max-h-0 translate-y-3 opacity-0' : 'max-h-[320px] translate-y-0 opacity-100'}`}
-          aria-hidden={isLyricsViewOpen && !areLyricsControlsVisible ? 'true' : undefined}
+          className={`overflow-hidden transition-[max-height,opacity,transform] ease-[cubic-bezier(0.22,0.74,0.22,1)] ${reduceMotion ? 'duration-100' : 'duration-500'} ${isLandscapeLayout ? 'absolute bottom-0 max-h-[148px]' : usePortraitLyricsLayout && !areLyricsControlsVisible ? 'pointer-events-none max-h-0 translate-y-3 opacity-0' : 'max-h-[320px]'} ${usePortraitLyricsLayout && !areLyricsControlsVisible ? 'translate-y-3 opacity-0' : 'translate-y-0 opacity-100'}`}
+          style={isLandscapeLayout ? {
+            left: 'max(28px, env(safe-area-inset-left))',
+            width: 'calc((100% - max(28px, env(safe-area-inset-left)) - max(28px, env(safe-area-inset-right)) - clamp(28px, 5vw, 72px)) * 0.46)',
+          } : undefined}
+          aria-hidden={usePortraitLyricsLayout && !areLyricsControlsVisible ? 'true' : undefined}
           data-testid="player-lower-controls"
           data-controls-visible={areLyricsControlsVisible ? 'true' : 'false'}
           data-controls-locked={lyricsFullscreenLockedRef.current ? 'true' : 'false'}
         >
           {/* 5. Progress Bar - Apple style with Thickening Animation */}
           <motion.div
-            className={isLyricsViewOpen ? 'mt-3' : 'mt-8'}
+            className={isLandscapeLayout ? 'mt-2' : isLyricsViewOpen ? 'mt-3' : 'mt-8'}
             initial={secondaryInitial}
             animate={secondaryAnimate}
             transition={secondaryTransition(2)}
@@ -800,28 +847,28 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         </motion.div>
 
         {/* Main Playback Controls */}
-        <motion.div className="flex items-center justify-around px-4 mt-2" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition(3)}>
-          <button onClick={prevSong} data-testid="player-previous-song" className="w-11 h-11 flex items-center justify-center text-white opacity-80 hover:opacity-100 transition active:scale-90" aria-label="上一首">
-            <Icons.SkipBack size={26} fill="currentColor" />
+        <motion.div className={`flex items-center justify-around px-4 ${isLandscapeLayout ? 'mt-0' : 'mt-2'}`} initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition(3)}>
+          <button onClick={prevSong} data-testid="player-previous-song" className={`${isLandscapeLayout ? 'h-9 w-9' : 'w-11 h-11'} flex items-center justify-center text-white opacity-80 hover:opacity-100 transition active:scale-90`} aria-label="上一首">
+            <Icons.SkipBack size={isLandscapeLayout ? 22 : 26} fill="currentColor" />
           </button>
           <button 
             onClick={togglePlay} 
             data-testid="player-toggle-play"
-            className="w-16 h-16 flex items-center justify-center text-white active:scale-95 transition"
+            className={`${isLandscapeLayout ? 'h-12 w-12' : 'w-16 h-16'} flex items-center justify-center text-white active:scale-95 transition`}
             aria-label={playerState.isPlaying ? '暂停' : '播放'}
           >
             {playerState.isPlaying ? 
-              <Icons.Pause size={56} fill="currentColor" /> : 
-              <Icons.Play size={56} fill="currentColor" className="ml-1.5" />
+              <Icons.Pause size={isLandscapeLayout ? 42 : 56} fill="currentColor" /> :
+              <Icons.Play size={isLandscapeLayout ? 42 : 56} fill="currentColor" className="ml-1.5" />
             }
           </button>
-          <button onClick={nextSong} data-testid="player-next-song" className="w-11 h-11 flex items-center justify-center text-white opacity-80 hover:opacity-100 transition active:scale-90" aria-label="下一首">
-            <Icons.SkipForward size={26} fill="currentColor" />
+          <button onClick={nextSong} data-testid="player-next-song" className={`${isLandscapeLayout ? 'h-9 w-9' : 'w-11 h-11'} flex items-center justify-center text-white opacity-80 hover:opacity-100 transition active:scale-90`} aria-label="下一首">
+            <Icons.SkipForward size={isLandscapeLayout ? 22 : 26} fill="currentColor" />
           </button>
         </motion.div>
 
         {/* 7. Volume Control Slider - Functional with Thickening Animation */}
-        <motion.div className="flex items-center gap-4 px-2 my-6 group" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition(4)}>
+        <motion.div className={`flex items-center gap-4 px-2 group ${isLandscapeLayout ? 'my-1' : 'my-6'}`} initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition(4)}>
           <div className="w-4 flex justify-center">
             {playerState.volume === 0 ? (
               <Icons.VolumeX size={14} strokeWidth={1.5} className="text-white/40" />
@@ -861,11 +908,11 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         </motion.div>
 
         {/* Footer Function Bar */}
-        <motion.div className="flex justify-center pb-[calc(env(safe-area-inset-bottom)+12px)]" initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition(5)}>
+        <motion.div className={`flex justify-center ${isLandscapeLayout ? 'pb-[env(safe-area-inset-bottom)]' : 'pb-[calc(env(safe-area-inset-bottom)+12px)]'}`} initial={secondaryInitial} animate={secondaryAnimate} transition={secondaryTransition(5)}>
           <div className="flex items-center justify-between w-full max-w-[280px]">
             <button 
               onClick={() => setIsCommentsOpen(true)}
-              className={`w-11 h-11 flex items-center justify-center transition active:opacity-60 ${isCommentsOpen ? 'text-white' : 'text-white/40 hover:text-white'}`}
+              className={`${isLandscapeLayout ? 'h-9 w-9' : 'w-11 h-11'} flex items-center justify-center transition active:opacity-60 ${isCommentsOpen ? 'text-white' : 'text-white/40 hover:text-white'}`}
               aria-label="打开评论"
               data-testid="player-open-comments"
             >
@@ -876,14 +923,14 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                 setIsMemoryOpen(true);
                 setMemoryOpenNonce((n) => n + 1);
               }}
-              className={`w-11 h-11 flex items-center justify-center transition active:opacity-60 ${isMemoryOpen ? 'text-white' : 'text-white/40 hover:text-white'}`}
+              className={`${isLandscapeLayout ? 'h-9 w-9' : 'w-11 h-11'} flex items-center justify-center transition active:opacity-60 ${isMemoryOpen ? 'text-white' : 'text-white/40 hover:text-white'}`}
               aria-label="打开记忆卡片"
             >
               <Icons.Sparkles size={20} strokeWidth={1.5} />
             </button>
             <button 
               onClick={openQueue}
-              className={`w-11 h-11 flex items-center justify-center transition active:opacity-60 ${isQueueOpen ? 'text-white' : 'text-white/40 hover:text-white'}`}
+              className={`${isLandscapeLayout ? 'h-9 w-9' : 'w-11 h-11'} flex items-center justify-center transition active:opacity-60 ${isQueueOpen ? 'text-white' : 'text-white/40 hover:text-white'}`}
               aria-label="打开待播放"
               data-testid="player-open-queue"
             >
