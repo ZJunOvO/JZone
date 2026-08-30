@@ -51,13 +51,10 @@ const drawCover = (
   context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
 };
 
-const drawWrappedText = (
+const getWrappedTextLines = (
   context: CanvasRenderingContext2D,
   text: string,
-  x: number,
-  y: number,
   maxWidth: number,
-  lineHeight: number,
   maxLines: number,
 ) => {
   const characters = Array.from(text.trim());
@@ -80,6 +77,19 @@ const drawWrappedText = (
     while (last && context.measureText(`${last}...`).width > maxWidth) last = last.slice(0, -1);
     lines[lines.length - 1] = `${last}...`;
   }
+  return lines;
+};
+
+const drawWrappedText = (
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxLines: number,
+) => {
+  const lines = getWrappedTextLines(context, text, maxWidth, maxLines);
   lines.forEach((value, index) => context.fillText(value, x, y + index * lineHeight));
   return y + lines.length * lineHeight;
 };
@@ -147,14 +157,31 @@ export const generateCommentShareImage = async (comment: Comment, song: Song): P
   let commentTextY = 580;
   let commentMaxLines = 7;
   if (comment.quotedLyric) {
+    const quoteX = 130;
+    const quoteY = 410;
+    const quotePaddingX = 28;
+    const quotePaddingY = 20;
+    const quoteLineHeight = 36;
+    const quoteMaxTextWidth = 764;
+    const quoteText = `“${comment.quotedLyric}”`;
+    context.font = '700 27px "HarmonyOS Sans SC", system-ui, sans-serif';
+    const quoteLines = getWrappedTextLines(context, quoteText, quoteMaxTextWidth, 2);
+    const quoteTextWidth = Math.max(0, ...quoteLines.map((line) => context.measureText(line).width));
+    const quoteWidth = Math.min(820, Math.max(132, Math.ceil(quoteTextWidth + quotePaddingX * 2)));
+    const quoteHeight = quotePaddingY * 2 + quoteLines.length * quoteLineHeight;
+
     context.fillStyle = 'rgba(255,255,255,0.08)';
-    roundedRect(context, 130, 410, 820, 116, 28);
+    roundedRect(context, quoteX, quoteY, quoteWidth, quoteHeight, 24);
     context.fill();
     context.fillStyle = 'rgba(255,255,255,0.58)';
-    context.font = '700 27px "HarmonyOS Sans SC", system-ui, sans-serif';
-    drawWrappedText(context, `“${comment.quotedLyric}”`, 168, 456, 744, 36, 2);
-    quoteMarkY = 590;
-    commentTextY = 660;
+    context.save();
+    context.textBaseline = 'top';
+    quoteLines.forEach((line, index) => {
+      context.fillText(line, quoteX + quotePaddingX, quoteY + quotePaddingY + index * quoteLineHeight);
+    });
+    context.restore();
+    quoteMarkY = quoteY + quoteHeight + 64;
+    commentTextY = quoteMarkY + 70;
     commentMaxLines = 5;
   }
 
