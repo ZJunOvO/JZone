@@ -205,6 +205,20 @@ export const createSongsApi = () => ({
   async deleteSong(songId: string, userId: string) {
     const client = ensureSupabase();
 
+    let videoFiles: string[] = [];
+    const { data: videoRows, error: videoFetchError } = await client
+      .from('song_videos')
+      .select('video_path, poster_path')
+      .eq('song_id', songId);
+    if (!videoFetchError) {
+      videoFiles = (videoRows ?? []).flatMap((row: any) => [
+        row.video_path,
+        ...(row.poster_path ? [row.poster_path] : []),
+      ]).filter(Boolean);
+    } else if (!String(videoFetchError.message ?? '').match(/song_videos|relation .* does not exist/i)) {
+      throw videoFetchError;
+    }
+
     let { data: song, error: fetchError } = await client
       .from('songs')
       .select('audio_path, stream_audio_path, cover_path, owner_id')
@@ -232,6 +246,7 @@ export const createSongsApi = () => ({
     const filesToDelete = [song.audio_path];
     if ((song as any).stream_audio_path) filesToDelete.push((song as any).stream_audio_path);
     if (song.cover_path && !isSharedCoverPath(song.cover_path)) filesToDelete.push(song.cover_path);
+    filesToDelete.push(...videoFiles);
 
     if (!cosClient.isEnabled) throw new Error('COS 未配置');
     await cosClient.deleteFiles(filesToDelete).catch(() => {});

@@ -1004,3 +1004,18 @@ body {
     animation-duration: 140ms;
   }
 }
+@keyframes jzone-memory-mv-flow {
+  0% { background-position: 0% 50%; filter: saturate(1.05) brightness(0.95); }
+  50% { background-position: 100% 50%; filter: saturate(1.35) brightness(1.15); }
+  100% { background-position: 0% 50%; filter: saturate(1.05) brightness(0.95); }
+}
+
+.jzone-memory-mv-segment {
+  background: linear-gradient(90deg, #ff5f6d, #ffb86c, #66d9ff, #c98cff, #ff5f6d);
+  background-size: 260% 100%;
+  animation: jzone-memory-mv-flow 4.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jzone-memory-mv-segment { animation: none; }
+}

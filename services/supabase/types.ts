@@ -4,6 +4,7 @@ export type CollectionVisibility = 'private' | 'public';
 export type SongArtistRole = 'primary' | 'featured' | 'producer' | 'other';
 export type SongLyricsFormat = 'plain' | 'lrc' | 'ttml';
 export type SongLyricsSource = 'upload' | 'embedded' | 'editor';
+export type SongVideoKind = 'full' | 'memory';
 
 export type JsonValue =
   | string
@@ -36,6 +37,37 @@ export interface SongLyricsInput {
   offsetMs?: number;
   checksum?: string;
   version?: number;
+}
+
+export interface SongVideoRow {
+  id: string;
+  song_id: string;
+  owner_id: string;
+  kind: SongVideoKind;
+  video_path: string;
+  poster_path: string | null;
+  file_name: string;
+  file_size: number;
+  duration_ms: number;
+  video_start_ms: number;
+  video_end_ms: number | null;
+  song_start_ms: number | null;
+  song_end_ms: number | null;
+  audio_mix: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SongVideoInput {
+  kind: SongVideoKind;
+  videoFile: File;
+  posterFile?: File | null;
+  durationMs: number;
+  videoStartMs?: number;
+  videoEndMs?: number | null;
+  songStartMs?: number | null;
+  songEndMs?: number | null;
+  audioMix?: number;
 }
 
 export type SongLyricsUpsertInput = SongLyricsInput;

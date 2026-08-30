@@ -28,6 +28,7 @@
     "smoke:cos-history-live-snapshot": "node scripts/smoke-cos-history-live-snapshot.mjs",
     "smoke:lyrics-renderer": "node scripts/smoke-lyrics-renderer.mjs",
     "smoke:lyrics-live-sync": "node scripts/smoke-lyrics-live-sync.mjs",
+    "smoke:song-videos": "node scripts/smoke-song-videos.mjs",
     "audit:cos-history-live": "node scripts/cos-history-live-snapshot.mjs",
     "preview:cos-history-migration": "node scripts/cos-history-migration-preview.mjs"
   },

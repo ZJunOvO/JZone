@@ -58,6 +58,7 @@ interface AppContextType {
   cyclePlaybackMode: () => void;
   seek: (time: number) => void;
   setVolume: (volume: number) => void;
+  setPlaybackVolumeMultiplier: (multiplier: number) => void;
   addSong: (song: Song) => void;
   patchSongs: (songIds: string[], updates: Partial<Song>) => void;
   addComment: (comment: Comment) => Promise<void>;
@@ -422,6 +423,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [status, user?.id]);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackVolumeMultiplierRef = useRef(1);
   const playPromiseRef = useRef<Promise<void> | null>(null);
   const playSongRef = useRef<(songId: string) => void>(() => {});
   const playSeqRef = useRef(0);
@@ -1043,8 +1045,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setVolume = useCallback((v: number) => {
     if (audioRef.current) {
-      audioRef.current.volume = v;
+      audioRef.current.volume = Math.max(0, Math.min(1, v * playbackVolumeMultiplierRef.current));
       setPlayerState(prev => ({ ...prev, volume: v }));
+    }
+  }, []);
+
+  const setPlaybackVolumeMultiplier = useCallback((multiplier: number) => {
+    const normalized = Math.max(0, Math.min(1, multiplier));
+    playbackVolumeMultiplierRef.current = normalized;
+    if (audioRef.current) {
+      audioRef.current.volume = Math.max(0, Math.min(1, stateRef.current.playerState.volume * normalized));
     }
   }, []);
 
@@ -1241,6 +1251,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cyclePlaybackMode,
       seek, 
       setVolume,
+      setPlaybackVolumeMultiplier,
       addSong,
       patchSongs,
       addComment,

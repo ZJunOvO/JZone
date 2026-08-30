@@ -16,6 +16,7 @@ import { ResilientCoverImage } from './media/ResilientCoverImage';
 const SongLyricsEditorDialog = React.lazy(() => import('./lyrics/SongLyricsEditorDialog').then(({ SongLyricsEditorDialog: Component }) => ({
   default: Component,
 })));
+const SongVideoManagerDialog = React.lazy(() => import('./video/SongVideoManagerDialog').then(({ SongVideoManagerDialog: Component }) => ({ default: Component })));
 
 interface EditSongModalProps {
   isOpen: boolean;
@@ -40,6 +41,7 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isLyricsEditorOpen, setIsLyricsEditorOpen] = useState(false);
+  const [isVideoManagerOpen, setIsVideoManagerOpen] = useState(false);
   const [lyricsEditorAudioUrl, setLyricsEditorAudioUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,6 +57,7 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
       setCoverUrl(song.coverUrl);
       setCoverFile(null);
       setIsLyricsEditorOpen(false);
+      setIsVideoManagerOpen(false);
     }
   }, [isOpen, song]);
 
@@ -271,6 +274,18 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
                   <Icons.ChevronRight size={17} className="shrink-0 text-white/30" aria-hidden="true" />
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => setIsVideoManagerOpen(true)}
+                  disabled={isSaving || !song.ownerId}
+                  className="flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.035] px-4 text-left transition-colors hover:border-white/15 hover:bg-white/[0.06] disabled:opacity-40"
+                  data-testid="edit-song-video"
+                >
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/[0.07] text-white/72"><Icons.Video size={18} /></span>
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-white">影像与 MV</span><span className="mt-0.5 block truncate text-xs text-white/40">完整作品或歌曲中的记忆片段</span></span>
+                  <Icons.ChevronRight size={17} className="shrink-0 text-white/30" />
+                </button>
+
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-3 px-1">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">录制日期</label>
@@ -325,6 +340,9 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
             onClose={() => setIsLyricsEditorOpen(false)}
           />
         </React.Suspense>
+      ) : null}
+      {isVideoManagerOpen ? (
+        <React.Suspense fallback={null}><SongVideoManagerDialog song={song} onClose={() => setIsVideoManagerOpen(false)} /></React.Suspense>
       ) : null}
     </>
   );

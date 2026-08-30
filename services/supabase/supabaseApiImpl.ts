@@ -9,6 +9,7 @@ import { clearListeningRecapCache } from './listeningRecapCache';
 import { createSongLyricsApi } from './lyrics';
 import { createProfilesApi } from './profiles';
 import { createSongArtistsApi } from './songArtists';
+import { createSongVideosApi } from './songVideos';
 import { createSongsApi } from './songs';
 import {
   clearSignedUrlCache,
@@ -24,6 +25,7 @@ const listeningRecapApi = createListeningRecapApi();
 const songLyricsApi = createSongLyricsApi();
 const profilesApi = createProfilesApi();
 const songArtistsApi = createSongArtistsApi();
+const songVideosApi = createSongVideosApi();
 
 export const supabaseApi = {
   isEnabled: isSupabaseEnabled,
@@ -34,6 +36,7 @@ export const supabaseApi = {
   ...songLyricsApi,
   ...profilesApi,
   ...songArtistsApi,
+  ...songVideosApi,
 
   async createSignedAudioUrl(path: string, expiresInSeconds = 8 * 24 * 60 * 60) {
     return createSignedAudioUrl(path, expiresInSeconds);

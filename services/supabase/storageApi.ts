@@ -195,6 +195,26 @@ export const createSignedAvatarUrl = async (path: string, expiresInSeconds = IMA
   );
 };
 
+export const createSignedVideoUrl = async (path: string, expiresInSeconds = AUDIO_SIGNED_URL_TTL_SECONDS) => {
+  const normalizedPath = normalizeStoragePath(path, 'videos');
+  if (/^https?:\/\//i.test(normalizedPath)) return normalizedPath;
+  return getCosSignedUrlCached(
+    normalizedPath,
+    Math.max(expiresInSeconds, AUDIO_SIGNED_URL_TTL_SECONDS),
+    COS_AUDIO_BROWSER_CACHE_CONTROL,
+  );
+};
+
+export const createSignedVideoPosterUrl = async (path: string, expiresInSeconds = IMAGE_SIGNED_URL_TTL_SECONDS) => {
+  const normalizedPath = normalizeStoragePath(path, 'video-posters');
+  if (/^https?:\/\//i.test(normalizedPath)) return normalizedPath;
+  return getCosSignedUrlCached(
+    normalizedPath,
+    Math.max(expiresInSeconds, IMAGE_SIGNED_URL_TTL_SECONDS),
+    COS_IMAGE_BROWSER_CACHE_CONTROL,
+  );
+};
+
 export const clearSignedUrlCache = () => {
   signedUrlCacheGeneration += 1;
   cosSignedUrlCache.clear();
