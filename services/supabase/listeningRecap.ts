@@ -190,21 +190,16 @@ const resolveCoverUrl = async (coverUrl: string): Promise<string | null> => {
   }
 };
 
-const resolveSongCover = async (song: ListeningRecapSong, coverUrl?: string | null): Promise<ListeningRecapSong> => {
-  if (!coverUrl) return song;
-  return { ...song, coverUrl: await resolveCoverUrl(coverUrl) };
-};
-
 const resolveResponseCovers = async (response: ListeningRecapResponse): Promise<ListeningRecapResponse> => {
   const coverPromises = new Map<string, Promise<string | null>>();
   const resolve = (song: ListeningRecapSong) => {
     const key = song.coverUrl ?? '';
     if (!key) return Promise.resolve(song);
     const pending = coverPromises.get(key);
-    if (pending) return pending.then((coverUrl) => ({ ...song, coverUrl }));
+    if (pending) return pending.then((coverUrl) => ({ ...song, coverUrl, coverPath: key }));
     const promise = resolveCoverUrl(key);
     coverPromises.set(key, promise);
-    return promise.then((coverUrl) => ({ ...song, coverUrl }));
+    return promise.then((coverUrl) => ({ ...song, coverUrl, coverPath: key }));
   };
 
   const opening = response.opening

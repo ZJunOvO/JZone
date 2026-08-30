@@ -10,6 +10,7 @@ import type { Song } from '../../types';
 import type { SongLyricsNormalizedContent, SongLyricsRow } from '../../services/supabase/types';
 import { getStoredLyricsModel } from '../../utils/lyrics';
 import { useKeyboardViewport } from '../../hooks/useKeyboardViewport';
+import { ResilientCoverImage } from '../media/ResilientCoverImage';
 
 export interface LyricsWorkbenchDialogProps {
   isOpen: boolean;
@@ -218,7 +219,13 @@ export const LyricsWorkbenchDialog: React.FC<LyricsWorkbenchDialogProps> = ({
                 </select>
                 {selectedSong ? (
                   <div className="mt-3 flex min-w-0 items-center gap-3">
-                    <img src={selectedSong.coverUrl} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover bg-zinc-800" />
+                    <ResilientCoverImage
+                      src={selectedSong.coverUrl}
+                      coverPath={selectedSong.coverPath}
+                      fallbackSeed={selectedSong.id}
+                      alt=""
+                      className="h-11 w-11 shrink-0 rounded-lg object-cover bg-zinc-800"
+                    />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-white">{selectedSong.title}</p>
                       <p className="mt-0.5 truncate text-xs text-white/45">{selectedSong.artist}{selectedSong.album ? ` · ${selectedSong.album}` : ''}</p>

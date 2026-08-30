@@ -31,7 +31,22 @@ export const ResilientCoverImage = React.forwardRef<HTMLImageElement, ResilientC
   React.useEffect(() => {
     retryRef.current = 0;
     setResolvedSrc(normalizeSecureMediaUrl(src || fallbackUrl));
-  }, [fallbackUrl, src]);
+    const path = coverPath?.trim();
+    if (src || !path || /^https?:\/\//i.test(path)) return;
+
+    let cancelled = false;
+    retryRef.current = 1;
+    createSignedCoverUrl(path)
+      .then((refreshed) => {
+        if (!cancelled) setResolvedSrc(normalizeSecureMediaUrl(refreshed));
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedSrc(fallbackUrl);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [coverPath, fallbackUrl, src]);
 
   const handleError = React.useCallback<React.ReactEventHandler<HTMLImageElement>>(async (event) => {
     onError?.(event);

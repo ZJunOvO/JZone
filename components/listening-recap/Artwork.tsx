@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Icons } from '../Icons';
+import { ResilientCoverImage } from '../media/ResilientCoverImage';
 import type { RecapSong } from './types';
 
 type ArtworkSize = 'hero' | 'feature' | 'row';
@@ -18,13 +19,7 @@ const artworkClasses: Record<ArtworkSize, string> = {
 
 export const Artwork: React.FC<ArtworkProps> = ({ song, size, decorative = false }) => {
   const coverUrl = typeof song?.coverUrl === 'string' && song.coverUrl.trim() ? song.coverUrl : null;
-  const [coverFailed, setCoverFailed] = useState(false);
-
-  useEffect(() => {
-    setCoverFailed(false);
-  }, [coverUrl]);
-
-  const showCover = Boolean(coverUrl) && !coverFailed;
+  const showCover = Boolean(coverUrl || song?.coverPath);
   const label = song?.title ? `${song.title}封面` : '抽象声音封面';
 
   return (
@@ -38,13 +33,14 @@ export const Artwork: React.FC<ArtworkProps> = ({ song, size, decorative = false
         aria-hidden="true"
       />
       {showCover ? (
-        <img
+        <ResilientCoverImage
           src={coverUrl ?? undefined}
+          coverPath={song?.coverPath}
+          fallbackSeed={song?.id || 'listening-recap'}
           alt={decorative ? '' : label}
           className="relative z-10 h-full w-full object-cover"
           loading={size === 'hero' ? 'eager' : 'lazy'}
           decoding="async"
-          onError={() => setCoverFailed(true)}
         />
       ) : (
         <Icons.Music2

@@ -81,6 +81,8 @@ export interface ListeningRecapSong {
   title: string;
   artist: string;
   coverUrl: string | null;
+  /** 客户端解析签名地址时保留的原始存储路径，用于签名过期后按需重签。 */
+  coverPath?: string | null;
   visibility: 'private' | 'public';
   validPlayCount: number;
   firstAcceptedAt: string;

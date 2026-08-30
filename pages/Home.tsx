@@ -100,6 +100,7 @@ const ListeningRecapEntry = ({
   const coverUrl = preview?.coverage?.status === 'event_complete' || preview?.coverage?.status === 'event_partial'
     ? preview.opening?.coverSong?.coverUrl
     : null;
+  const coverSong = preview?.opening?.coverSong ?? null;
 
   return (
     <section className="space-y-3" aria-label="聆听回顾入口">
@@ -110,9 +111,11 @@ const ListeningRecapEntry = ({
         data-testid="listening-recap-entry"
         aria-label={`${formatRecapPeriodTitle(period)}，${getRecapEntryCopy(preview)}`}
       >
-        {coverUrl ? (
-          <img
+        {coverUrl || coverSong?.coverPath ? (
+          <ResilientCoverImage
             src={coverUrl}
+            coverPath={coverSong?.coverPath}
+            fallbackSeed={coverSong?.id || 'listening-recap'}
             alt=""
             loading="lazy"
             decoding="async"
