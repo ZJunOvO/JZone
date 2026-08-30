@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 
-const [migration, api, player, viewer, manager, rangeSelector, store, songs, videoMetadata, cosClient, storageApi] = await Promise.all([
+const [migration, api, player, viewer, memorySurface, manager, rangeSelector, store, songs, videoMetadata, cosClient, storageApi] = await Promise.all([
   fs.readFile(new URL('../supabase/sql/027_song_videos.sql', import.meta.url), 'utf8'),
   fs.readFile(new URL('../services/supabase/songVideos.ts', import.meta.url), 'utf8'),
   fs.readFile(new URL('../pages/PlayerView.tsx', import.meta.url), 'utf8'),
   fs.readFile(new URL('../components/video/SongVideoViewer.tsx', import.meta.url), 'utf8'),
+  fs.readFile(new URL('../components/video/MemoryVideoSurface.tsx', import.meta.url), 'utf8'),
   fs.readFile(new URL('../components/video/SongVideoManagerDialog.tsx', import.meta.url), 'utf8'),
   fs.readFile(new URL('../components/video/MemoryVideoRangeSelector.tsx', import.meta.url), 'utf8'),
   fs.readFile(new URL('../store.tsx', import.meta.url), 'utf8'),
@@ -22,7 +23,16 @@ assert.match(api, /deleteFiles\(stalePaths\)/);
 assert.match(api, /jzone:song-videos-changed/);
 assert.match(player, /jzone-memory-mv-segment/);
 assert.match(player, /showMemoryWindow/);
+assert.match(player, /memoryPreviewSegment\.start - 10/);
 assert.match(viewer, /wasPlayingRef/);
+assert.match(viewer, /initialVideoUrl/);
+assert.match(player, /MemoryVideoSurface/);
+assert.match(player, /activeVideo && activeVideo\.row\.kind !== 'memory'/);
+assert.match(memorySurface, /memory-video-surface/);
+assert.match(memorySurface, /bufferedDuration \/ video\.duration >= 0\.2/);
+assert.match(memorySurface, /video\.currentTime >= videoEnd - 0\.04/);
+assert.match(memorySurface, /expanded && !mediaReady/);
+assert.doesNotMatch(memorySurface, /scale:/);
 assert.match(viewer, /setPlaybackVolumeMultiplier\(getMemoryAudioMix/);
 assert.match(viewer, /originClipPath/);
 assert.match(viewer, /onCanPlay/);

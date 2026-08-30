@@ -19,6 +19,7 @@ interface SongVideoViewerProps {
   row: SongVideoRow;
   song: Song;
   posterUrl?: string;
+  initialVideoUrl?: string;
   origin?: SongVideoTransitionOrigin;
   onClose: () => void;
 }
@@ -31,7 +32,7 @@ const getOriginClipPath = (origin?: SongVideoTransitionOrigin) => {
   return `inset(${Math.max(0, origin.top)}px ${right}px ${bottom}px ${Math.max(0, origin.left)}px round ${origin.borderRadius}px)`;
 };
 
-export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, posterUrl, origin, onClose }) => {
+export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, posterUrl, initialVideoUrl, origin, onClose }) => {
   useModalPresence(true);
   const { playerState, pausePlayback, togglePlay, seek, setPlaybackVolumeMultiplier } = useStore();
   const playbackTime = usePlaybackTime();
@@ -41,7 +42,7 @@ export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, pos
   const memoryEnteredRef = React.useRef(false);
   const expandTimerRef = React.useRef<number | null>(null);
   const closeTimerRef = React.useRef<number | null>(null);
-  const [videoUrl, setVideoUrl] = React.useState('');
+  const [videoUrl, setVideoUrl] = React.useState(initialVideoUrl ?? '');
   const [loadError, setLoadError] = React.useState(false);
   const [mediaReady, setMediaReady] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
@@ -50,6 +51,10 @@ export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, pos
   const fallbackPoster = posterUrl || song.coverUrl;
 
   React.useEffect(() => {
+    if (initialVideoUrl) {
+      setVideoUrl(initialVideoUrl);
+      return;
+    }
     let cancelled = false;
     void supabaseApi.createSignedVideoUrl(row.video_path).then((url) => {
       if (!cancelled) setVideoUrl(url);
@@ -64,7 +69,7 @@ export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, pos
       if (expandTimerRef.current) window.clearTimeout(expandTimerRef.current);
       if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
     };
-  }, [row.video_path]);
+  }, [initialVideoUrl, row.video_path]);
 
   React.useEffect(() => {
     if (isMemory) {

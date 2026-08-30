@@ -39,6 +39,7 @@ import {
 import { ResilientCoverImage } from '../components/media/ResilientCoverImage';
 import { getMemoryVideoSegment } from '../utils/songVideo';
 import { SongVideoViewer, type SongVideoTransitionOrigin } from '../components/video/SongVideoViewer';
+import { MemoryVideoSurface } from '../components/video/MemoryVideoSurface';
 
 const SongLyricsEditorDialog = React.lazy(() => import('../components/lyrics/SongLyricsEditorDialog').then(({ SongLyricsEditorDialog: Component }) => ({
   default: Component,
@@ -48,6 +49,7 @@ const MotionResilientCoverImage = motion(ResilientCoverImage);
 interface ActiveSongVideo {
   row: SongVideoRow;
   origin?: SongVideoTransitionOrigin;
+  videoUrl?: string;
 }
 
 interface PlayerViewProps {
@@ -251,6 +253,9 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const [songVideos, setSongVideos] = useState<SongVideoRow[]>([]);
   const [videoPosterUrls, setVideoPosterUrls] = useState<Record<string, string>>({});
   const [activeVideo, setActiveVideo] = useState<ActiveSongVideo | null>(null);
+  const [memoryVideoUrl, setMemoryVideoUrl] = useState('');
+  const [memoryPreviewReady, setMemoryPreviewReady] = useState(false);
+  const [memoryPreloadTargetReached, setMemoryPreloadTargetReached] = useState(false);
   const [videoRefreshNonce, setVideoRefreshNonce] = useState(0);
   const [lyricsEditorAudioUrl, setLyricsEditorAudioUrl] = useState('');
   const [areLyricsControlsVisible, setAreLyricsControlsVisible] = useState(true);
@@ -259,12 +264,13 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const reduceMotion = useReducedMotion();
   const isLandscapeLayout = usePlayerMediaQuery(PLAYER_LANDSCAPE_QUERY);
   const isCompactLandscapeLayout = usePlayerMediaQuery('(orientation: landscape) and (max-height: 360px)');
-  const openSongVideo = React.useCallback((row: SongVideoRow, source?: HTMLElement | null) => {
+  const openSongVideo = React.useCallback((row: SongVideoRow, source?: HTMLElement | null, videoUrl?: string) => {
     const element = source ?? coverButtonRef.current;
     const rect = element?.getBoundingClientRect();
     const borderRadius = element ? Number.parseFloat(window.getComputedStyle(element).borderRadius) : 14;
     setActiveVideo({
       row,
+      videoUrl,
       ...(rect ? {
         origin: {
           top: rect.top,
@@ -548,6 +554,55 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
 
   React.useEffect(() => stopClipAnimations, [stopClipAnimations]);
 
+  const memoryVideoForPreview = songVideos.find((row) => row.kind === 'memory') ?? null;
+  const memoryPreviewTrimStart = song && Number.isFinite(song.trimStart) ? song.trimStart : 0;
+  const memoryPreviewTrimEnd = song && Number.isFinite(song.trimEnd) && song.trimEnd > memoryPreviewTrimStart
+    ? song.trimEnd
+    : song?.duration ?? 0;
+  const memoryPreviewSegment = getMemoryVideoSegment(
+    memoryVideoForPreview,
+    memoryPreviewTrimStart,
+    memoryPreviewTrimEnd,
+  );
+  const shouldPreloadMemoryVideo = Boolean(
+    memoryVideoForPreview
+      && playbackTime >= Math.max(memoryPreviewTrimStart, memoryPreviewSegment.start - 10)
+      && playbackTime < memoryPreviewSegment.end,
+  );
+  const isMemoryVideoActive = Boolean(
+    memoryVideoForPreview
+      && activeVideo?.row.kind === 'memory'
+      && activeVideo.row.id === memoryVideoForPreview.id,
+  );
+  const shouldRetainMemoryVideo = shouldPreloadMemoryVideo || isMemoryVideoActive;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    let clearTimer: number | null = null;
+    if (!memoryVideoForPreview || !shouldRetainMemoryVideo) {
+      setMemoryPreviewReady(false);
+      setMemoryPreloadTargetReached(false);
+      clearTimer = window.setTimeout(() => {
+        if (!cancelled) setMemoryVideoUrl('');
+      }, 520);
+      return () => {
+        cancelled = true;
+        if (clearTimer) window.clearTimeout(clearTimer);
+      };
+    }
+    setMemoryPreviewReady(false);
+    setMemoryPreloadTargetReached(false);
+    void supabaseApi.createSignedVideoUrl(memoryVideoForPreview.video_path).then((url) => {
+      if (!cancelled) setMemoryVideoUrl(url);
+    }).catch(() => {
+      if (!cancelled) setMemoryVideoUrl('');
+    });
+    return () => {
+      cancelled = true;
+      if (clearTimer) window.clearTimeout(clearTimer);
+    };
+  }, [memoryVideoForPreview?.id, memoryVideoForPreview?.video_path, shouldRetainMemoryVideo]);
+
   if (!song) return null;
   const fullVideo = songVideos.find((row) => row.kind === 'full') ?? null;
   const memoryVideo = songVideos.find((row) => row.kind === 'memory') ?? null;
@@ -578,7 +633,16 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const memoryEnd = memorySegment.end;
   const memorySegmentLeft = memorySegment.leftPercent;
   const memorySegmentWidth = memorySegment.widthPercent;
-  const showMemoryWindow = Boolean(memoryVideo && playbackTime >= Math.max(trimStart, memoryStart - 8) && playbackTime < memoryEnd);
+  const isInsideMemorySegment = Boolean(memoryVideo && playbackTime >= memoryStart && playbackTime < memoryEnd);
+  const distanceToMemorySegment = playbackTime < memoryStart
+    ? memoryStart - playbackTime
+    : playbackTime > memoryEnd
+      ? playbackTime - memoryEnd
+      : 0;
+  const memoryProximity = memoryVideo
+    ? Math.max(0, Math.min(1, 1 - distanceToMemorySegment / 10))
+    : 0;
+  const showMemoryWindow = Boolean(isInsideMemorySegment && memoryVideoUrl && memoryPreviewReady);
   const remainingTime = Math.max(0, trimEnd - currentTime);
   const volumePct = playerState.volume * 100;
   const usePortraitLyricsLayout = isLyricsViewOpen && !isLandscapeLayout;
@@ -797,21 +861,23 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                   </div>
                 </PlayerArtworkTransition>
               </button>
-              {showMemoryWindow && memoryVideo ? (
-                <motion.button
-                  type="button"
-                  className="absolute inset-0 z-10 overflow-hidden rounded-[14px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80"
-                  onClick={(event) => openSongVideo(memoryVideo, event.currentTarget)}
-                  initial={{ opacity: 0, scale: 0.97 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.42, ease: [0.22, 0.74, 0.22, 1] }}
-                  aria-label="打开记忆 MV"
-                  data-testid="memory-mv-window"
-                >
-                  <img src={videoPosterUrls[memoryVideo.id] || song.coverUrl} alt="" className="h-full w-full object-cover" />
-                  <span className="absolute inset-0 bg-gradient-to-t from-black/52 via-transparent to-transparent" />
-                  <span className="absolute bottom-4 left-4 flex items-center gap-2 rounded-full bg-black/28 px-3 py-2 text-xs font-black text-white backdrop-blur-lg"><Icons.Play size={14} fill="currentColor" />打开这段记忆</span>
-                </motion.button>
+              {memoryVideoUrl && memoryVideo ? (
+                <MemoryVideoSurface
+                  row={memoryVideo}
+                  song={song}
+                  videoUrl={memoryVideoUrl}
+                  posterUrl={videoPosterUrls[memoryVideo.id]}
+                  anchorRef={coverButtonRef}
+                  playbackTime={playbackTime}
+                  previewVisible={showMemoryWindow && (!activeVideo || isMemoryVideoActive)}
+                  expanded={isMemoryVideoActive}
+                  mediaReady={memoryPreviewReady}
+                  preloadTargetReached={memoryPreloadTargetReached}
+                  onPreloadTargetReached={() => setMemoryPreloadTargetReached(true)}
+                  onReady={() => setMemoryPreviewReady(true)}
+                  onExpand={() => openSongVideo(memoryVideo, coverButtonRef.current, memoryVideoUrl)}
+                  onClose={() => setActiveVideo(null)}
+                />
               ) : null}
             </PlayerSharedElement>
           </motion.div>
@@ -916,12 +982,15 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
               className={`relative w-full bg-white/20 rounded-full overflow-hidden transition-all duration-300 ease-out ${isSeeking ? 'h-[7px]' : 'h-1.5'}`}
             >
               {memoryVideo && memorySegmentWidth > 0 ? (
-                <button
-                  type="button"
+                <span
                   className="jzone-memory-mv-segment absolute inset-y-0 z-[1] rounded-full"
-                  style={{ left: `${memorySegmentLeft}%`, width: `${memorySegmentWidth}%` }}
-                  onClick={() => openSongVideo(memoryVideo)}
-                  aria-label="打开这段记忆 MV"
+                  style={{
+                    left: `${memorySegmentLeft}%`,
+                    width: `${memorySegmentWidth}%`,
+                    opacity: 0.28 + memoryProximity * 0.72,
+                    filter: `saturate(${0.28 + memoryProximity * 1.07}) brightness(${0.76 + memoryProximity * 0.32})`,
+                  }}
+                  aria-hidden="true"
                 />
               ) : null}
               <div
@@ -1044,8 +1113,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         </motion.div>
         </div>
 
-        {activeVideo ? (
-          <SongVideoViewer row={activeVideo.row} song={song} posterUrl={videoPosterUrls[activeVideo.row.id]} origin={activeVideo.origin} onClose={() => setActiveVideo(null)} />
+        {activeVideo && activeVideo.row.kind !== 'memory' ? (
+          <SongVideoViewer row={activeVideo.row} song={song} posterUrl={videoPosterUrls[activeVideo.row.id]} initialVideoUrl={activeVideo.videoUrl} origin={activeVideo.origin} onClose={() => setActiveVideo(null)} />
         ) : null}
       </div>
 
