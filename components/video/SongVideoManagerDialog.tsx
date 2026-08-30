@@ -6,6 +6,8 @@ import { supabaseApi, type SongVideoKind, type SongVideoRow } from '../../supaba
 import type { Song } from '../../types';
 import { useModalPresence } from '../../modalPresence';
 import { readMp4ContainerDurationMs } from '../../utils/videoMetadata';
+import { getStoredLyricsModel, isParsedLyrics, parseLyrics } from '../../utils/lyrics';
+import { MemoryVideoRangeSelector, type MemoryVideoLyricCue } from './MemoryVideoRangeSelector';
 
 interface SongVideoManagerDialogProps {
   song: Song;
@@ -105,7 +107,10 @@ export const SongVideoManagerDialog: React.FC<SongVideoManagerDialogProps> = ({ 
   const [busy, setBusy] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
   const [previewWarning, setPreviewWarning] = React.useState('');
+  const [lyricCues, setLyricCues] = React.useState<MemoryVideoLyricCue[]>([]);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const songRangeStart = Math.max(0, song.trimStart || 0);
+  const songRangeEnd = Math.max(songRangeStart + 1, song.trimEnd || song.duration);
 
   const loadRows = React.useCallback(async () => {
     try {
@@ -116,6 +121,29 @@ export const SongVideoManagerDialog: React.FC<SongVideoManagerDialogProps> = ({ 
   }, [song.id]);
 
   React.useEffect(() => { void loadRows(); }, [loadRows]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void supabaseApi.fetchSongLyrics(song.id).then((row) => {
+      if (cancelled || !row) return;
+      try {
+        const input = getStoredLyricsModel(row).playbackLyrics;
+        const parsed = isParsedLyrics(input) ? input : parseLyrics(input);
+        setLyricCues(parsed.lines.flatMap((line) => {
+          if (line.startTimeMs == null || !line.text.trim()) return [];
+          return [{
+            time: Math.max(0, (line.startTimeMs + row.offset_ms) / 1_000),
+            text: line.text.trim(),
+          }];
+        }));
+      } catch {
+        setLyricCues([]);
+      }
+    }).catch(() => {
+      if (!cancelled) setLyricCues([]);
+    });
+    return () => { cancelled = true; };
+  }, [song.id]);
 
   const selectFile = async (selected: File | undefined) => {
     if (!selected) return;
@@ -211,10 +239,18 @@ export const SongVideoManagerDialog: React.FC<SongVideoManagerDialogProps> = ({ 
         <AnimatePresence initial={false}>
           {kind === 'memory' && file ? (
             <motion.div className="mt-5 space-y-5" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="text-xs font-bold text-white/45">歌曲开始<input type="number" min={song.trimStart} max={song.trimEnd || song.duration} step="0.1" value={songStart} onChange={(e) => setSongStart(Number(e.target.value))} className="mt-2 h-11 w-full rounded-xl border border-white/8 bg-black/30 px-3 text-white outline-none" /></label>
-                <label className="text-xs font-bold text-white/45">歌曲结束<input type="number" min={songStart + 0.1} max={song.trimEnd || song.duration} step="0.1" value={songEnd} onChange={(e) => setSongEnd(Number(e.target.value))} className="mt-2 h-11 w-full rounded-xl border border-white/8 bg-black/30 px-3 text-white outline-none" /></label>
-              </div>
+              <MemoryVideoRangeSelector
+                min={songRangeStart}
+                max={songRangeEnd}
+                start={songStart}
+                end={songEnd}
+                maxSpan={durationMs / 1_000}
+                lyrics={lyricCues}
+                onChange={(nextStart, nextEnd) => {
+                  setSongStart(nextStart);
+                  setSongEnd(nextEnd);
+                }}
+              />
               <label className="block">
                 <span className="flex justify-between text-xs font-bold text-white/52"><span>歌曲录音</span><span>视频原声</span></span>
                 <input type="range" min="0" max="1" step="0.01" value={audioMix} onChange={(e) => setAudioMix(Number(e.target.value))} className="mt-3 w-full accent-red-500" aria-label="歌曲录音与视频原声混合" />

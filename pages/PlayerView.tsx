@@ -38,12 +38,17 @@ import {
 } from '../components/motion/playerTransition';
 import { ResilientCoverImage } from '../components/media/ResilientCoverImage';
 import { getMemoryVideoSegment } from '../utils/songVideo';
+import { SongVideoViewer, type SongVideoTransitionOrigin } from '../components/video/SongVideoViewer';
 
 const SongLyricsEditorDialog = React.lazy(() => import('../components/lyrics/SongLyricsEditorDialog').then(({ SongLyricsEditorDialog: Component }) => ({
   default: Component,
 })));
-const SongVideoViewer = React.lazy(() => import('../components/video/SongVideoViewer').then(({ SongVideoViewer: Component }) => ({ default: Component })));
 const MotionResilientCoverImage = motion(ResilientCoverImage);
+
+interface ActiveSongVideo {
+  row: SongVideoRow;
+  origin?: SongVideoTransitionOrigin;
+}
 
 interface PlayerViewProps {
   onClose: () => void;
@@ -245,14 +250,32 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const [isLyricsEditorOpen, setIsLyricsEditorOpen] = useState(false);
   const [songVideos, setSongVideos] = useState<SongVideoRow[]>([]);
   const [videoPosterUrls, setVideoPosterUrls] = useState<Record<string, string>>({});
-  const [activeVideo, setActiveVideo] = useState<SongVideoRow | null>(null);
+  const [activeVideo, setActiveVideo] = useState<ActiveSongVideo | null>(null);
   const [videoRefreshNonce, setVideoRefreshNonce] = useState(0);
   const [lyricsEditorAudioUrl, setLyricsEditorAudioUrl] = useState('');
   const [areLyricsControlsVisible, setAreLyricsControlsVisible] = useState(true);
   const lyricsFullscreenLockedRef = React.useRef(false);
+  const coverButtonRef = React.useRef<HTMLButtonElement>(null);
   const reduceMotion = useReducedMotion();
   const isLandscapeLayout = usePlayerMediaQuery(PLAYER_LANDSCAPE_QUERY);
   const isCompactLandscapeLayout = usePlayerMediaQuery('(orientation: landscape) and (max-height: 360px)');
+  const openSongVideo = React.useCallback((row: SongVideoRow, source?: HTMLElement | null) => {
+    const element = source ?? coverButtonRef.current;
+    const rect = element?.getBoundingClientRect();
+    const borderRadius = element ? Number.parseFloat(window.getComputedStyle(element).borderRadius) : 14;
+    setActiveVideo({
+      row,
+      ...(rect ? {
+        origin: {
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+          borderRadius: Number.isFinite(borderRadius) ? borderRadius : 14,
+        },
+      } : {}),
+    });
+  }, []);
   const openLyricsEditor = React.useCallback(() => {
     setLyricsEditorAudioUrl(getCurrentAudioSource() || song?.audioUrl || '');
     pausePlayback();
@@ -737,6 +760,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
               name="cover"
             >
               <button
+                ref={coverButtonRef}
                 type="button"
                 onClick={() => {
                   if (!isLandscapeLayout) setIsLyricsViewOpen((value) => !value);
@@ -777,7 +801,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                 <motion.button
                   type="button"
                   className="absolute inset-0 z-10 overflow-hidden rounded-[14px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80"
-                  onClick={() => setActiveVideo(memoryVideo)}
+                  onClick={(event) => openSongVideo(memoryVideo, event.currentTarget)}
                   initial={{ opacity: 0, scale: 0.97 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.42, ease: [0.22, 0.74, 0.22, 1] }}
@@ -830,7 +854,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             </button>
             {primaryVideo ? (
               <button
-                onClick={() => setActiveVideo(primaryVideo)}
+                onClick={() => openSongVideo(primaryVideo)}
                 className={`${isCompactLandscapeLayout ? 'h-9 w-9' : 'w-10 h-10'} rounded-full bg-white/10 flex items-center justify-center text-white/90 active:scale-90 transition`}
                 aria-label={`打开 ${song.title} 的 MV`}
                 data-testid="player-open-mv"
@@ -896,7 +920,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                   type="button"
                   className="jzone-memory-mv-segment absolute inset-y-0 z-[1] rounded-full"
                   style={{ left: `${memorySegmentLeft}%`, width: `${memorySegmentWidth}%` }}
-                  onClick={() => setActiveVideo(memoryVideo)}
+                  onClick={() => openSongVideo(memoryVideo)}
                   aria-label="打开这段记忆 MV"
                 />
               ) : null}
@@ -1021,9 +1045,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         </div>
 
         {activeVideo ? (
-          <React.Suspense fallback={null}>
-            <SongVideoViewer row={activeVideo} song={song} posterUrl={videoPosterUrls[activeVideo.id]} onClose={() => setActiveVideo(null)} />
-          </React.Suspense>
+          <SongVideoViewer row={activeVideo.row} song={song} posterUrl={videoPosterUrls[activeVideo.row.id]} origin={activeVideo.origin} onClose={() => setActiveVideo(null)} />
         ) : null}
       </div>
 

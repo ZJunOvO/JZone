@@ -3,6 +3,8 @@ import {
   COS_AUDIO_BROWSER_CACHE_MAX_AGE_SECONDS,
   COS_IMAGE_BROWSER_CACHE_CONTROL,
   COS_IMAGE_BROWSER_CACHE_MAX_AGE_SECONDS,
+  COS_VIDEO_BROWSER_CACHE_CONTROL,
+  COS_VIDEO_BROWSER_CACHE_MAX_AGE_SECONDS,
   cosClient,
 } from '../../cosClient';
 import {
@@ -12,6 +14,7 @@ import {
 
 export const AUDIO_SIGNED_URL_TTL_SECONDS = COS_AUDIO_BROWSER_CACHE_MAX_AGE_SECONDS;
 export const IMAGE_SIGNED_URL_TTL_SECONDS = COS_IMAGE_BROWSER_CACHE_MAX_AGE_SECONDS;
+export const VIDEO_SIGNED_URL_TTL_SECONDS = COS_VIDEO_BROWSER_CACHE_MAX_AGE_SECONDS;
 const SIGNED_URL_CACHE_KEY = 'jzone_cos_signed_urls_v1';
 const SIGNED_URL_EXPIRY_MARGIN_MS = 10 * 60 * 1000;
 const MAX_PERSISTED_SIGNED_URLS = 256;
@@ -165,6 +168,11 @@ export const invalidateSignedAvatarUrlCache = (path: string) => {
   invalidateSignedUrlForPath(path, 'avatars', COS_IMAGE_BROWSER_CACHE_CONTROL);
 };
 
+/** MV 更新或删除时只淘汰对应资源；未变化的视频继续沿用长期缓存。 */
+export const invalidateSignedVideoUrlCache = (path: string) => {
+  invalidateSignedUrlForPath(path, 'videos', COS_VIDEO_BROWSER_CACHE_CONTROL);
+};
+
 export const createSignedAudioUrl = async (path: string, expiresInSeconds = AUDIO_SIGNED_URL_TTL_SECONDS) => {
   const normalizedPath = normalizeStoragePath(path, 'audio');
   if (/^https?:\/\//i.test(normalizedPath)) return normalizedPath;
@@ -195,13 +203,13 @@ export const createSignedAvatarUrl = async (path: string, expiresInSeconds = IMA
   );
 };
 
-export const createSignedVideoUrl = async (path: string, expiresInSeconds = AUDIO_SIGNED_URL_TTL_SECONDS) => {
+export const createSignedVideoUrl = async (path: string, expiresInSeconds = VIDEO_SIGNED_URL_TTL_SECONDS) => {
   const normalizedPath = normalizeStoragePath(path, 'videos');
   if (/^https?:\/\//i.test(normalizedPath)) return normalizedPath;
   return getCosSignedUrlCached(
     normalizedPath,
-    Math.max(expiresInSeconds, AUDIO_SIGNED_URL_TTL_SECONDS),
-    COS_AUDIO_BROWSER_CACHE_CONTROL,
+    Math.max(expiresInSeconds, VIDEO_SIGNED_URL_TTL_SECONDS),
+    COS_VIDEO_BROWSER_CACHE_CONTROL,
   );
 };
 

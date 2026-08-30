@@ -60,13 +60,18 @@ export interface CosHeadObjectDiagnostic {
 
 export const COS_AUDIO_BROWSER_CACHE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 export const COS_IMAGE_BROWSER_CACHE_MAX_AGE_SECONDS = 31 * 24 * 60 * 60;
+export const COS_VIDEO_BROWSER_CACHE_MAX_AGE_SECONDS = 180 * 24 * 60 * 60;
 export const COS_AUDIO_BROWSER_CACHE_CONTROL = `private, max-age=${COS_AUDIO_BROWSER_CACHE_MAX_AGE_SECONDS}, immutable`;
 export const COS_IMAGE_BROWSER_CACHE_CONTROL = `private, max-age=${COS_IMAGE_BROWSER_CACHE_MAX_AGE_SECONDS}, immutable`;
+export const COS_VIDEO_BROWSER_CACHE_CONTROL = `private, max-age=${COS_VIDEO_BROWSER_CACHE_MAX_AGE_SECONDS}, immutable`;
 
 const getMediaCacheControl = (path: string, contentType?: string) => {
   const normalizedType = contentType?.toLowerCase() ?? '';
-  if (normalizedType.startsWith('audio/') || /\.(?:aac|amr|flac|m4a|mp3|mp4|ogg|opus|wav|3gp|3gpp)$/i.test(path)) {
+  if (normalizedType.startsWith('audio/') || /\.(?:aac|amr|flac|m4a|mp3|ogg|opus|wav|3gp|3gpp)$/i.test(path)) {
     return COS_AUDIO_BROWSER_CACHE_CONTROL;
+  }
+  if (normalizedType.startsWith('video/') || /\.(?:m4v|mov|mp4|webm)$/i.test(path)) {
+    return COS_VIDEO_BROWSER_CACHE_CONTROL;
   }
   if (normalizedType.startsWith('image/') || /\.(?:avif|gif|jpe?g|png|webp)$/i.test(path)) {
     return COS_IMAGE_BROWSER_CACHE_CONTROL;

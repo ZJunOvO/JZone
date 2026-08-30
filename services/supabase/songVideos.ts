@@ -2,7 +2,7 @@ import { cosClient } from '../../cosClient';
 import { createRuntimeUuid } from '../../utils/runtimeId';
 import { cached, invalidateApiCache } from './cache';
 import { ensureSupabase } from './client';
-import { createSignedVideoPosterUrl, createSignedVideoUrl } from './storageApi';
+import { createSignedVideoPosterUrl, createSignedVideoUrl, invalidateSignedVideoUrlCache } from './storageApi';
 import type { SongVideoInput, SongVideoRow } from './types';
 
 const VIDEO_METADATA_TTL_MS = 15 * 60_000;
@@ -86,7 +86,10 @@ export const createSongVideosApi = () => ({
       if (existingRow) {
         const stalePaths = [existingRow.video_path, ...(existingRow.poster_path ? [existingRow.poster_path] : [])]
           .filter((path) => path !== videoPath && path !== posterPath);
-        if (stalePaths.length) await cosClient.deleteFiles(stalePaths).catch(() => {});
+        if (stalePaths.length) {
+          invalidateSignedVideoUrlCache(existingRow.video_path);
+          await cosClient.deleteFiles(stalePaths).catch(() => {});
+        }
       }
       onProgress?.(100);
       return data as SongVideoRow;
@@ -102,6 +105,7 @@ export const createSongVideosApi = () => ({
     if (error) throw error;
     invalidateApiCache((key) => key === cacheKey(row.song_id));
     emitSongVideosChanged(row.song_id);
+    invalidateSignedVideoUrlCache(row.video_path);
     if (cosClient.isEnabled) {
       await cosClient.deleteFiles([row.video_path, ...(row.poster_path ? [row.poster_path] : [])]).catch(() => {});
     }
