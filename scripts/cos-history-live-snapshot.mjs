@@ -173,10 +173,10 @@ export const loadConfig = (env = process.env) => {
     ['supabaseAnonKey', ['JZONE_SUPABASE_ANON_KEY', 'VITE_SUPABASE_ANON_KEY']],
     ['testEmail', ['JZONE_TEST_EMAIL']],
     ['testPassword', ['JZONE_TEST_PASSWORD']],
-    ['cosSecretId', ['JZONE_COS_SECRET_ID', 'COS_SECRET_ID']],
-    ['cosSecretKey', ['JZONE_COS_SECRET_KEY', 'COS_SECRET_KEY']],
-    ['cosBucket', ['JZONE_COS_BUCKET', 'COS_BUCKET']],
-    ['cosRegion', ['JZONE_COS_REGION', 'COS_REGION']],
+    ['cosSecretId', ['JZONE_COS_SECRET_ID', 'COS_SECRET_ID', 'VITE_COS_SECRET_ID']],
+    ['cosSecretKey', ['JZONE_COS_SECRET_KEY', 'COS_SECRET_KEY', 'VITE_COS_SECRET_KEY']],
+    ['cosBucket', ['JZONE_COS_BUCKET', 'COS_BUCKET', 'VITE_COS_BUCKET']],
+    ['cosRegion', ['JZONE_COS_REGION', 'COS_REGION', 'VITE_COS_REGION']],
   ];
 
   const config = Object.fromEntries(definitions.map(([key, names]) => [key, envValue(env, names)]));

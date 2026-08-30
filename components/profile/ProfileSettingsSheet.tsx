@@ -19,6 +19,7 @@ interface ProfileSettingsSheetProps {
   onEditProfile: () => void;
   onOpenBackground: () => void;
   onSignOut: () => Promise<void>;
+  onOpenMediaGovernance: () => void;
 }
 
 type LiquidGlassNumericSettingKey = Exclude<keyof LiquidGlassSettings, 'bottomTabLayout'>;
@@ -169,6 +170,7 @@ export const ProfileSettingsSheet: React.FC<ProfileSettingsSheetProps> = ({
   onEditProfile,
   onOpenBackground,
   onSignOut,
+  onOpenMediaGovernance,
 }) => {
   const [advancedSettingsOpen, setAdvancedSettingsOpen] = React.useState(false);
   const [liquidGlassPanelOpen, setLiquidGlassPanelOpen] = React.useState(false);
@@ -345,6 +347,17 @@ export const ProfileSettingsSheet: React.FC<ProfileSettingsSheetProps> = ({
                           </motion.div>
                         )}
                       </AnimatePresence>
+                      <button
+                        type="button"
+                        onClick={onOpenMediaGovernance}
+                        className="flex min-h-12 w-full items-center justify-between rounded-xl border border-white/8 bg-black/15 px-3 text-left text-sm font-bold text-zinc-200 transition hover:bg-white/[0.06]"
+                      >
+                        <span>
+                          <span className="block">媒体资产治理</span>
+                          <span className="mt-0.5 block text-[10px] font-medium text-zinc-500">存储、历史扫描与费用接入状态</span>
+                        </span>
+                        <Icons.ChevronRight size={17} className="text-zinc-500" />
+                      </button>
                     </div>
                   </div>
                 </motion.div>

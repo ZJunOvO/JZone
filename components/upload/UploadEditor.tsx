@@ -541,6 +541,20 @@ export const UploadEditor: React.FC<UploadEditorProps> = ({
                   placeholder="搜索或创建…"
                 />
                 <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3 px-1">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">录制日期</label>
+                    <span className="text-[10px] font-medium text-zinc-600">优先来自音频元数据</span>
+                  </div>
+                  <input
+                    type="date"
+                    value={draft.recordedAt}
+                    max={new Date().toISOString().slice(0, 10)}
+                    onChange={(event) => actions.setRecordedAt(event.target.value)}
+                    className="w-full rounded-2xl border border-white/5 bg-black/40 p-4 text-sm font-medium text-white outline-none transition focus:border-red-500/50 [color-scheme:dark]"
+                    data-testid="upload-recorded-at"
+                  />
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">标签</label>
                   {genreTags.length ? (
                     <div className="flex flex-wrap gap-2 px-1 pb-1">

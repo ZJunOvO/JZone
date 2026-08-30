@@ -43,6 +43,7 @@ const loadCollectionDetail = () => import('../../pages/CollectionDetailPage').th
 const CollectionDetailPage = lazy(loadCollectionDetail);
 const loadListeningRecap = () => import('../../pages/ListeningRecap').then((module) => ({ default: module.ListeningRecap }));
 const ListeningRecapPage = lazy(loadListeningRecap);
+const MediaGovernancePage = lazy(() => import('../../pages/MediaGovernance').then((module) => ({ default: module.MediaGovernance })));
 const loadPlayerView = () => import('../../pages/PlayerView').then((module) => ({ default: module.PlayerView }));
 const PlayerView = lazy(loadPlayerView);
 
@@ -123,8 +124,10 @@ export const AppShell: React.FC = () => {
     listeningRecapPeriod,
     closeListeningRecap,
     replaceListeningRecapPeriod,
+    isMediaGovernance,
+    closeMediaGovernance,
   } = useAppRoute();
-  const currentRoute = isListeningRecap ? 'listening-recap' : activeTab;
+  const currentRoute = isMediaGovernance ? 'media-governance' : isListeningRecap ? 'listening-recap' : activeTab;
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
   const [playerLyricsRequest, setPlayerLyricsRequest] = useState<{ songId: string; nonce: number } | null>(null);
   const [playerTransitionPhase, setPlayerTransitionPhase] = useState<PlayerTransitionPhase>('open');
@@ -477,7 +480,9 @@ export const AppShell: React.FC = () => {
           animate={routeFallbackControls}
         >
         <Suspense fallback={isListeningRecap ? <ListeningRecapFallback onBack={closeListeningRecap} /> : <PageFallback />}>
-          {isListeningRecap ? (
+          {isMediaGovernance ? (
+            <MediaGovernancePage onBack={closeMediaGovernance} />
+          ) : isListeningRecap ? (
             <ListeningRecapPage
               period={listeningRecapPeriod ?? undefined}
               onBack={closeListeningRecap}
@@ -563,7 +568,7 @@ export const AppShell: React.FC = () => {
       )}
       </AnimatePresence>
 
-      {!isListeningRecap && (
+      {!isListeningRecap && !isMediaGovernance && (
         <BottomNavigation
           currentTab={activeTab}
           profileAvatarUrl={profileAvatarUrl}
@@ -589,7 +594,7 @@ export const AppShell: React.FC = () => {
           />
         </Suspense>
       )}
-      <PwaInstallPrompt />
+      {!isMediaGovernance && <PwaInstallPrompt />}
       <ProfileAvatarRouteTransition activeTab={activeTab} />
       </SharedElementLayer>
     </div>

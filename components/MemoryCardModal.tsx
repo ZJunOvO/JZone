@@ -4,6 +4,7 @@ import { Song } from '../types';
 import { useAuth } from '../auth';
 import { supabaseApi, ProfileRow } from '../supabaseApi';
 import { hasSupabaseConfig } from '../supabaseClient';
+import { ResilientCoverImage } from './media/ResilientCoverImage';
 
 interface MemoryCardModalProps {
   song: Song | null;
@@ -40,6 +41,12 @@ const MemoryCardModalContent: React.FC<MemoryCardModalContentProps> = ({ song, o
     hour <= 17 ? '下午' :
     hour <= 19 ? '傍晚' : '夜晚';
   const seasonText = `${seasonPart}${seasonLabel}的${dayPeriod}`;
+  const recordedDate = song.recordedAt && /^\d{4}-\d{2}-\d{2}$/.test(song.recordedAt)
+    ? new Date(`${song.recordedAt}T00:00:00`)
+    : null;
+  const formattedRecordedDate = recordedDate && Number.isFinite(recordedDate.getTime())
+    ? `${recordedDate.getFullYear()}.${pad(recordedDate.getMonth() + 1)}.${pad(recordedDate.getDate())}`
+    : null;
   const globalPlaysCount = song.playsCount ?? 0;
   const [myPlaysCount, setMyPlaysCount] = useState<number | null>(null);
   const [collectorProfile, setCollectorProfile] = useState<ProfileRow | null>(null);
@@ -181,14 +188,14 @@ const MemoryCardModalContent: React.FC<MemoryCardModalContentProps> = ({ song, o
           className="relative w-full max-w-md bg-zinc-900/80 rounded-[32px] overflow-hidden shadow-2xl border border-white/10 max-h-[85vh] flex flex-col"
         >
             <div className="absolute inset-0 z-0 pointer-events-none">
-                <img src={song.coverUrl} decoding="async" className="w-full h-full object-cover opacity-40 blur-3xl scale-150" alt="" />
+                <ResilientCoverImage src={song.coverUrl} coverPath={song.coverPath} fallbackSeed={song.id} decoding="async" className="w-full h-full object-cover opacity-40 blur-3xl scale-150" alt="" />
                 <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-zinc-900/60 to-transparent" />
             </div>
 
             <div className="relative z-10 p-6 flex flex-col space-y-6 text-left overflow-y-auto no-scrollbar pb-24">
                 <div className="flex items-start gap-4">
                     <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-xl ring-1 ring-white/10 shrink-0">
-                        <img src={song.coverUrl} decoding="async" className="w-full h-full object-cover" alt={song.title} />
+                        <ResilientCoverImage src={song.coverUrl} coverPath={song.coverPath} fallbackSeed={song.id} decoding="async" className="w-full h-full object-cover" alt={song.title} />
                     </div>
                     <div className="flex-1 min-w-0 space-y-1">
                         <h2 className="text-xl font-bold text-white leading-tight tracking-tight truncate">{song.title}</h2>
@@ -216,9 +223,11 @@ const MemoryCardModalContent: React.FC<MemoryCardModalContentProps> = ({ song, o
                         </div>
                     </div>
                     <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-4 border border-white/5 space-y-1 flex flex-col justify-center h-full">
-                         <div className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">首次收录</div>
-                         <div className="text-lg font-bold text-white tracking-tight">{seasonText}</div>
-                         <div className="text-[11px] text-zinc-400 font-semibold tracking-tight font-mono">{formattedDateTime}</div>
+                         <div className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">{formattedRecordedDate ? '录制于' : '首次收录'}</div>
+                         <div className="text-lg font-bold text-white tracking-tight">{formattedRecordedDate ?? seasonText}</div>
+                         <div className="text-[11px] text-zinc-400 font-semibold tracking-tight font-mono">
+                           {formattedRecordedDate ? `收录于 ${formattedDateTime}` : formattedDateTime}
+                         </div>
                     </div>
                 </div>
 

@@ -4,6 +4,8 @@ import type { ListeningRecapPeriod } from '../services/supabase/listeningRecapTy
 const LISTENING_RECAP_PATH = '/listening-recap';
 const LISTENING_RECAP_NAVIGATION_EVENT = 'jzone:navigate-listening-recap';
 const LISTENING_RECAP_HISTORY_TYPE = 'listening-recap';
+const MEDIA_GOVERNANCE_PATH = '/media-governance';
+const MEDIA_GOVERNANCE_NAVIGATION_EVENT = 'jzone:navigate-media-governance';
 
 type ListeningRecapRoute = {
   isListeningRecap: boolean;
@@ -91,6 +93,9 @@ export interface AppRouteState {
   openListeningRecap: (period?: ListeningRecapPeriod, push?: boolean) => void;
   closeListeningRecap: () => void;
   replaceListeningRecapPeriod: (period: ListeningRecapPeriod) => void;
+  isMediaGovernance: boolean;
+  openMediaGovernance: () => void;
+  closeMediaGovernance: () => void;
 }
 
 const parseCollectionIdFromPath = () => {
@@ -121,6 +126,9 @@ export const useAppRoute = (): AppRouteState => {
   const [listeningRecapPeriod, setListeningRecapPeriod] = useState<ListeningRecapPeriod | null>(
     () => readListeningRecapRoute().period,
   );
+  const [isMediaGovernance, setIsMediaGovernance] = useState(() => (
+    typeof window !== 'undefined' && /^\/media-governance\/?$/i.test(window.location.pathname || '')
+  ));
 
   const setActiveTab = React.useCallback((tab: string) => {
     setActiveTabState(tab);
@@ -229,6 +237,27 @@ export const useAppRoute = (): AppRouteState => {
     } catch {}
   }, []);
 
+  const openMediaGovernance = React.useCallback(() => {
+    setIsMediaGovernance(true);
+    setIsListeningRecap(false);
+    setCollectionId(null);
+    try {
+      window.history.pushState({ type: 'media-governance', pushed: true }, '', MEDIA_GOVERNANCE_PATH);
+    } catch {}
+  }, []);
+
+  const closeMediaGovernance = React.useCallback(() => {
+    setIsMediaGovernance(false);
+    const state = window.history.state as { type?: string; pushed?: boolean } | null;
+    if (state?.type === 'media-governance' && state.pushed) {
+      try {
+        window.history.back();
+        return;
+      } catch {}
+    }
+    try { window.history.replaceState(window.history.state, '', '/'); } catch {}
+  }, []);
+
   React.useEffect(() => {
     const initial = parseCollectionIdFromPath();
     if (initial) setCollectionId(initial);
@@ -236,11 +265,18 @@ export const useAppRoute = (): AppRouteState => {
       const id = parseCollectionIdFromPath();
       setCollectionId(id);
       syncListeningRecapRoute();
+      setIsMediaGovernance(/^\/media-governance\/?$/i.test(window.location.pathname || ''));
     };
     syncListeningRecapRoute();
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [syncListeningRecapRoute]);
+
+  React.useEffect(() => {
+    const handler = () => openMediaGovernance();
+    window.addEventListener(MEDIA_GOVERNANCE_NAVIGATION_EVENT, handler);
+    return () => window.removeEventListener(MEDIA_GOVERNANCE_NAVIGATION_EVENT, handler);
+  }, [openMediaGovernance]);
 
   React.useEffect(() => {
     const handler = (e: Event) => {
@@ -295,5 +331,8 @@ export const useAppRoute = (): AppRouteState => {
     openListeningRecap,
     closeListeningRecap,
     replaceListeningRecapPeriod,
+    isMediaGovernance,
+    openMediaGovernance,
+    closeMediaGovernance,
   };
 };

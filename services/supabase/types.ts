@@ -78,6 +78,7 @@ export interface SongRow {
   plays_count?: number | null;
   is_public?: boolean;
   pinned_at?: string | null;
+  recorded_at?: string | null;
   created_at: string;
 }
 

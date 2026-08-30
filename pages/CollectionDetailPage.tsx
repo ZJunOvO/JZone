@@ -15,6 +15,7 @@ import { CollectionHeaderSkeleton, SongRowSkeleton } from '../components/Skeleto
 import { feedback } from '../components/feedback';
 import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from '../components/motion/sharedElementRegistry';
 import { getSongCoverFallback } from '../utils/cover';
+import { ResilientCoverImage } from '../components/media/ResilientCoverImage';
 
 export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () => void }> = ({ collectionId, onClose }) => {
   useModalPresence(true);
@@ -296,7 +297,7 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
           <div className="absolute inset-0" style={bgStyle} />
         ) : (
           <>
-            {headerCover && <img src={headerCover} className="absolute inset-0 w-full h-full object-cover blur-[90px] brightness-[0.55] saturate-[1.6] scale-150" alt="" />}
+            {headerCover && <ResilientCoverImage src={headerCover} coverPath={collection?.cover_url ?? orderedSongs[0]?.coverPath} fallbackSeed={collectionId} className="absolute inset-0 w-full h-full object-cover blur-[90px] brightness-[0.55] saturate-[1.6] scale-150" alt="" />}
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/10" />
           </>
         )}
@@ -436,7 +437,7 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
                   data-shared-element="collection-cover"
                 >
                   {headerCover ? (
-                    <img src={headerCover} className="w-full h-full object-cover" alt="" />
+                    <ResilientCoverImage src={headerCover} coverPath={collection?.cover_url ?? orderedSongs[0]?.coverPath} fallbackSeed={collectionId} className="w-full h-full object-cover" alt="" />
                   ) : (
                     <Icons.Disc size={64} className="text-zinc-700" />
                   )}
@@ -520,7 +521,7 @@ export const CollectionDetailPage: React.FC<{ collectionId: string; onClose: () 
                             <span className={isCurrent ? 'text-red-500 font-bold' : 'group-hover:text-white'}>{idx + 1}</span>
                           )}
                         </div>
-                        <img src={s.coverUrl} className="w-12 h-12 rounded-xl object-cover bg-zinc-800 shadow-sm" alt="" loading="lazy" decoding="async" />
+                        <ResilientCoverImage src={s.coverUrl} coverPath={s.coverPath} fallbackSeed={s.id} className="w-12 h-12 rounded-xl object-cover bg-zinc-800 shadow-sm" alt="" loading="lazy" decoding="async" />
                         <div className="flex-1 min-w-0">
                           <div className={`text-sm font-bold truncate ${isCurrent ? 'text-red-500' : 'text-zinc-200 group-hover:text-white'}`}>{s.title}</div>
                           <div className="text-xs font-medium text-zinc-500 truncate">{s.artist}</div>

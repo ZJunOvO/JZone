@@ -8,6 +8,7 @@ import { supabaseApi } from '../supabaseApi';
 import { useStore } from '../store';
 import type { ListeningRecapPeriod, ListeningRecapResponse } from '../services/supabase/listeningRecapTypes';
 import type { Song } from '../types';
+import { ResilientCoverImage } from '../components/media/ResilientCoverImage';
 
 const RECENT_KEY = 'jzone_recent_song_ids_v1';
 const PLAY_STATS_CACHE_PREFIX = 'jzone_home_play_stats_v1:';
@@ -166,8 +167,10 @@ const FocusCard = ({
       <div className="text-zinc-400 text-sm mb-3 truncate">{song.artist}</div>
 
       <div className="relative aspect-square rounded-[16px] overflow-hidden bg-zinc-800 shadow-xl border border-white/5">
-        <img
+        <ResilientCoverImage
           src={song.coverUrl}
+          coverPath={song.coverPath}
+          fallbackSeed={song.id}
           alt={song.title}
           loading="lazy"
           decoding="async"
@@ -258,9 +261,11 @@ const ContinueListening = ({
           >
             <div className="relative w-[104px] h-[78px] shrink-0">
               {songs.slice(0, 3).map((song, index) => (
-                <img
+                <ResilientCoverImage
                   key={song.id}
                   src={song.coverUrl}
+                  coverPath={song.coverPath}
+                  fallbackSeed={song.id}
                   alt={song.title}
                   loading={index === 0 ? 'eager' : 'lazy'}
                   decoding="async"
@@ -298,7 +303,7 @@ const ContinueListening = ({
                     onClick={() => onPlay(song.id)}
                     className="w-full flex items-center gap-3 rounded-2xl px-2 py-2 text-left hover:bg-white/[0.055] active:scale-[0.99] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                   >
-                    <img src={song.coverUrl} alt="" loading="lazy" decoding="async" className="w-10 h-10 rounded-xl object-cover bg-zinc-800 border border-white/5" />
+                    <ResilientCoverImage src={song.coverUrl} coverPath={song.coverPath} fallbackSeed={song.id} alt="" loading="lazy" decoding="async" className="w-10 h-10 rounded-xl object-cover bg-zinc-800 border border-white/5" />
                     <div className="flex-1 min-w-0">
                       <div className={`text-sm font-bold truncate ${active ? 'text-red-400' : 'text-zinc-100'}`}>{song.title}</div>
                       <div className="text-xs text-zinc-500 truncate">{song.artist}</div>
@@ -348,7 +353,7 @@ const FrequentListening = ({
               className="w-full min-h-14 flex items-center gap-3 rounded-2xl px-2 py-2 text-left hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             >
               <span className={`w-5 text-center text-sm font-semibold tabular-nums ${index < 3 ? 'text-white' : 'text-zinc-600'}`}>{index + 1}</span>
-              <img src={song.coverUrl} alt="" loading="lazy" decoding="async" className="w-10 h-10 rounded-xl object-cover bg-zinc-800" />
+              <ResilientCoverImage src={song.coverUrl} coverPath={song.coverPath} fallbackSeed={song.id} alt="" loading="lazy" decoding="async" className="w-10 h-10 rounded-xl object-cover bg-zinc-800" />
               <div className="flex-1 min-w-0">
                 <div className={`text-sm font-bold truncate ${active ? 'text-red-400' : 'text-zinc-100'}`}>{song.title}</div>
                 <div className="text-xs text-zinc-500 truncate">{song.artist}</div>

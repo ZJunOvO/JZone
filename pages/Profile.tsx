@@ -698,6 +698,10 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
               setIsSettingsOpen(false);
               setIsBackgroundManagerOpen(true);
             }}
+            onOpenMediaGovernance={() => {
+              setIsSettingsOpen(false);
+              window.dispatchEvent(new CustomEvent('jzone:navigate-media-governance'));
+            }}
             onSignOut={async () => {
               setIsSettingsOpen(false);
               await signOut();

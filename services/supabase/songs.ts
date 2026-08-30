@@ -2,7 +2,7 @@ import { cosClient } from '../../cosClient';
 import { downscaleImageBlob } from '../../imageProcessing';
 import { getAudioExtFromMime } from '../../utils/uploadAudio';
 import { createRuntimeUuid } from '../../utils/runtimeId';
-import { createSharedCoverPath, isSharedCoverPath } from '../../utils/sharedMedia';
+import { createSharedCoverPath, getCoverCleanupDisposition, isSharedCoverPath } from '../../utils/sharedMedia';
 import { cached, TTL_MY_SONG_PLAY_MS } from './cache';
 import { ensureSupabase } from './client';
 import { createSignedCoverUrl } from './storageApi';
@@ -57,6 +57,7 @@ export const createSongsApi = () => ({
     album?: string;
     genre?: string;
     story?: string;
+    recordedAt?: string;
     fileSize?: number;
     duration: number;
     trimStart: number;
@@ -138,6 +139,7 @@ export const createSongsApi = () => ({
         trim_end: input.trimEnd,
         audio_path: audioPath,
         cover_path: coverPath,
+        recorded_at: input.recordedAt || null,
       };
 
       const insertWithExtras = {
@@ -155,8 +157,9 @@ export const createSongsApi = () => ({
 
       let { data, error } = await tryInsert(insertWithExtras);
       const message = typeof (error as any)?.message === 'string' ? (error as any).message : '';
-      if (error && (message.includes('story') || message.includes('file_size') || message.includes('is_public') || message.includes('stream_audio_path') || message.includes('stream_file_size') || message.includes('stream_bitrate_kbps'))) {
-        ({ data, error } = await tryInsert(insertBase));
+      if (error && (message.includes('story') || message.includes('file_size') || message.includes('is_public') || message.includes('stream_audio_path') || message.includes('stream_file_size') || message.includes('stream_bitrate_kbps') || message.includes('recorded_at'))) {
+        const { recorded_at: _recordedAt, ...compatibleInsertBase } = insertBase;
+        ({ data, error } = await tryInsert(compatibleInsertBase));
         if (!error && streamAudioPath) {
           await cosClient.deleteFiles([streamAudioPath]).catch(() => {});
         }
@@ -254,7 +257,8 @@ export const createSongsApi = () => ({
     if (error) throw error;
     const referenceCount = Number(data);
     if (!Number.isFinite(referenceCount)) throw new Error('封面引用计数无效');
-    if (referenceCount > 0) return 'retained';
+    const disposition = getCoverCleanupDisposition(normalizedPath, referenceCount);
+    if (disposition !== 'delete') return disposition === 'skip' ? 'skipped' : 'retained';
 
     await cosClient.deleteFiles([normalizedPath]);
     return 'deleted';

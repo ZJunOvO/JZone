@@ -82,6 +82,7 @@ export const useUploadSave = ({
           album: albumForSong || '未知专辑',
           genre: draft.genre || undefined,
           story: draft.story || undefined,
+          recordedAt: draft.recordedAt || undefined,
           fileSize: draft.file.size,
           duration: draft.duration,
           trimStart: draft.range[0],
@@ -190,6 +191,7 @@ export const useUploadSave = ({
         trimEnd: draft.range[1],
         uploadedBy: 'Me',
         addedAt: Date.now(),
+        recordedAt: draft.recordedAt || undefined,
         coverUrl: draft.coverFile ? undefined : draft.coverUrl,
       };
 
@@ -213,6 +215,7 @@ export const useUploadSave = ({
         trimEnd: draft.range[1],
         uploadedBy: 'Me',
         addedAt: persistedMeta.addedAt,
+        recordedAt: persistedMeta.recordedAt,
       };
 
       addSong(newSong);

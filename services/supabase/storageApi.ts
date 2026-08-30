@@ -155,6 +155,16 @@ export const invalidateSignedAudioUrlCache = (path: string) => {
   invalidateSignedUrlForPath(path, 'audio', COS_AUDIO_BROWSER_CACHE_CONTROL);
 };
 
+/** 图片加载失败时只淘汰当前封面的签名地址，避免清空整个媒体缓存。 */
+export const invalidateSignedCoverUrlCache = (path: string) => {
+  invalidateSignedUrlForPath(path, 'covers', COS_IMAGE_BROWSER_CACHE_CONTROL);
+};
+
+/** 头像与个人背景沿用图片缓存策略，但保持独立的存储路径归一化。 */
+export const invalidateSignedAvatarUrlCache = (path: string) => {
+  invalidateSignedUrlForPath(path, 'avatars', COS_IMAGE_BROWSER_CACHE_CONTROL);
+};
+
 export const createSignedAudioUrl = async (path: string, expiresInSeconds = AUDIO_SIGNED_URL_TTL_SECONDS) => {
   const normalizedPath = normalizeStoragePath(path, 'audio');
   if (/^https?:\/\//i.test(normalizedPath)) return normalizedPath;

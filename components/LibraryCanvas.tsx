@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { animate, motion, type PanInfo, useDragControls, useMotionValue, useSpring } from 'framer-motion';
 import { Icons } from './Icons';
+import { ResilientCoverImage } from './media/ResilientCoverImage';
 
 export type LibraryBentoKind = 'song' | 'album' | 'playlist';
 
@@ -9,6 +10,7 @@ export interface LibraryBentoItem {
   title: string;
   subtitle?: string;
   coverUrl?: string;
+  coverPath?: string;
   kind: LibraryBentoKind;
   pinned?: boolean;
 }
@@ -154,10 +156,8 @@ const Tile: React.FC<{
   const timerRef = useRef<number | null>(null);
   const longPressedRef = useRef(false);
   const pointerStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
-  const [imageFailed, setImageFailed] = useState(false);
   const ItemIcon = gridItem.item.kind === 'album' ? Icons.Disc : gridItem.item.kind === 'playlist' ? Icons.ListMusic : Icons.Music2;
 
-  useEffect(() => setImageFailed(false), [gridItem.item.coverUrl]);
   useEffect(() => {
     if (!suppressLongPress) return;
     clearTimer();
@@ -253,14 +253,15 @@ const Tile: React.FC<{
         onOpen(gridItem.item.id);
       }}
     >
-      {gridItem.item.coverUrl && !imageFailed ? (
-        <img
+      {gridItem.item.coverUrl ? (
+        <ResilientCoverImage
           src={gridItem.item.coverUrl}
+          coverPath={gridItem.item.coverPath}
+          fallbackSeed={gridItem.item.id}
           alt=""
           className="h-full w-full select-none object-cover pointer-events-none"
           loading="lazy"
           decoding="async"
-          onError={() => setImageFailed(true)}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-zinc-800 text-white/35">

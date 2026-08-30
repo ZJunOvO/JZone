@@ -28,6 +28,7 @@ export interface Song {
   addedAt: number;
   isPublic?: boolean;
   pinnedAt?: string | null;
+  recordedAt?: string | null;
 }
 
 export interface Album {

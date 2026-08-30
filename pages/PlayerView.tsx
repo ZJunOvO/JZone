@@ -36,10 +36,12 @@ import {
   type PlayerTransitionPhase,
   type PlayerSharedOrigin,
 } from '../components/motion/playerTransition';
+import { ResilientCoverImage } from '../components/media/ResilientCoverImage';
 
 const SongLyricsEditorDialog = React.lazy(() => import('../components/lyrics/SongLyricsEditorDialog').then(({ SongLyricsEditorDialog: Component }) => ({
   default: Component,
 })));
+const MotionResilientCoverImage = motion(ResilientCoverImage);
 
 interface PlayerViewProps {
   onClose: () => void;
@@ -117,7 +119,7 @@ const QueueSongRow: React.FC<{
   const active = song.id === currentSongId;
   const content = (
     <>
-      <img src={song.coverUrl} loading="lazy" decoding="async" className="w-12 h-12 rounded-lg object-cover mr-4 shadow-md" alt="" />
+      <ResilientCoverImage src={song.coverUrl} coverPath={song.coverPath} fallbackSeed={song.id} loading="lazy" decoding="async" className="w-12 h-12 rounded-lg object-cover mr-4 shadow-md" alt="" />
       <div className="flex-1 min-w-0">
         <h4 className={`text-sm font-bold truncate ${active ? 'text-white' : 'text-zinc-300'}`}>{song.title}</h4>
         <p className="text-[11px] text-zinc-500 truncate font-medium mt-0.5">{song.artist}</p>
@@ -569,9 +571,11 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         data-player-transition-part="background"
       >
         <AnimatePresence initial={false}>
-          <motion.img
+          <MotionResilientCoverImage
             key={song.id}
             src={song.coverUrl}
+            coverPath={song.coverPath}
+            fallbackSeed={song.id}
             decoding="async"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -668,8 +672,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                     className={`relative h-full w-full transition-[transform,opacity] duration-500 ease-out ${isLyricsViewOpen || playerState.isPlaying ? 'scale-100 opacity-100' : 'scale-[0.88] opacity-80'}`}
                     data-testid="player-cover-visual"
                   >
-                    <img
+                    <ResilientCoverImage
                       src={song.coverUrl}
+                      coverPath={song.coverPath}
+                      fallbackSeed={song.id}
                       alt=""
                       className="h-full w-full rounded-[14px] border border-white/10 object-cover shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)] transition-[filter] duration-200 group-hover:brightness-105"
                       data-testid="player-cover-image"

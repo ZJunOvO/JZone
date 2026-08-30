@@ -41,6 +41,7 @@ export const createUploadedSongFromRow = ({
   addedAt: new Date(row.created_at).getTime(),
   isPublic: visibility === 'public',
   pinnedAt: row.pinned_at ?? null,
+  recordedAt: row.recorded_at ?? null,
 });
 
 export const attachUploadedSongToCollection = async (selection: CollectionSelectValue, songId: string) => {

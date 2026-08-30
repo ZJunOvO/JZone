@@ -117,6 +117,7 @@ export interface UploadDraftMeta {
   streamOptimizationEnabled?: boolean;
   range?: [number, number];
   duration?: number;
+  recordedAt?: string;
 }
 
 const toStoredFilePayload = (file: File): StoredFilePayload => ({

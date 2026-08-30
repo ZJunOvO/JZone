@@ -10,6 +10,7 @@ import { AddSongToCollectionDialog } from '../components/AddSongToCollectionDial
 import { SongRowSkeleton } from '../components/Skeletons';
 import { useCurrentArtistProfile } from '../hooks/useCurrentArtistProfile';
 import { LyricsWorkbenchDialog } from '../components/lyrics';
+import { ResilientCoverImage } from '../components/media/ResilientCoverImage';
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB';
@@ -124,7 +125,7 @@ export const Upload: React.FC = () => {
                 }`}
               >
                 <div className="relative w-12 h-12 shrink-0 mr-4">
-                  <img src={song.coverUrl} className="w-full h-full rounded-lg object-cover bg-zinc-800 shadow-md border border-white/5" alt={song.title} />
+                  <ResilientCoverImage src={song.coverUrl} coverPath={song.coverPath} fallbackSeed={song.id} className="w-full h-full rounded-lg object-cover bg-zinc-800 shadow-md border border-white/5" alt={song.title} />
                   {playerState.currentSongId === song.id && playerState.isPlaying && (
                     <div className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center">
                       <div className="flex gap-[2.5px] items-end h-3">

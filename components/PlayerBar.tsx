@@ -6,6 +6,7 @@ import { SkeletonBlock } from './Skeletons';
 import { LiquidGlassMotionContent } from './LiquidGlassMotionContent';
 import { createPlayerSettleCurve, PLAYER_SETTLE_DURATION } from './motion/playerTransition';
 import { BOTTOM_DOCK_GEOMETRY } from '../utils/liquidGlassSettings';
+import { ResilientCoverImage } from './media/ResilientCoverImage';
 
 const MINI_SETTLE_CURVE = createPlayerSettleCurve(1.0072);
 
@@ -113,8 +114,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             data-shared-element="song-cover"
             data-player-shared-source="cover"
           >
-            <img
+            <ResilientCoverImage
               src={song.coverUrl}
+              coverPath={song.coverPath}
+              fallbackSeed={song.id}
               alt=""
               decoding="async"
               className="h-full w-full object-cover"
@@ -177,8 +180,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         data-shared-element="song-cover"
         data-player-shared-source="cover"
       >
-        <img 
+        <ResilientCoverImage
           src={song.coverUrl} 
+          coverPath={song.coverPath}
+          fallbackSeed={song.id}
           alt="Cover" 
           decoding="async"
           className={`h-full w-full object-cover shadow-sm bg-zinc-800 ${isCompactExpanded ? 'rounded-[25px]' : 'rounded-md'}`}

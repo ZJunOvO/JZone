@@ -13,6 +13,7 @@ import { useAuth } from '../auth';
 import { CollectionRow, supabaseApi } from '../supabaseApi';
 import { LiquidGlassSurface } from '../components/LiquidGlassSurface';
 import { LIQUID_MENU_EXIT_MS, LiquidGlassMotionContent } from '../components/LiquidGlassMotionContent';
+import { ResilientCoverImage } from '../components/media/ResilientCoverImage';
 
 type LibraryContentType = 'songs' | 'albums' | 'playlists';
 type LibraryFilter = 'all' | 'mine' | 'collaborations' | 'public' | 'private' | 'favorites';
@@ -97,7 +98,7 @@ const SwipeableListItem = ({ song, index, playSong, deleteSong, currentSongId, i
         </div>
         
         <div className="relative">
-            <img src={song.coverUrl} loading="lazy" decoding="async" className="w-12 h-12 rounded-md object-cover mr-3 bg-zinc-800" alt="art" />
+            <ResilientCoverImage src={song.coverUrl} coverPath={song.coverPath} fallbackSeed={song.id} loading="lazy" decoding="async" className="w-12 h-12 rounded-md object-cover mr-3 bg-zinc-800" alt="" />
             {song.pinnedAt && (
                 <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-[2px] border border-black">
                     <Icons.Pin size={8} className="text-white" fill="currentColor" />
@@ -142,7 +143,7 @@ const CollectionListItem = ({ collection, userId }: { collection: CollectionRow;
     >
       <div className="relative w-12 h-12 rounded-xl bg-zinc-900 border border-white/5 overflow-hidden mr-4 shrink-0 flex items-center justify-center">
         {collection.cover_url ? (
-          <img src={collection.cover_url} loading="lazy" decoding="async" className="w-full h-full object-cover" alt={collection.title} />
+          <ResilientCoverImage src={collection.cover_url} coverPath={collection.cover_url} fallbackSeed={collection.id} loading="lazy" decoding="async" className="w-full h-full object-cover" alt={collection.title} />
         ) : (
           <Icon size={22} className="text-zinc-500" />
         )}
@@ -325,6 +326,7 @@ export const Library: React.FC = () => {
         title: song.title,
         subtitle: song.artist,
         coverUrl: song.coverUrl,
+        coverPath: song.coverPath,
         kind: 'song',
         pinned: Boolean(song.pinnedAt),
       }));
@@ -334,6 +336,7 @@ export const Library: React.FC = () => {
       title: collection.title,
       subtitle: collection.type === 'album' ? '专辑' : '歌单',
       coverUrl: collection.cover_url ?? undefined,
+      coverPath: collection.cover_url ?? undefined,
       kind: collection.type,
       pinned: Boolean(collection.pinned_at),
     }));

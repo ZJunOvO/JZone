@@ -399,6 +399,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             trimEnd: r.trim_end,
             uploadedBy: r.owner_id === user.id ? 'Me' : 'Member',
             addedAt: new Date(r.created_at).getTime(),
+            recordedAt: r.recorded_at ?? null,
           };
         })
       );
@@ -1141,6 +1142,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           rowUpdates.visibility = songUpdates.isPublic ? 'public' : 'private';
         }
         if (songUpdates.pinnedAt !== undefined) rowUpdates.pinned_at = songUpdates.pinnedAt;
+        if (songUpdates.recordedAt !== undefined) rowUpdates.recorded_at = songUpdates.recordedAt || null;
         return rowUpdates;
       };
 

@@ -11,6 +11,7 @@ import { feedback } from './feedback';
 import { CollectionCreatableSelect, type CollectionSelectValue } from './CollectionCreatableSelect';
 import { attachUploadedSongToCollection } from '../utils/uploadFlow';
 import { prepareImageForEditing } from '../imageProcessing';
+import { ResilientCoverImage } from './media/ResilientCoverImage';
 
 const SongLyricsEditorDialog = React.lazy(() => import('./lyrics/SongLyricsEditorDialog').then(({ SongLyricsEditorDialog: Component }) => ({
   default: Component,
@@ -34,6 +35,7 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
   );
   const [genre, setGenre] = useState(song.genre || '');
   const [story, setStory] = useState(song.story || '');
+  const [recordedAt, setRecordedAt] = useState(song.recordedAt || '');
   const [coverUrl, setCoverUrl] = useState(song.coverUrl);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -49,6 +51,7 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
       setCollectionSelection(song.album ? { kind: 'create', type: 'album', title: song.album } : { kind: 'none' });
       setGenre(song.genre || '');
       setStory(song.story || '');
+      setRecordedAt(song.recordedAt || '');
       setCoverUrl(song.coverUrl);
       setCoverFile(null);
       setIsLyricsEditorOpen(false);
@@ -143,6 +146,7 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
         album: albumTitle || '',
         genre: genre || undefined,
         story: story || undefined,
+        recordedAt: recordedAt || null,
         ...coverUpdates,
       }, { syncAlbumByTitle: false });
       if (hasSupabaseConfig) {
@@ -190,7 +194,7 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
           <div className="space-y-4">
              <div className="flex items-center gap-4 p-4 bg-black/20 rounded-2xl border border-white/5">
                 <div className="relative group cursor-pointer" onClick={handleCoverClick}>
-                    <img src={coverUrl} decoding="async" className="w-16 h-16 rounded-xl object-cover bg-zinc-800 transition group-hover:opacity-50" alt="Cover" />
+                    <ResilientCoverImage src={coverUrl} coverPath={coverFile ? null : song.coverPath} fallbackSeed={song.id} decoding="async" className="w-16 h-16 rounded-xl object-cover bg-zinc-800 transition group-hover:opacity-50" alt="封面" />
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
                         <Icons.Camera size={20} className="text-white drop-shadow-md" />
                     </div>
@@ -266,6 +270,21 @@ export const EditSongModal: React.FC<EditSongModalProps> = ({ isOpen, onClose, s
                   </span>
                   <Icons.ChevronRight size={17} className="shrink-0 text-white/30" aria-hidden="true" />
                 </button>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3 px-1">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">录制日期</label>
+                    <span className="text-[10px] font-medium text-zinc-600">用于记忆卡片</span>
+                  </div>
+                  <input
+                    type="date"
+                    value={recordedAt}
+                    max={new Date().toISOString().slice(0, 10)}
+                    onChange={(event) => setRecordedAt(event.target.value)}
+                    className="min-h-12 w-full rounded-xl border border-white/5 bg-black/40 px-3 text-sm font-medium text-white outline-none transition focus:border-red-500/50 [color-scheme:dark]"
+                    data-testid="edit-song-recorded-at"
+                  />
+                </div>
 
                 <div className="space-y-1.5">
                     <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest ml-1">灵感札记</label>

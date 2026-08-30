@@ -4,6 +4,7 @@ import { Icons } from '../Icons';
 import type { CollectionRow } from '../../supabaseApi';
 import type { Song } from '../../types';
 import { sharedElementIds, SHARED_ELEMENT_TRANSITION } from '../motion/sharedElementRegistry';
+import { ResilientCoverImage } from '../media/ResilientCoverImage';
 
 type ProfileTab = 'creation' | 'collection';
 type ProfileSubTab = 'uploads' | 'albums' | 'playlists' | string;
@@ -46,8 +47,10 @@ const SongList: React.FC<{
         }`}
       >
         <div className="relative">
-          <img
+          <ResilientCoverImage
             src={song.coverUrl}
+            coverPath={song.coverPath}
+            fallbackSeed={song.id}
             loading="lazy"
             decoding="async"
             className="w-12 h-12 rounded-lg object-cover shadow-lg"
@@ -145,7 +148,7 @@ const CollectionList: React.FC<{
             data-shared-element="collection-cover"
           >
             {collection.cover_url ? (
-              <img src={collection.cover_url} className="w-full h-full object-cover" alt="" loading="lazy" decoding="async" />
+              <ResilientCoverImage src={collection.cover_url} coverPath={collection.cover_url} fallbackSeed={collection.id} className="w-full h-full object-cover" alt="" loading="lazy" decoding="async" />
             ) : null}
           </motion.div>
           <div className="flex-1 min-w-0">

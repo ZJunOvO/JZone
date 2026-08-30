@@ -72,12 +72,11 @@ try {
   });
   await page.getByText('正在编辑').waitFor({ state: 'visible', timeout: 10000 });
   await page.getByRole('button', { name: '更多', exact: true }).click();
-  const dateTag = page.getByRole('button', { name: '删除标签 2024/06/01' });
-  await dateTag.waitFor({ state: 'visible', timeout: 5000 });
-  await dateTag.click();
-  assert((await page.getByRole('button', { name: '删除标签 2024/06/01' }).count()) === 0, '录制日期标签无法删除');
+  const recordedAt = page.getByTestId('upload-recorded-at');
+  await recordedAt.waitFor({ state: 'visible', timeout: 5000 });
+  assert(await recordedAt.inputValue() === '2024-06-01', `录制日期没有写入独立字段：${await recordedAt.inputValue()}`);
 
-  console.log(JSON.stringify({ ok: true, realM4aSize: sizeText, embeddedDateTag: '2024/06/01' }, null, 2));
+  console.log(JSON.stringify({ ok: true, realM4aSize: sizeText, recordedAt: '2024-06-01' }, null, 2));
 } finally {
   await browser.close();
 }

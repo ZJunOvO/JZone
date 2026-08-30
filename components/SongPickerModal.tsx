@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Song } from '../types';
 import { Icons } from './Icons';
+import { ResilientCoverImage } from './media/ResilientCoverImage';
 
 export const SongPickerModal: React.FC<{
   isOpen: boolean;
@@ -92,7 +93,7 @@ export const SongPickerModal: React.FC<{
                       <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${isChecked ? 'border-white/40 bg-white/10' : 'border-white/15 bg-black/20'}`}>
                         {isChecked ? <Icons.Check size={14} className="text-white" /> : null}
                       </div>
-                      <img src={s.coverUrl} className="w-11 h-11 rounded-xl object-cover bg-zinc-800" alt="" loading="lazy" decoding="async" />
+                      <ResilientCoverImage src={s.coverUrl} coverPath={s.coverPath} fallbackSeed={s.id} className="w-11 h-11 rounded-xl object-cover bg-zinc-800" alt="" loading="lazy" decoding="async" />
                       <div className="flex-1 min-w-0 text-left">
                         <div className="text-sm font-bold text-white truncate">{s.title}</div>
                         <div className="text-xs text-zinc-500 font-medium truncate">{s.artist}</div>
@@ -123,4 +124,3 @@ export const SongPickerModal: React.FC<{
     </AnimatePresence>
   );
 };
-

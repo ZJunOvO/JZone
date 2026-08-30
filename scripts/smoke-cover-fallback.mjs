@@ -15,6 +15,7 @@ const assert = (condition, message) => {
 
 try {
   await page.route(/https:\/\/(?:fastly\.)?picsum\.photos\/.*/, (route) => route.abort('failed'));
+  await page.route(/https:\/\/.*myqcloud\.com\/.*covers\//, (route) => route.abort('failed'));
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   if (!(await page.getByTestId('bottom-nav-home').isVisible().catch(() => false))) {
     await page.getByTestId('auth-email').fill(email);
@@ -28,20 +29,26 @@ try {
   await fallbackSong.click();
   await page.getByTestId('mini-player').waitFor({ state: 'visible', timeout: 5_000 });
   await page.getByTestId('mini-player').click();
+  if (!(await page.getByTestId('player-transition-shell').isVisible().catch(() => false))) {
+    await page.getByTestId('mini-player').click();
+  }
   await page.getByTestId('player-transition-shell').waitFor({ state: 'visible', timeout: 5_000 });
 
   const background = page.locator('img[alt="immersive background"]');
   await background.waitFor({ state: 'attached', timeout: 5_000 });
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(900);
   const result = await background.evaluate((image) => ({
     src: image.getAttribute('src'),
     naturalWidth: image.naturalWidth,
     naturalHeight: image.naturalHeight,
+    renderedWidth: image.getBoundingClientRect().width,
+    renderedHeight: image.getBoundingClientRect().height,
   }));
 
   assert(!result.src?.includes('picsum.photos'), `播放背景仍依赖 Picsum：${result.src}`);
+  assert(result.src?.startsWith('data:image/svg+xml'), `封面请求失败后没有进入确定性占位图：${result.src}`);
   assert(result.naturalWidth > 0 && result.naturalHeight > 0, `播放背景没有可渲染资源：${JSON.stringify(result)}`);
-  assert(result.naturalWidth === result.naturalHeight, `本地封面不是方形资源：${JSON.stringify(result)}`);
+  assert(result.renderedWidth > 0 && result.renderedHeight > 0, `封面没有进入可见渲染区域：${JSON.stringify(result)}`);
   console.log(JSON.stringify(result, null, 2));
 } finally {
   await browser.close();

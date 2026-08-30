@@ -31,3 +31,14 @@ export const createSharedCoverPath = async (blob: Blob) => {
 
 export const isSharedCoverPath = (path?: string | null) => Boolean(path?.startsWith(SHARED_COVER_PREFIX));
 
+export type CoverCleanupDisposition = 'delete' | 'retain' | 'skip';
+
+export const getCoverCleanupDisposition = (
+  path: string | null | undefined,
+  referenceCount: number,
+): CoverCleanupDisposition => {
+  const normalizedPath = path?.trim();
+  if (!normalizedPath || /^https?:\/\//i.test(normalizedPath)) return 'skip';
+  if (!Number.isFinite(referenceCount) || referenceCount < 0) return 'retain';
+  return referenceCount === 0 ? 'delete' : 'retain';
+};

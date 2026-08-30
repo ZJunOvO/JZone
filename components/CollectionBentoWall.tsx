@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useDragControls, useMotionValue, useSpring } from 'framer-motion';
 import { Song } from '../types';
+import { ResilientCoverImage } from './media/ResilientCoverImage';
 
 interface CollectionBentoWallProps {
   songs: Song[];
@@ -215,11 +216,10 @@ export const CollectionBentoWall: React.FC<CollectionBentoWallProps> = ({ songs 
               borderRadius: item.type === 'large' ? 22 : 16,
             }}
           >
-            <img src={item.song.coverUrl} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+            <ResilientCoverImage src={item.song.coverUrl} coverPath={item.song.coverPath} fallbackSeed={item.song.id} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
           </div>
         ))}
       </motion.div>
     </div>
   );
 };
-

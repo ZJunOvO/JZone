@@ -14,6 +14,7 @@ export interface NormalizedUploadDraftMeta {
   streamOptimizationEnabled: boolean;
   duration: number | null;
   range: [number, number] | null;
+  recordedAt: string;
 }
 
 const isVisibility = (value: unknown): value is UploadVisibility => value === 'public' || value === 'private';
@@ -49,6 +50,9 @@ export const normalizeUploadDraftMeta = (meta: UploadDraftMeta): NormalizedUploa
   streamOptimizationEnabled: meta.streamOptimizationEnabled !== false,
   duration: normalizeDuration(meta.duration),
   range: normalizeRange(meta.range),
+  recordedAt: typeof meta.recordedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(meta.recordedAt)
+    ? meta.recordedAt
+    : '',
 });
 
 export const createUploadDraftMeta = (input: {
@@ -62,6 +66,7 @@ export const createUploadDraftMeta = (input: {
   streamOptimizationEnabled: boolean;
   duration: number;
   range: [number, number];
+  recordedAt: string;
 }): UploadDraftMeta => ({
   title: input.title,
   artist: input.artist,
@@ -73,4 +78,5 @@ export const createUploadDraftMeta = (input: {
   streamOptimizationEnabled: input.streamOptimizationEnabled,
   duration: input.duration,
   range: input.range,
+  recordedAt: input.recordedAt,
 });

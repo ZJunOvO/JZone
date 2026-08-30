@@ -21,6 +21,7 @@ export interface UploadDraftState {
   collectionSelection: CollectionSelectValue;
   genre: string;
   story: string;
+  recordedAt: string;
   songVisibility: UploadVisibility;
   streamOptimizationEnabled: boolean;
   coverUrl: string;
@@ -48,6 +49,7 @@ export interface UploadDraftActions {
   setCollectionSelection: (value: CollectionSelectValue) => void;
   setGenre: (value: string) => void;
   setStory: (value: string) => void;
+  setRecordedAt: (value: string) => void;
   setSongVisibility: (value: UploadVisibility) => void;
   setStreamOptimizationEnabled: (value: boolean) => void;
   setRange: React.Dispatch<React.SetStateAction<[number, number]>>;
@@ -103,6 +105,7 @@ const createInitialDraft = (
   collectionSelection: emptySelection,
   genre: '',
   story: '',
+  recordedAt: '',
   songVisibility: 'public',
   streamOptimizationEnabled: true,
   coverUrl: randomCover(),
@@ -306,6 +309,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
               album: normalizedMeta.album,
               genre: normalizedMeta.genre,
               story: normalizedMeta.story,
+              recordedAt: normalizedMeta.recordedAt,
               songVisibility: normalizedMeta.visibility,
               streamOptimizationEnabled: normalizedMeta.streamOptimizationEnabled,
               duration: normalizedMeta.duration ?? next.duration,
@@ -362,6 +366,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
           album: draft.album,
           genre: draft.genre,
           story: draft.story,
+          recordedAt: draft.recordedAt,
           visibility: draft.songVisibility,
           streamOptimizationEnabled: draft.streamOptimizationEnabled,
           duration: draft.duration,
@@ -369,7 +374,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
         })
       )
       .catch(() => {});
-  }, [draft.album, draft.artist, draft.artistCredits, draft.duration, draft.genre, draft.range, draft.songVisibility, draft.story, draft.streamOptimizationEnabled, draft.title, isDraftRestored, ownerId]);
+  }, [draft.album, draft.artist, draft.artistCredits, draft.duration, draft.genre, draft.range, draft.recordedAt, draft.songVisibility, draft.story, draft.streamOptimizationEnabled, draft.title, isDraftRestored, ownerId]);
 
   useEffect(() => {
     return () => {
@@ -452,14 +457,6 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
             : prev.artist;
         const shouldReplaceCredits = !prev.artistCredits.length
           || (!prev.artistCredits[0]?.profileId && looksLikeAuthFallbackArtist(prev.artistCredits[0]?.displayName || ''));
-        const recordingDateTag = embeddedTags.recordedAt?.replace(/-/g, '/');
-        const previousTags = prev.genre
-          .split(/[,，]/)
-          .map((value) => value.trim())
-          .filter(Boolean)
-          .filter((value) => !/^\d{4}\/\d{2}\/\d{2}$/.test(value));
-        const nextGenre = recordingDateTag ? [recordingDateTag, ...previousTags].join(', ') : prev.genre;
-
         return {
           ...prev,
           file: selectedFile,
@@ -474,7 +471,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
           step: 2,
           title: fileTitle,
           artist: nextArtist,
-          genre: nextGenre,
+          recordedAt: embeddedTags.recordedAt ?? prev.recordedAt,
           artistCredits: shouldReplaceCredits ? createDefaultCredits(nextArtist, currentProfile) : prev.artistCredits,
           sourceWarning: persistence === 'too-large'
             ? '文件超过 25MB，本次编辑可继续，但关闭页面后需要重新选择原音频。'
@@ -716,6 +713,7 @@ export const useUploadDraft = (defaultArtist?: string, currentProfile?: CurrentA
     setCollectionSelection: (value) => patchDraft({ collectionSelection: value }),
     setGenre: (value) => patchDraft({ genre: value }),
     setStory: (value) => patchDraft({ story: value }),
+    setRecordedAt: (value) => patchDraft({ recordedAt: value }),
     setSongVisibility: (value) => patchDraft({ songVisibility: value }),
     setStreamOptimizationEnabled: (value) => patchDraft({ streamOptimizationEnabled: value }),
     setRange: (value) => setDraft((prev) => ({ ...prev, range: typeof value === 'function' ? value(prev.range) : value })),
