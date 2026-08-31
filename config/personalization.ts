@@ -29,6 +29,7 @@ export interface PersonalizationProgress {
   lyrics: number;
   videos: number;
   qualifiedPlays: number;
+  puzzles: number;
 }
 
 export interface AchievementConfig {
@@ -44,4 +45,5 @@ export const ACHIEVEMENTS: AchievementConfig[] = [
   { id: 'first_lyrics_v1', name: '写进旋律里', description: '为一首歌曲完成歌词', metric: 'lyrics', target: 1 },
   { id: 'first_video_v1', name: '记忆有了画面', description: '为一首歌曲留下影像', metric: 'videos', target: 1 },
   { id: 'listener_30_v1', name: '声音的陪伴', description: '完成 30 次有效聆听', metric: 'qualifiedPlays', target: 30 },
+  { id: 'first_puzzle_v1', name: '拼回这一刻', description: '完成一张记忆拼图', metric: 'puzzles', target: 1 },
 ];

@@ -42,6 +42,7 @@ import { SongVideoViewer, type SongVideoTransitionOrigin } from '../components/v
 import { MemoryVideoSurface } from '../components/video/MemoryVideoSurface';
 import { normalizePlayerSkinId } from '../config/personalization';
 import { useCoverAccentColor } from '../hooks/useCoverAccentColor';
+import { CoverPuzzleModal } from '../components/personalization/CoverPuzzleModal';
 
 const SongLyricsEditorDialog = React.lazy(() => import('../components/lyrics/SongLyricsEditorDialog').then(({ SongLyricsEditorDialog: Component }) => ({
   default: Component,
@@ -260,6 +261,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const [memoryPreviewReady, setMemoryPreviewReady] = useState(false);
   const [memoryPreloadTargetReached, setMemoryPreloadTargetReached] = useState(false);
   const [videoRefreshNonce, setVideoRefreshNonce] = useState(0);
+  const [puzzleSong, setPuzzleSong] = useState<Song | null>(null);
   const [lyricsEditorAudioUrl, setLyricsEditorAudioUrl] = useState('');
   const [areLyricsControlsVisible, setAreLyricsControlsVisible] = useState(true);
   const lyricsFullscreenLockedRef = React.useRef(false);
@@ -728,7 +730,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   return (
     <motion.div
       className={`fixed inset-0 z-[200] flex h-screen flex-col justify-between overflow-hidden ${isLandscapeLayout ? 'py-3' : 'py-8'}`}
-      style={{ clipPath, willChange: 'clip-path', transform: 'translateZ(0)', backfaceVisibility: 'hidden', contain: 'paint' }}
+      style={{ clipPath, willChange: 'clip-path', transform: 'translateZ(0)', backfaceVisibility: 'hidden', contain: 'paint', background: isImmersiveSkin ? coverAccent.panelCss : undefined }}
       data-testid="player-transition-shell"
       data-player-skin={playerSkinId}
       data-player-transition-phase={transitionPhase}
@@ -741,7 +743,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         style={{
           opacity: surfaceOpacity,
           background: isImmersiveSkin
-            ? `radial-gradient(circle at 50% 32%, ${coverAccent.glowCss}, transparent 64%), ${coverAccent.darkCss}`
+            ? `linear-gradient(to bottom, ${coverAccent.css} 0%, ${coverAccent.panelCss} 64%, ${coverAccent.panelCss} 100%)`
             : undefined,
         }}
         data-player-transition-part="background"
@@ -763,13 +765,13 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           />
           ) : null}
         </AnimatePresence>
-        <div className={`absolute inset-0 ${isImmersiveSkin ? 'bg-black/10' : 'bg-black/20'}`}></div>
+        <div className={`absolute inset-0 ${isImmersiveSkin ? 'bg-black/[0.06]' : 'bg-black/20'}`}></div>
       </motion.div>
 
       {/* Top Handle indicator */}
       <motion.button
         type="button"
-        className={`flex cursor-pointer justify-center relative z-10 ${isLandscapeLayout ? 'absolute left-1/2 top-[calc(env(safe-area-inset-top)+4px)] ml-[-22px] h-11 w-11 items-center' : 'pt-2 pb-2'}`}
+        className={`flex cursor-pointer justify-center relative z-30 ${isLandscapeLayout ? 'absolute left-1/2 top-[calc(env(safe-area-inset-top)+4px)] ml-[-22px] h-11 w-11 items-center' : 'pt-2 pb-2'}`}
         onClick={onClose}
         aria-label="收起播放页"
         data-testid="player-view-close"
@@ -827,7 +829,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         >
           <motion.div
             layout={!reduceMotion}
-            className={`relative self-center justify-self-center ${isCompactLandscapeLayout ? 'col-start-1 row-start-1 h-[min(25dvh,80px)] max-h-full aspect-square' : isLandscapeLayout ? 'col-start-1 row-start-1 h-[min(46dvh,300px)] max-h-full aspect-square' : usePortraitLyricsLayout ? 'h-[76px] w-[76px]' : isImmersiveSkin ? 'aspect-square w-[calc(100%+4rem)] max-w-[448px]' : isVinylSkin ? 'aspect-square w-[88%] max-w-[370px]' : 'aspect-square w-[96%] max-w-[400px]'}`}
+            className={`relative self-center justify-self-center ${isCompactLandscapeLayout ? 'col-start-1 row-start-1 h-[min(25dvh,80px)] max-h-full aspect-square' : isLandscapeLayout ? 'col-start-1 row-start-1 h-[min(46dvh,300px)] max-h-full aspect-square' : usePortraitLyricsLayout ? 'h-[76px] w-[76px]' : isImmersiveSkin ? '-mt-14 h-[min(59dvh,560px)] w-[calc(100%+4rem)] max-w-none self-start' : isVinylSkin ? 'aspect-square w-[88%] max-w-[370px]' : 'aspect-square w-[96%] max-w-[400px]'}`}
             transition={{ layout: reduceMotion ? { duration: 0 } : { duration: 0.46, ease: [0.22, 0.74, 0.22, 1] } }}
             data-testid="player-cover-layout"
           >
@@ -878,8 +880,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                       className={`relative h-full w-full overflow-hidden transition-[transform,opacity,border-radius] duration-500 ease-out ${isImmersiveSkin ? 'rounded-none' : 'rounded-[14px]'} ${usePortraitLyricsLayout || playerState.isPlaying || isImmersiveSkin ? 'scale-100 opacity-100' : 'scale-[0.88] opacity-80'}`}
                       data-testid="player-cover-visual"
                       style={isImmersiveSkin ? {
-                        maskImage: 'radial-gradient(ellipse 88% 84% at center, black 62%, transparent 100%)',
-                        WebkitMaskImage: 'radial-gradient(ellipse 88% 84% at center, black 62%, transparent 100%)',
+                        maskImage: 'linear-gradient(to bottom, black 0%, black 72%, rgba(0,0,0,.86) 82%, transparent 100%)',
+                        WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 72%, rgba(0,0,0,.86) 82%, transparent 100%)',
                       } : undefined}
                     >
                       <ResilientCoverImage
@@ -887,7 +889,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                         coverPath={song.coverPath}
                         fallbackSeed={song.id}
                         alt=""
-                        className={`h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-105 ${isImmersiveSkin ? 'border-0 shadow-none' : 'rounded-[14px] border border-white/10 shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)]'}`}
+                        className={`h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-105 ${isImmersiveSkin ? 'border-0 object-[center_28%] shadow-none' : 'rounded-[14px] border border-white/10 shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)]'}`}
                         data-testid="player-cover-image"
                       />
                     </div>
@@ -906,6 +908,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                   expanded={isMemoryVideoActive}
                   mediaReady={memoryPreviewReady}
                   preloadTargetReached={memoryPreloadTargetReached}
+                  lyrics={playerLyricsInput}
                   onPreloadTargetReached={() => setMemoryPreloadTargetReached(true)}
                   onReady={() => setMemoryPreviewReady(true)}
                   onExpand={() => openSongVideo(memoryVideo, coverButtonRef.current, memoryVideoUrl)}
@@ -913,6 +916,15 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                 />
               ) : null}
             </PlayerSharedElement>
+            {playerSkinId === 'classic' && !usePortraitLyricsLayout ? (
+              <button
+                type="button"
+                onClick={() => setPuzzleSong(song)}
+                className="absolute bottom-3 right-3 z-20 grid h-10 w-10 place-items-center rounded-full border border-white/14 bg-black/28 text-white/78 shadow-lg backdrop-blur-xl transition active:scale-90"
+                aria-label={`打开 ${song.title} 的记忆拼图`}
+                data-testid="player-open-cover-puzzle"
+              ><Icons.Puzzle size={18} strokeWidth={1.6} /></button>
+            ) : null}
           </motion.div>
 
           {/* Song Info & Action Buttons */}
@@ -1147,12 +1159,13 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         </div>
 
         {activeVideo && activeVideo.row.kind !== 'memory' ? (
-          <SongVideoViewer row={activeVideo.row} song={song} posterUrl={videoPosterUrls[activeVideo.row.id]} initialVideoUrl={activeVideo.videoUrl} origin={activeVideo.origin} onClose={() => setActiveVideo(null)} />
+          <SongVideoViewer row={activeVideo.row} song={song} posterUrl={videoPosterUrls[activeVideo.row.id]} initialVideoUrl={activeVideo.videoUrl} origin={activeVideo.origin} lyrics={playerLyricsInput} onClose={() => setActiveVideo(null)} />
         ) : null}
       </div>
 
       {/* Memory Card Overlay */}
        <MemoryCardModal song={isMemoryOpen ? song : null} openNonce={memoryOpenNonce} onClose={() => setIsMemoryOpen(false)} />
+      <CoverPuzzleModal song={puzzleSong} onClose={() => setPuzzleSong(null)} />
 
       {/* Queue/List Overlay */}
       {isQueueOpen && (

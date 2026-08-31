@@ -6,6 +6,8 @@ import { useStore } from '../../store';
 import type { Song } from '../../types';
 import type { SongVideoRow } from '../../supabaseApi';
 import { getMemoryAudioMix } from '../../utils/songVideo';
+import type { LyricsInput, ParsedLyrics } from '../../utils/lyrics';
+import { VideoLyricsOverlay } from './VideoLyricsOverlay';
 
 interface MemoryVideoSurfaceProps {
   row: SongVideoRow;
@@ -18,6 +20,7 @@ interface MemoryVideoSurfaceProps {
   expanded: boolean;
   mediaReady: boolean;
   preloadTargetReached: boolean;
+  lyrics?: LyricsInput | ParsedLyrics | null;
   onPreloadTargetReached: () => void;
   onReady: () => void;
   onExpand: () => void;
@@ -58,6 +61,7 @@ export const MemoryVideoSurface: React.FC<MemoryVideoSurfaceProps> = ({
   expanded,
   mediaReady,
   preloadTargetReached,
+  lyrics,
   onPreloadTargetReached,
   onReady,
   onExpand,
@@ -69,6 +73,7 @@ export const MemoryVideoSurface: React.FC<MemoryVideoSurfaceProps> = ({
   const closeTimerRef = React.useRef<number | null>(null);
   const [anchorRect, setAnchorRect] = React.useState<SurfaceRect | null>(() => readAnchorRect(anchorRef.current));
   const [visualExpanded, setVisualExpanded] = React.useState(expanded && mediaReady);
+  const [showLyrics, setShowLyrics] = React.useState(false);
   const songStart = (row.song_start_ms ?? 0) / 1_000;
   const songEnd = (row.song_end_ms ?? row.duration_ms) / 1_000;
   const videoStart = row.video_start_ms / 1_000;
@@ -127,6 +132,10 @@ export const MemoryVideoSurface: React.FC<MemoryVideoSurfaceProps> = ({
     setVisualExpanded(true);
     if (!playerState.isPlaying) void togglePlay();
   }, [expanded, mediaReady, playerState.isPlaying, syncAnchor, togglePlay, videoEnd, videoStart]);
+
+  React.useEffect(() => {
+    if (!visualExpanded) setShowLyrics(false);
+  }, [visualExpanded]);
 
   React.useEffect(() => {
     const video = videoRef.current;
@@ -266,13 +275,21 @@ export const MemoryVideoSurface: React.FC<MemoryVideoSurfaceProps> = ({
           </button>
         ) : (
           <>
+            <VideoLyricsOverlay
+              lyrics={lyrics}
+              currentTime={playbackTime}
+              duration={song.duration}
+              playing={playerState.isPlaying}
+              visible={showLyrics}
+              onToggle={() => setShowLyrics((value) => !value)}
+            />
             <button
               type="button"
               onClick={beginClose}
-              className="absolute right-[max(18px,env(safe-area-inset-right))] top-[max(18px,env(safe-area-inset-top))] grid h-11 w-11 place-items-center rounded-full border border-white/15 bg-black/35 text-white backdrop-blur-xl"
+              className="absolute right-[max(18px,env(safe-area-inset-right))] top-[max(18px,env(safe-area-inset-top))] z-30 grid h-11 w-11 place-items-center rounded-full border border-white/15 bg-black/35 text-white backdrop-blur-xl"
               aria-label="关闭记忆 MV"
             ><Icons.X size={21} /></button>
-            <div className="pointer-events-none absolute inset-x-0 bottom-[max(28px,env(safe-area-inset-bottom))] flex justify-center">
+            <div className="pointer-events-none absolute inset-x-0 bottom-[max(28px,env(safe-area-inset-bottom))] z-30 flex justify-center">
               <span className="rounded-full bg-black/30 px-4 py-2 text-xs font-bold text-white/70 backdrop-blur-xl">{song.title} · 记忆片段</span>
             </div>
           </>

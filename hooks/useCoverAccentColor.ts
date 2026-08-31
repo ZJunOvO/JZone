@@ -75,6 +75,7 @@ export const useCoverAccentColor = (src?: string | null) => {
 
   const css = `rgb(${accent.r} ${accent.g} ${accent.b})`;
   const darkCss = `rgb(${clampChannel(accent.r * 0.42)} ${clampChannel(accent.g * 0.42)} ${clampChannel(accent.b * 0.42)})`;
+  const panelCss = `rgb(${clampChannel(accent.r * 0.54)} ${clampChannel(accent.g * 0.54)} ${clampChannel(accent.b * 0.54)})`;
   const glowCss = `rgba(${accent.r}, ${accent.g}, ${accent.b}, 0.48)`;
-  return { ...accent, css, darkCss, glowCss };
+  return { ...accent, css, darkCss, panelCss, glowCss };
 };

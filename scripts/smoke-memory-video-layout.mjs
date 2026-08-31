@@ -49,6 +49,18 @@ try {
     await page.waitForTimeout(650);
   }
   await page.getByTestId('player-transition-shell').waitFor({ state: 'visible', timeout: 10_000 });
+
+  await page.getByTestId('player-open-cover-puzzle').click();
+  await page.getByTestId('cover-puzzle-modal').waitFor({ state: 'visible' });
+  const puzzleTiles = page.locator('[data-testid^="cover-puzzle-tile-"]');
+  if (await puzzleTiles.count() !== 9) throw new Error('记忆拼图不是 3×3');
+  await page.getByTestId('cover-puzzle-tile-0').click();
+  await page.getByTestId('cover-puzzle-tile-1').click();
+  await page.waitForTimeout(180);
+  if (await page.getByTestId('cover-puzzle-elapsed').textContent() === '准备好了吗') throw new Error('交换拼图后没有开始计时');
+  await page.getByRole('button', { name: '关闭记忆拼图' }).click();
+  await page.getByTestId('cover-puzzle-modal').waitFor({ state: 'detached' });
+
   await page.getByLabel('播放进度').fill('104');
   await page.getByTestId('memory-video-surface').waitFor({ state: 'visible', timeout: 20_000 });
   await page.waitForTimeout(600);
@@ -76,9 +88,24 @@ try {
     throw new Error(`记忆视频未覆盖视窗：${JSON.stringify(expandedRect)}`);
   }
 
+  await page.getByTestId('video-lyrics-toggle').click();
+  await page.getByTestId('video-lyrics-overlay').waitFor({ state: 'visible' });
+  await page.getByTestId('video-lyrics-toggle').click();
+  await page.getByTestId('video-lyrics-overlay').waitFor({ state: 'detached' });
+
   await page.getByRole('button', { name: '关闭记忆 MV' }).click();
   await page.waitForFunction(() => document.querySelector('[data-testid="memory-video-surface"]')?.getAttribute('data-expanded') === 'false', null, { timeout: 10_000 });
-  await page.waitForTimeout(520);
+  await page.waitForFunction(() => {
+    const surface = document.querySelector('[data-testid="memory-video-surface"]');
+    const cover = document.querySelector('[data-testid="player-cover-button"]');
+    if (!surface || !cover) return false;
+    const a = surface.getBoundingClientRect();
+    const b = cover.getBoundingClientRect();
+    return Math.abs(a.top - b.top) <= 2
+      && Math.abs(a.left - b.left) <= 2
+      && Math.abs(a.width - b.width) <= 2
+      && Math.abs(a.height - b.height) <= 2;
+  }, null, { timeout: 5_000 });
   const closedRect = await rect('memory-video-surface');
   const currentCoverRect = await rect('player-cover-button');
   if (!closeEnough(closedRect, currentCoverRect)) {
@@ -95,7 +122,7 @@ try {
   }
 
   if (pageErrors.length) throw new Error(`页面错误：${pageErrors.join(' | ')}`);
-  console.log(JSON.stringify({ previewAnchored: true, expandedViewport: true, closeAnchored: true, lyricsPreviewHidden: true }, null, 2));
+  console.log(JSON.stringify({ puzzleGrid: true, puzzleTimer: true, previewAnchored: true, expandedViewport: true, videoLyricsToggle: true, closeAnchored: true, lyricsPreviewHidden: true }, null, 2));
 } finally {
   await browser.close();
 }

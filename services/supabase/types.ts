@@ -70,6 +70,18 @@ export interface SongVideoInput {
   audioMix?: number;
 }
 
+export interface CoverPuzzleRecordRow {
+  user_id: string;
+  cover_key: string;
+  cover_path: string | null;
+  album_title: string | null;
+  best_time_ms: number;
+  completion_count: number;
+  first_completed_at: string;
+  best_completed_at: string;
+  updated_at: string;
+}
+
 export type SongLyricsUpsertInput = SongLyricsInput;
 
 export interface SongArtistRow {

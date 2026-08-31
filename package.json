@@ -31,6 +31,7 @@
     "smoke:lyrics-live-sync": "node scripts/smoke-lyrics-live-sync.mjs",
     "smoke:song-videos": "node scripts/smoke-song-videos.mjs",
     "smoke:memory-video-layout": "node scripts/smoke-memory-video-layout.mjs",
+    "smoke:immersive-player": "node scripts/smoke-immersive-player.mjs",
     "audit:cos-history-live": "node scripts/cos-history-live-snapshot.mjs",
     "preview:cos-history-migration": "node scripts/cos-history-migration-preview.mjs"
   },

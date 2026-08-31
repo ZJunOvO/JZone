@@ -49,6 +49,13 @@ try {
     await page.screenshot({ path: `${process.env.JZONE_CAPTURE_DIR}/personalization-mobile.png`, fullPage: false });
   }
 
+  await page.getByRole('button', { name: '成就', exact: true }).click();
+  await page.getByTestId('achievement-test-trigger').click();
+  await page.getByTestId('achievement-celebration').waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: '关闭成就演出' }).click();
+  await page.getByTestId('achievement-celebration').waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: '播放器', exact: true }).click();
+
   if (await page.getByTestId('player-skin-vinyl').getAttribute('aria-pressed') !== 'true') {
     await page.getByTestId('player-skin-vinyl').click();
     await page.getByText('播放器样式已更新', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
@@ -80,7 +87,7 @@ try {
   await page.waitForFunction(() => !document.querySelector('[data-profile-avatar-target="true"] [data-avatar-frame-id]'));
 
   if (pageErrors.length) throw new Error(`页面错误：${pageErrors.join(' | ')}`);
-  console.log(JSON.stringify({ route: true, skinPersistence: true, skinColumns, wideMiniPlayer: true, avatarFrameSync: true, restoredDefaults: true }, null, 2));
+  console.log(JSON.stringify({ route: true, skinPersistence: true, skinColumns, wideMiniPlayer: true, achievementCelebration: true, avatarFrameSync: true, restoredDefaults: true }, null, 2));
 } finally {
   await browser.close();
 }

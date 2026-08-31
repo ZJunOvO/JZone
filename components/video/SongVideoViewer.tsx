@@ -7,6 +7,8 @@ import { supabaseApi, type SongVideoRow } from '../../supabaseApi';
 import type { Song } from '../../types';
 import { useModalPresence } from '../../modalPresence';
 import { getMemoryAudioMix } from '../../utils/songVideo';
+import type { LyricsInput, ParsedLyrics } from '../../utils/lyrics';
+import { VideoLyricsOverlay } from './VideoLyricsOverlay';
 
 export interface SongVideoTransitionOrigin {
   top: number;
@@ -22,6 +24,7 @@ interface SongVideoViewerProps {
   posterUrl?: string;
   initialVideoUrl?: string;
   origin?: SongVideoTransitionOrigin;
+  lyrics?: LyricsInput | ParsedLyrics | null;
   onClose: () => void;
 }
 
@@ -33,7 +36,7 @@ const getOriginClipPath = (origin?: SongVideoTransitionOrigin) => {
   return `inset(${Math.max(0, origin.top)}px ${right}px ${bottom}px ${Math.max(0, origin.left)}px round ${origin.borderRadius}px)`;
 };
 
-export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, posterUrl, initialVideoUrl, origin, onClose }) => {
+export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, posterUrl, initialVideoUrl, origin, lyrics, onClose }) => {
   useModalPresence(true);
   const { playerState, pausePlayback, togglePlay, seek, setPlaybackVolumeMultiplier } = useStore();
   const playbackTime = usePlaybackTime();
@@ -47,6 +50,9 @@ export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, pos
   const [loadError, setLoadError] = React.useState(false);
   const [mediaReady, setMediaReady] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
+  const [showLyrics, setShowLyrics] = React.useState(false);
+  const [videoTime, setVideoTime] = React.useState(row.video_start_ms / 1_000);
+  const [videoPlaying, setVideoPlaying] = React.useState(false);
   const isMemory = row.kind === 'memory';
   const originClipPath = React.useMemo(() => getOriginClipPath(origin), [origin]);
   const fallbackPoster = posterUrl || song.coverUrl;
@@ -184,7 +190,10 @@ export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, pos
               void event.currentTarget.play().catch(() => {});
             }}
             onEnded={close}
+            onPlay={() => setVideoPlaying(true)}
+            onPause={() => setVideoPlaying(false)}
             onTimeUpdate={(event) => {
+              setVideoTime(event.currentTarget.currentTime);
               if (row.video_end_ms != null && event.currentTarget.currentTime >= row.video_end_ms / 1_000) close();
             }}
             onError={() => {
@@ -216,9 +225,20 @@ export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, pos
           </div>
         ) : null}
 
+        {expanded ? (
+          <VideoLyricsOverlay
+            lyrics={lyrics}
+            currentTime={isMemory ? playbackTime : Math.max(0, videoTime - row.video_start_ms / 1_000 + song.trimStart)}
+            duration={song.duration}
+            playing={isMemory ? playerState.isPlaying : videoPlaying}
+            visible={showLyrics}
+            onToggle={() => setShowLyrics((value) => !value)}
+          />
+        ) : null}
+
         <motion.button
           onClick={close}
-          className="absolute right-[max(18px,env(safe-area-inset-right))] top-[max(18px,env(safe-area-inset-top))] grid h-11 w-11 place-items-center rounded-full border border-white/15 bg-black/35 text-white backdrop-blur-xl"
+          className="absolute right-[max(18px,env(safe-area-inset-right))] top-[max(18px,env(safe-area-inset-top))] z-30 grid h-11 w-11 place-items-center rounded-full border border-white/15 bg-black/35 text-white backdrop-blur-xl"
           aria-label="关闭 MV"
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: expanded ? 1 : 0, scale: expanded ? 1 : 0.8 }}
@@ -226,7 +246,7 @@ export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, pos
         ><Icons.X size={21} /></motion.button>
         {isMemory ? (
           <motion.div
-            className="pointer-events-none absolute inset-x-0 bottom-[max(28px,env(safe-area-inset-bottom))] flex justify-center"
+            className="pointer-events-none absolute inset-x-0 bottom-[max(28px,env(safe-area-inset-bottom))] z-30 flex justify-center"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: expanded ? 1 : 0, y: expanded ? 0 : 8 }}
           ><span className="rounded-full bg-black/30 px-4 py-2 text-xs font-bold text-white/70 backdrop-blur-xl">{song.title} · 记忆片段</span></motion.div>

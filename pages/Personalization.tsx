@@ -14,6 +14,9 @@ import {
 import { usePersonalization } from '../hooks/usePersonalization';
 import { useCoverAccentColor } from '../hooks/useCoverAccentColor';
 import { supabaseApi } from '../supabaseApi';
+import type { CoverPuzzleRecordRow } from '../supabaseApi';
+import { formatPuzzleTime } from '../utils/coverPuzzle';
+import { AchievementCelebration } from '../components/personalization/AchievementCelebration';
 import type { PlayerSkin } from '../types';
 
 interface PersonalizationProps {
@@ -21,7 +24,7 @@ interface PersonalizationProps {
   onBack: () => void;
 }
 
-const EMPTY_PROGRESS: PersonalizationProgress = { uploads: 0, lyrics: 0, videos: 0, qualifiedPlays: 0 };
+const EMPTY_PROGRESS: PersonalizationProgress = { uploads: 0, lyrics: 0, videos: 0, qualifiedPlays: 0, puzzles: 0 };
 
 const sections: Array<{ id: PersonalizationSection; label: string; Icon: typeof Icons.Disc }> = [
   { id: 'player', label: '播放器', Icon: Icons.Disc },
@@ -58,8 +61,9 @@ const SkinPreview: React.FC<{ skinId: PlayerSkin; coverUrl?: string; active: boo
   }
   if (skinId === 'immersive') {
     return (
-      <div className="relative flex h-full flex-col justify-between overflow-hidden" style={{ background: `radial-gradient(circle at 50% 34%, ${accent.glowCss}, transparent 68%), ${accent.darkCss}` }}>
-        <div className="relative -mx-2 mt-1 aspect-square" style={{ maskImage: 'radial-gradient(ellipse 82% 78% at center, black 62%, transparent 100%)', WebkitMaskImage: 'radial-gradient(ellipse 82% 78% at center, black 62%, transparent 100%)' }}><PreviewArtwork coverUrl={coverUrl} /></div>
+      <div className="relative flex h-full flex-col justify-end overflow-hidden" style={{ background: accent.darkCss }}>
+        <div className="absolute inset-x-0 top-0 h-[72%]" style={{ maskImage: 'linear-gradient(to bottom, black 0%, black 70%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 70%, transparent 100%)' }}><PreviewArtwork coverUrl={coverUrl} /></div>
+        <div className="relative mb-2 px-3"><span className="block h-2 w-[58%] rounded-full bg-white/70" /><span className="mt-2 block h-1.5 w-[36%] rounded-full bg-white/28" /></div>
         <PreviewControls />
       </div>
     );
@@ -88,7 +92,9 @@ export const Personalization: React.FC<PersonalizationProps> = ({ initialSection
   const [section, setSection] = React.useState<PersonalizationSection>(initialSection);
   const [selectedFrameId, setSelectedFrameId] = React.useState<string | null>(avatarFrameId);
   const [progress, setProgress] = React.useState<PersonalizationProgress>(EMPTY_PROGRESS);
+  const [puzzleRecords, setPuzzleRecords] = React.useState<CoverPuzzleRecordRow[]>([]);
   const [progressLoading, setProgressLoading] = React.useState(true);
+  const [testAchievementOpen, setTestAchievementOpen] = React.useState(false);
   const currentSong = getCurrentSong() ?? songs.find((song) => song.ownerId === userId) ?? songs[0];
   const coverAccent = useCoverAccentColor(currentSong?.coverUrl);
 
@@ -100,8 +106,11 @@ export const Personalization: React.FC<PersonalizationProps> = ({ initialSection
     let cancelled = false;
     const ownedSongIds = songs.filter((song) => song.ownerId === userId || (!song.ownerId && song.uploadedBy === 'Me')).map((song) => song.id);
     setProgressLoading(true);
-    void supabaseApi.fetchPersonalizationProgress(userId, ownedSongIds)
-      .then((next) => { if (!cancelled) setProgress(next); })
+    void Promise.all([
+      supabaseApi.fetchPersonalizationProgress(userId, ownedSongIds),
+      supabaseApi.fetchCoverPuzzleRecords(userId),
+    ])
+      .then(([next, records]) => { if (!cancelled) { setProgress(next); setPuzzleRecords(records); } })
       .catch(() => { if (!cancelled) setProgress({ ...EMPTY_PROGRESS, uploads: ownedSongIds.length }); })
       .finally(() => { if (!cancelled) setProgressLoading(false); });
     return () => { cancelled = true; };
@@ -215,15 +224,21 @@ export const Personalization: React.FC<PersonalizationProps> = ({ initialSection
                     <div key={achievement.id} className="flex min-h-[92px] items-center gap-4 py-4">
                       <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${unlocked ? 'bg-red-300/16 text-red-200' : 'bg-white/[0.045] text-white/22'}`}><Icons.Trophy size={21} strokeWidth={1.7} /></span>
                       <span className="min-w-0 flex-1"><span className={`block text-sm font-black ${unlocked ? 'text-white' : 'text-white/48'}`}>{achievement.name}</span><span className="mt-1 block text-xs font-medium text-white/32">{achievement.description}</span><span className="mt-2 block h-1 overflow-hidden rounded-full bg-white/[0.06]"><motion.span className={`block h-full rounded-full ${unlocked ? 'bg-red-300/80' : 'bg-white/25'}`} initial={false} animate={{ width: `${ratio * 100}%` }} /></span></span>
-                      <span className={`text-xs font-black tabular-nums ${unlocked ? 'text-red-200' : 'text-white/28'}`}>{progressLoading ? '…' : unlocked ? '已达成' : `${value}/${achievement.target}`}</span>
+                      <span className={`text-right text-xs font-black tabular-nums ${unlocked ? 'text-red-200' : 'text-white/28'}`}>{progressLoading ? '…' : achievement.metric === 'puzzles' && puzzleRecords[0] ? <><span className="block">已达成</span><span className="mt-1 block text-[10px] text-white/35">最佳 {formatPuzzleTime(puzzleRecords[0].best_time_ms)}</span></> : unlocked ? '已达成' : `${value}/${achievement.target}`}</span>
                     </div>
                   );
                 })}
+                <div className="flex min-h-[92px] items-center gap-4 py-4" data-testid="achievement-test-row">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/[0.045] text-white/24"><Icons.Trophy size={21} strokeWidth={1.7} /></span>
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-black text-white/48">未完成的成就</span><span className="mt-1 block text-xs font-medium text-white/32">仅测试完成弹窗，不保存记录</span><span className="mt-2 block h-1 rounded-full bg-white/[0.06]" /></span>
+                  <button type="button" onClick={() => setTestAchievementOpen(true)} className="min-h-11 px-2 text-xs font-black text-red-200" data-testid="achievement-test-trigger">测试演出</button>
+                </div>
               </div>
             </section>
           ) : null}
         </div>
       </main>
+      <AchievementCelebration open={testAchievementOpen} title="未完成的成就" description="这是一次演出测试，不会写入你的真实记录" detail="完成效果预览" onClose={() => setTestAchievementOpen(false)} />
     </div>
   );
 };
