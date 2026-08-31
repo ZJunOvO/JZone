@@ -29,6 +29,8 @@ assert.match(viewer, /initialVideoUrl/);
 assert.match(player, /MemoryVideoSurface/);
 assert.match(player, /activeVideo && activeVideo\.row\.kind !== 'memory'/);
 assert.match(memorySurface, /memory-video-surface/);
+assert.match(memorySurface, /createPortal/);
+assert.match(viewer, /createPortal/);
 assert.match(memorySurface, /bufferedDuration \/ video\.duration >= 0\.2/);
 assert.match(memorySurface, /video\.currentTime >= videoEnd - 0\.04/);
 assert.match(memorySurface, /expanded && !mediaReady/);

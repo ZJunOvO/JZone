@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { Icons } from '../Icons';
 import { usePlaybackTime, useStore } from '../../store';
@@ -130,9 +131,9 @@ export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, pos
     if (memoryEnteredRef.current && playbackTime >= end) close();
   }, [close, isMemory, playbackTime, row.song_end_ms, row.song_start_ms]);
 
-  return (
+  return createPortal((
     <motion.div
-      className="pointer-events-none fixed inset-0 z-[180]"
+      className="pointer-events-none fixed inset-0 z-[260]"
       initial={{ backgroundColor: 'rgba(0,0,0,0)' }}
       animate={{ backgroundColor: expanded ? 'rgba(0,0,0,0.94)' : 'rgba(0,0,0,0)' }}
       transition={{ duration: 0.42, ease: [0.22, 0.74, 0.22, 1] }}
@@ -232,5 +233,5 @@ export const SongVideoViewer: React.FC<SongVideoViewerProps> = ({ row, song, pos
         ) : null}
       </motion.div>
     </motion.div>
-  );
+  ), document.body);
 };

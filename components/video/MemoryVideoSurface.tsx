@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Icons } from '../Icons';
 import { useStore } from '../../store';
@@ -75,7 +76,16 @@ export const MemoryVideoSurface: React.FC<MemoryVideoSurfaceProps> = ({
 
   const syncAnchor = React.useCallback(() => {
     const next = readAnchorRect(anchorRef.current);
-    if (next) setAnchorRect(next);
+    if (!next) return;
+    setAnchorRect((previous) => {
+      if (previous
+        && Math.abs(previous.top - next.top) < 0.25
+        && Math.abs(previous.left - next.left) < 0.25
+        && Math.abs(previous.width - next.width) < 0.25
+        && Math.abs(previous.height - next.height) < 0.25
+        && Math.abs(previous.borderRadius - next.borderRadius) < 0.25) return previous;
+      return next;
+    });
   }, [anchorRef]);
 
   React.useLayoutEffect(() => {
@@ -93,6 +103,17 @@ export const MemoryVideoSurface: React.FC<MemoryVideoSurfaceProps> = ({
       window.removeEventListener('orientationchange', syncAnchor);
     };
   }, [anchorRef, syncAnchor]);
+
+  React.useLayoutEffect(() => {
+    if (!previewVisible || visualExpanded) return;
+    let frame = 0;
+    const track = () => {
+      syncAnchor();
+      frame = window.requestAnimationFrame(track);
+    };
+    track();
+    return () => window.cancelAnimationFrame(frame);
+  }, [previewVisible, syncAnchor, visualExpanded]);
 
   React.useEffect(() => {
     if (!expanded || !mediaReady) return;
@@ -169,7 +190,7 @@ export const MemoryVideoSurface: React.FC<MemoryVideoSurfaceProps> = ({
     ? { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight, borderRadius: 0 }
     : anchorRect;
 
-  return (
+  return createPortal((
     <>
       <motion.div
         className="pointer-events-none fixed inset-0 z-[249] bg-black"
@@ -258,5 +279,5 @@ export const MemoryVideoSurface: React.FC<MemoryVideoSurfaceProps> = ({
         )}
       </motion.div>
     </>
-  );
+  ), document.body);
 };

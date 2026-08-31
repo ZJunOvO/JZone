@@ -12,6 +12,7 @@ import {
   type PersonalizationSection,
 } from '../config/personalization';
 import { usePersonalization } from '../hooks/usePersonalization';
+import { useCoverAccentColor } from '../hooks/useCoverAccentColor';
 import { supabaseApi } from '../supabaseApi';
 import type { PlayerSkin } from '../types';
 
@@ -28,29 +29,47 @@ const sections: Array<{ id: PersonalizationSection; label: string; Icon: typeof 
   { id: 'achievements', label: '成就', Icon: Icons.Trophy },
 ];
 
-const SkinPreview: React.FC<{ skinId: PlayerSkin; coverUrl?: string; active: boolean }> = ({ skinId, coverUrl, active }) => {
-  const artwork = coverUrl ? <img src={coverUrl} alt="" className="h-full w-full object-cover" /> : <div className="h-full w-full bg-[linear-gradient(145deg,#3169b8,#df5e79_52%,#e7a55d)]" />;
+const PreviewArtwork: React.FC<{ coverUrl?: string; className?: string }> = ({ coverUrl, className = '' }) => (
+  coverUrl
+    ? <img src={coverUrl} alt="" className={`h-full w-full object-cover ${className}`} />
+    : <div className={`h-full w-full bg-[linear-gradient(145deg,#3169b8,#df5e79_52%,#e7a55d)] ${className}`} />
+);
+
+const PreviewControls = () => (
+  <div className="space-y-2 px-3 pb-3" aria-hidden="true">
+    <span className="block h-1 w-full rounded-full bg-white/16"><span className="block h-full w-[42%] rounded-full bg-white/64" /></span>
+    <div className="flex items-center justify-center gap-3"><span className="h-2 w-5 rounded-full bg-white/18" /><span className="h-6 w-6 rounded-full bg-white/72" /><span className="h-2 w-5 rounded-full bg-white/18" /></div>
+  </div>
+);
+
+const SkinPreview: React.FC<{ skinId: PlayerSkin; coverUrl?: string; active: boolean; accent: { css: string; darkCss: string; glowCss: string } }> = ({ skinId, coverUrl, active, accent }) => {
   if (skinId === 'vinyl') {
     return (
-      <div className="relative flex h-full items-center justify-center overflow-hidden bg-[#101012]">
-        <div className={`relative aspect-square h-[78%] overflow-hidden rounded-full border border-white/15 shadow-2xl ${active ? 'animate-[spin_18s_linear_infinite]' : ''}`}>
-          {artwork}
-          <div className="absolute inset-0 rounded-full bg-[repeating-radial-gradient(circle,transparent_0_5px,rgba(0,0,0,.18)_6px_7px)]" />
-          <span className="absolute left-1/2 top-1/2 h-[17%] w-[17%] -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-black/45 bg-white/70" />
+      <div className="flex h-full flex-col justify-between overflow-hidden bg-[#0d0d0f] pt-4">
+        <div className={`relative mx-auto aspect-square w-[78%] rounded-full bg-[#09090a] shadow-[0_18px_40px_rgba(0,0,0,.55)] ${active ? 'animate-[spin_18s_linear_infinite]' : ''}`}>
+          <span className="absolute inset-0 rounded-full bg-[repeating-radial-gradient(circle,rgba(255,255,255,.055)_0_1px,transparent_2px_5px)]" />
+          <span className="absolute inset-[3%] rounded-full bg-[conic-gradient(from_210deg,transparent_0_18%,rgba(255,255,255,.16)_24%,transparent_31%_72%,rgba(255,255,255,.08)_78%,transparent_86%)] opacity-75" />
+          <span className="absolute inset-[13%] overflow-hidden rounded-full border border-white/12"><PreviewArtwork coverUrl={coverUrl} /></span>
+          <span className="absolute left-1/2 top-1/2 h-[8%] w-[8%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0b0b0c] ring-2 ring-white/55" />
         </div>
+        <PreviewControls />
       </div>
     );
   }
   if (skinId === 'immersive') {
     return (
-      <div className="relative h-full overflow-hidden bg-black">
-        <div className="absolute inset-0 scale-110 opacity-72 blur-[8px]">{artwork}</div>
-        <div className="absolute inset-0 bg-black/22" />
-        <div className="absolute inset-x-4 bottom-4 text-white"><div className="text-base font-black">正在播放</div><div className="text-[11px] font-semibold text-white/62">全屏封面</div></div>
+      <div className="relative flex h-full flex-col justify-between overflow-hidden" style={{ background: `radial-gradient(circle at 50% 34%, ${accent.glowCss}, transparent 68%), ${accent.darkCss}` }}>
+        <div className="relative -mx-2 mt-1 aspect-square" style={{ maskImage: 'radial-gradient(ellipse 82% 78% at center, black 62%, transparent 100%)', WebkitMaskImage: 'radial-gradient(ellipse 82% 78% at center, black 62%, transparent 100%)' }}><PreviewArtwork coverUrl={coverUrl} /></div>
+        <PreviewControls />
       </div>
     );
   }
-  return <div className="h-full bg-[#111113] p-4"><div className="aspect-square h-full max-h-[112px] overflow-hidden rounded-md shadow-xl">{artwork}</div></div>;
+  return (
+    <div className="flex h-full flex-col justify-between overflow-hidden bg-[#111113] pt-4">
+      <div className="mx-auto aspect-square w-[76%] overflow-hidden rounded-[12px] border border-white/10 shadow-xl"><PreviewArtwork coverUrl={coverUrl} /></div>
+      <PreviewControls />
+    </div>
+  );
 };
 
 export const Personalization: React.FC<PersonalizationProps> = ({ initialSection = 'player', onBack }) => {
@@ -71,6 +90,7 @@ export const Personalization: React.FC<PersonalizationProps> = ({ initialSection
   const [progress, setProgress] = React.useState<PersonalizationProgress>(EMPTY_PROGRESS);
   const [progressLoading, setProgressLoading] = React.useState(true);
   const currentSong = getCurrentSong() ?? songs.find((song) => song.ownerId === userId) ?? songs[0];
+  const coverAccent = useCoverAccentColor(currentSong?.coverUrl);
 
   React.useEffect(() => setSection(initialSection), [initialSection]);
   React.useEffect(() => setSelectedFrameId(avatarFrameId), [avatarFrameId]);
@@ -149,13 +169,13 @@ export const Personalization: React.FC<PersonalizationProps> = ({ initialSection
           {section === 'player' ? (
             <section aria-labelledby="player-skins-title">
               <div className="mb-5 flex items-end justify-between"><div><p className="text-[11px] font-black text-red-300/75">播放器</p><h2 id="player-skins-title" className="mt-1 text-2xl font-black">选择声音的样子</h2></div><span className="text-xs font-bold text-white/32">{PLAYER_SKINS.length} 款</span></div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {PLAYER_SKINS.map((skin) => {
                   const active = playerSkinId === skin.id;
                   return (
                     <button key={skin.id} type="button" onClick={() => void selectSkin(skin.id)} className={`overflow-hidden rounded-lg border text-left transition-[border-color,transform,background-color] active:scale-[0.985] ${active ? 'border-white/55 bg-white/[0.08]' : 'border-white/[0.08] bg-white/[0.025] hover:border-white/20'}`} aria-pressed={active} data-testid={`player-skin-${skin.id}`}>
-                      <div className="aspect-[1.55] overflow-hidden"><SkinPreview skinId={skin.id} coverUrl={currentSong?.coverUrl} active={active} /></div>
-                      <div className="flex min-h-[74px] items-center gap-3 px-4 py-3"><span className="min-w-0 flex-1"><span className="block text-sm font-black">{skin.name}</span><span className="mt-0.5 block truncate text-[11px] font-medium text-white/38">{skin.description}</span></span>{active ? <Icons.Check size={18} className="text-red-300" /> : null}</div>
+                      <div className="aspect-[3/4] overflow-hidden"><SkinPreview skinId={skin.id} coverUrl={currentSong?.coverUrl} active={active} accent={coverAccent} /></div>
+                      <div className="flex min-h-[66px] items-center gap-2 px-3 py-3"><span className="min-w-0 flex-1"><span className="block text-sm font-black">{skin.name}</span><span className="mt-0.5 block line-clamp-2 text-[10px] leading-relaxed font-medium text-white/38">{skin.description}</span></span>{active ? <Icons.Check size={17} className="shrink-0 text-red-300" /> : null}</div>
                     </button>
                   );
                 })}

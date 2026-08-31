@@ -411,8 +411,9 @@ export const AppShell: React.FC = () => {
 
   const isModalActive = modalCount > 0;
   const currentSong = songs.find((song) => song.id === playerState.currentSongId);
+  const useWideSecondaryMiniPlayer = isListeningRecap || isPersonalization;
   const isCompactDockPair = isCompactBottomTabLayout
-    && !isListeningRecap
+    && !useWideSecondaryMiniPlayer
     && !isModalActive
     && Boolean(currentSong);
 
@@ -461,13 +462,13 @@ export const AppShell: React.FC = () => {
         }
       : {
           top: 'auto',
-          bottom: isListeningRecap
+          bottom: useWideSecondaryMiniPlayer
             ? `calc(env(safe-area-inset-bottom) + ${BOTTOM_DOCK_GEOMETRY.wideNavBottom}px)`
             : `calc(env(safe-area-inset-bottom) + ${getBottomDockMiniBottom(liquidGlassSettings.bottomTabLayout)}px)`,
           left: '50%',
           right: 'auto',
-          width: `${isCompactBottomTabLayout && !isListeningRecap ? Math.min(BOTTOM_DOCK_GEOMETRY.compactMaxWidth, availableDockWidth) : widePlayerWidth}px`,
-          x: -(isCompactBottomTabLayout && !isListeningRecap
+          width: `${isCompactBottomTabLayout && !useWideSecondaryMiniPlayer ? Math.min(BOTTOM_DOCK_GEOMETRY.compactMaxWidth, availableDockWidth) : widePlayerWidth}px`,
+          x: -(isCompactBottomTabLayout && !useWideSecondaryMiniPlayer
             ? Math.min(BOTTOM_DOCK_GEOMETRY.compactMaxWidth, availableDockWidth)
             : widePlayerWidth) / 2,
           opacity: 1,
@@ -567,7 +568,7 @@ export const AppShell: React.FC = () => {
           onExpand={isCompactDockPair && !isCompactPlayerExpanded ? expandCompactPlayer : openPlayer}
           variant={isModalActive ? 'island' : 'dock'}
           settlePulse={miniSettlePulse}
-          compact={isCompactBottomTabLayout && !isListeningRecap}
+          compact={isCompactBottomTabLayout && !useWideSecondaryMiniPlayer}
           compactMode={isCompactDockPair ? (isCompactPlayerExpanded ? 'expanded' : 'circle') : undefined}
         />
       </motion.div>

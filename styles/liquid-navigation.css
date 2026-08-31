@@ -100,6 +100,15 @@ svg.liquid-glass-semantic {
   z-index: 1;
 }
 
+/*
+ * Mini 播放器只在保底层执行模糊、饱和度、亮度和对比度；前景层仅执行
+ * SVG 周边折射。否则两层会重复处理颜色，设置值在 mini 上看起来近似翻倍。
+ */
+.liquid-mini-player [data-liquid-material="settings"] .liquid-tab-f-glass {
+  backdrop-filter: var(--liquid-tab-filter);
+  -webkit-backdrop-filter: var(--liquid-tab-filter);
+}
+
 @media (hover: none) and (pointer: coarse) {
   .liquid-glass-mobile-backstop {
     display: block;

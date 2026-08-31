@@ -37,7 +37,7 @@ export const LiquidGlassSurface: React.FC<{
   style?: React.CSSProperties;
   material?: 'settings' | 'shuding';
   coverage?: 'edge' | 'full';
-  geometry?: 'standard' | 'panel';
+  geometry?: 'standard' | 'panel' | 'dock';
   eagerMap?: boolean;
   initialSize?: { width: number; height: number };
   lockInitialSize?: boolean;
@@ -51,16 +51,17 @@ export const LiquidGlassSurface: React.FC<{
   const mapOptions = React.useMemo<LiquidGlassDisplacementOptions>(() => {
     const useFullCoverage = material === 'shuding' && coverage === 'full';
     const usePanelGeometry = material === 'shuding' && geometry === 'panel';
+    const useDockGeometry = geometry === 'dock';
     return {
-      profile: usePanelGeometry ? 'panel' : material === 'shuding' ? 'shuding' : 'adaptive',
+      profile: useDockGeometry ? 'perimeter' : usePanelGeometry ? 'panel' : material === 'shuding' ? 'shuding' : 'adaptive',
       edgeScale: settings.edgeRefraction,
-      centerStrength: material === 'shuding' ? 0 : 0.14,
+      centerStrength: useDockGeometry ? 0.1 : material === 'shuding' ? 0 : 0.14,
       centerLensStrength: usePanelGeometry ? 0.46 : useFullCoverage ? 0.58 : undefined,
       centerWaveStrength: usePanelGeometry ? 0.08 : useFullCoverage ? 0.16 : undefined,
       sideVerticalDamp: material === 'shuding' ? 1 : 0.34,
       sideHorizontalBoost: material === 'shuding' ? 1 : 1.12,
-      normalization: usePanelGeometry ? 1 : useFullCoverage ? 0.56 : material === 'shuding' ? 0.5 : 0.74,
-      balancedEncoding: usePanelGeometry,
+      normalization: useDockGeometry ? 1 : usePanelGeometry ? 1 : useFullCoverage ? 0.56 : material === 'shuding' ? 0.5 : 0.74,
+      balancedEncoding: usePanelGeometry || useDockGeometry,
     };
   }, [coverage, geometry, material, settings.edgeRefraction]);
   const [map, setMap] = React.useState<LiquidGlassDisplacementMap>(() => (
