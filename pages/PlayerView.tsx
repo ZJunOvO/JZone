@@ -40,6 +40,7 @@ import { ResilientCoverImage } from '../components/media/ResilientCoverImage';
 import { getMemoryVideoSegment } from '../utils/songVideo';
 import { SongVideoViewer, type SongVideoTransitionOrigin } from '../components/video/SongVideoViewer';
 import { MemoryVideoSurface } from '../components/video/MemoryVideoSurface';
+import { normalizePlayerSkinId } from '../config/personalization';
 
 const SongLyricsEditorDialog = React.lazy(() => import('../components/lyrics/SongLyricsEditorDialog').then(({ SongLyricsEditorDialog: Component }) => ({
   default: Component,
@@ -647,6 +648,9 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const volumePct = playerState.volume * 100;
   const usePortraitLyricsLayout = isLyricsViewOpen && !isLandscapeLayout;
   const showLyricsPanel = isLyricsViewOpen || isLandscapeLayout;
+  const playerSkinId = normalizePlayerSkinId(playerState.skin);
+  const isVinylSkin = playerSkinId === 'vinyl' && !usePortraitLyricsLayout;
+  const isImmersiveSkin = playerSkinId === 'immersive' && !usePortraitLyricsLayout;
 
   // Only show songs that are in the queue
   const queueSongs = songs.filter(s => playerState.queue.includes(s.id))
@@ -724,6 +728,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       className={`fixed inset-0 z-[200] flex h-screen flex-col justify-between overflow-hidden ${isLandscapeLayout ? 'py-3' : 'py-8'}`}
       style={{ clipPath, willChange: 'clip-path', transform: 'translateZ(0)', backfaceVisibility: 'hidden', contain: 'paint' }}
       data-testid="player-transition-shell"
+      data-player-skin={playerSkinId}
       data-player-transition-phase={transitionPhase}
       onPointerDown={revealLyricsControls}
       onKeyDown={revealLyricsControls}
@@ -745,7 +750,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: reduceMotion ? 0.12 : 0.5, ease: 'easeOut' }}
-            className="absolute inset-0 w-full h-full object-cover blur-[72px] brightness-[0.55] saturate-[1.6]"
+            className={`absolute inset-0 h-full w-full object-cover transition-[filter,transform] duration-700 ${isImmersiveSkin ? 'scale-[0.9] blur-[18px] brightness-[0.62] saturate-[1.35]' : isVinylSkin ? 'blur-[82px] brightness-[0.42] saturate-[1.35]' : 'blur-[72px] brightness-[0.55] saturate-[1.6]'}`}
             alt="immersive background"
           />
         </AnimatePresence>
@@ -813,7 +818,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         >
           <motion.div
             layout={!reduceMotion}
-            className={`relative self-center justify-self-center ${isCompactLandscapeLayout ? 'col-start-1 row-start-1 h-[min(25dvh,80px)] max-h-full aspect-square' : isLandscapeLayout ? 'col-start-1 row-start-1 h-[min(46dvh,300px)] max-h-full aspect-square' : usePortraitLyricsLayout ? 'h-[76px] w-[76px]' : 'aspect-square w-[96%] max-w-[400px]'}`}
+            className={`relative self-center justify-self-center ${isCompactLandscapeLayout ? 'col-start-1 row-start-1 h-[min(25dvh,80px)] max-h-full aspect-square' : isLandscapeLayout ? 'col-start-1 row-start-1 h-[min(46dvh,300px)] max-h-full aspect-square' : usePortraitLyricsLayout ? 'h-[76px] w-[76px]' : isImmersiveSkin ? 'aspect-square w-full max-w-[420px]' : isVinylSkin ? 'aspect-square w-[88%] max-w-[370px]' : 'aspect-square w-[96%] max-w-[400px]'}`}
             transition={{ layout: reduceMotion ? { duration: 0 } : { duration: 0.46, ease: [0.22, 0.74, 0.22, 1] } }}
             data-testid="player-cover-layout"
           >
@@ -829,12 +834,12 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                 onClick={() => {
                   if (!isLandscapeLayout) setIsLyricsViewOpen((value) => !value);
                 }}
-                className={`group relative block h-full w-full rounded-[14px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80 focus-visible:ring-offset-4 focus-visible:ring-offset-black/40 ${isLandscapeLayout ? 'cursor-default' : 'cursor-pointer'}`}
+                className={`group relative block h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/80 focus-visible:ring-offset-4 focus-visible:ring-offset-black/40 ${isVinylSkin ? 'rounded-full' : isImmersiveSkin ? 'rounded-none' : 'rounded-[14px]'} ${isLandscapeLayout ? 'cursor-default' : 'cursor-pointer'}`}
                 aria-pressed={isLyricsViewOpen}
                 aria-label={isLandscapeLayout ? '当前歌曲封面' : isLyricsViewOpen ? '查看封面' : '查看歌词'}
                 data-testid="player-cover-button"
               >
-                <div
+                {!isImmersiveSkin && <div
                   className={`pointer-events-none absolute inset-[7%] translate-y-[8%] rounded-[24px] bg-black/65 transition-[transform,opacity,filter] duration-500 ease-out ${
                     usePortraitLyricsLayout
                       ? 'scale-[0.82] opacity-25 blur-[16px]'
@@ -844,20 +849,27 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                   }`}
                   data-testid="player-cover-soft-shadow"
                   aria-hidden
-                />
+                />}
                 <PlayerArtworkTransition artworkKey={song.id} direction={artworkDirection}>
                   <div
-                    className={`relative h-full w-full transition-[transform,opacity] duration-500 ease-out ${usePortraitLyricsLayout || playerState.isPlaying ? 'scale-100 opacity-100' : 'scale-[0.88] opacity-80'}`}
+                    className={`relative h-full w-full overflow-hidden transition-[transform,opacity,border-radius] duration-500 ease-out ${isVinylSkin ? 'rounded-full border border-white/15 shadow-[0_24px_70px_-28px_rgba(0,0,0,0.85)]' : isImmersiveSkin ? 'rounded-none' : 'rounded-[14px]'} ${usePortraitLyricsLayout || playerState.isPlaying || isImmersiveSkin ? 'scale-100 opacity-100' : 'scale-[0.88] opacity-80'}`}
                     data-testid="player-cover-visual"
+                    style={isVinylSkin ? { animation: 'spin 20s linear infinite', animationPlayState: playerState.isPlaying ? 'running' : 'paused' } : undefined}
                   >
                     <ResilientCoverImage
                       src={song.coverUrl}
                       coverPath={song.coverPath}
                       fallbackSeed={song.id}
                       alt=""
-                      className="h-full w-full rounded-[14px] border border-white/10 object-cover shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)] transition-[filter] duration-200 group-hover:brightness-105"
+                      className={`h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-105 ${isVinylSkin ? 'rounded-full' : isImmersiveSkin ? 'rounded-none border-0 shadow-none' : 'rounded-[14px] border border-white/10 shadow-[0_16px_42px_-22px_rgba(0,0,0,0.42)]'}`}
                       data-testid="player-cover-image"
                     />
+                    {isVinylSkin ? (
+                      <>
+                        <span className="pointer-events-none absolute inset-0 rounded-full bg-[repeating-radial-gradient(circle,transparent_0_7px,rgba(0,0,0,.16)_8px_9px)]" aria-hidden="true" />
+                        <span className="pointer-events-none absolute left-1/2 top-1/2 h-[18%] w-[18%] -translate-x-1/2 -translate-y-1/2 rounded-full border-[7px] border-black/45 bg-white/75 shadow-[0_0_0_1px_rgba(255,255,255,.28)]" aria-hidden="true" />
+                      </>
+                    ) : null}
                   </div>
                 </PlayerArtworkTransition>
               </button>

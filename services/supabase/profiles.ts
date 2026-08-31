@@ -56,7 +56,18 @@ export const createProfilesApi = () => ({
     if (error) throw error;
     invalidateApiCache((key) => key === `profile:${userId}`);
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('jzone:profile-changed', { detail: { userId } }));
+      // 个人页在二级路由打开时会卸载；同步它的长期缓存，返回时即可直接显示新资料。
+      try {
+        const cacheKey = `jzone_profile_cache_v1:${userId}`;
+        const cachedRaw = window.localStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          const cachedProfile = JSON.parse(cachedRaw) as ProfileRow;
+          window.localStorage.setItem(cacheKey, JSON.stringify({ ...cachedProfile, ...data }));
+        }
+      } catch {}
+      window.dispatchEvent(new CustomEvent('jzone:profile-changed', {
+        detail: { userId, updates: data },
+      }));
     }
   },
 });

@@ -8,6 +8,7 @@ import { createListeningRecapApi } from './listeningRecap';
 import { clearListeningRecapCache } from './listeningRecapCache';
 import { createSongLyricsApi } from './lyrics';
 import { createProfilesApi } from './profiles';
+import { createPersonalizationApi } from './personalization';
 import { createSongArtistsApi } from './songArtists';
 import { createSongVideosApi } from './songVideos';
 import { createSongsApi } from './songs';
@@ -24,6 +25,7 @@ const interactionsApi = createInteractionsApi();
 const listeningRecapApi = createListeningRecapApi();
 const songLyricsApi = createSongLyricsApi();
 const profilesApi = createProfilesApi();
+const personalizationApi = createPersonalizationApi();
 const songArtistsApi = createSongArtistsApi();
 const songVideosApi = createSongVideosApi();
 
@@ -35,6 +37,7 @@ export const supabaseApi = {
   ...listeningRecapApi,
   ...songLyricsApi,
   ...profilesApi,
+  ...personalizationApi,
   ...songArtistsApi,
   ...songVideosApi,
 

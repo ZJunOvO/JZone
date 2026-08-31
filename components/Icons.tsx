@@ -4,7 +4,8 @@ import {
   Music2, Search, Disc, Smartphone, ListMusic, Upload, ChevronRight, ChevronDown, Check,
   Star, MoreHorizontal, Volume1, Volume2, VolumeX, MessageSquareQuote, Radio, List, X,
   Send, RotateCcw, BadgeCheck, Minus, Plus, Trash, ChevronLeft, Sparkles, Settings, LogOut, Camera, Edit2, Heart, Cloud, Lock, Globe, Pin, Image, Edit,
-  Repeat, Repeat1, Shuffle, Share2, Copy, GripVertical, LayoutDashboard, Maximize2, Minimize2, Video
+  Repeat, Repeat1, Shuffle, Share2, Copy, GripVertical, LayoutDashboard, Maximize2, Minimize2, Video,
+  Palette, Trophy, Frame, Layers3
 } from 'lucide-react';
 
 export const Icons = {
@@ -12,5 +13,6 @@ export const Icons = {
   Music2, Search, Disc, Smartphone, ListMusic, Upload, ChevronRight, ChevronDown, Check,
   Star, MoreHorizontal, Volume1, Volume2, VolumeX, MessageSquareQuote, Radio, List, X,
   Send, RotateCcw, BadgeCheck, Minus, Plus, Trash, ChevronLeft, Sparkles, Settings, LogOut, Camera, Edit2, Heart, Cloud, Lock, Globe, Pin, Image, Edit,
-  Repeat, Repeat1, Shuffle, Share2, Copy, GripVertical, LayoutDashboard, Maximize2, Minimize2, Video
+  Repeat, Repeat1, Shuffle, Share2, Copy, GripVertical, LayoutDashboard, Maximize2, Minimize2, Video,
+  Palette, Trophy, Frame, Layers3
 };

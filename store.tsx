@@ -169,7 +169,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     currentTime: 0,
     volume: 0.75,
     queue: hasSupabaseConfig ? [] : MOCK_SONGS.map(s => s.id),
-    skin: 'coverflow',
+    skin: 'classic',
     playbackMode: 'sequence',
   });
   const {

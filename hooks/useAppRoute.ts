@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import type { ListeningRecapPeriod } from '../services/supabase/listeningRecapTypes';
+import type { PersonalizationSection } from '../config/personalization';
 
 const LISTENING_RECAP_PATH = '/listening-recap';
 const LISTENING_RECAP_NAVIGATION_EVENT = 'jzone:navigate-listening-recap';
 const LISTENING_RECAP_HISTORY_TYPE = 'listening-recap';
 const MEDIA_GOVERNANCE_PATH = '/media-governance';
 const MEDIA_GOVERNANCE_NAVIGATION_EVENT = 'jzone:navigate-media-governance';
+const PERSONALIZATION_PATH = '/personalization';
+const PERSONALIZATION_NAVIGATION_EVENT = 'jzone:navigate-personalization';
 
 type ListeningRecapRoute = {
   isListeningRecap: boolean;
@@ -96,7 +99,17 @@ export interface AppRouteState {
   isMediaGovernance: boolean;
   openMediaGovernance: () => void;
   closeMediaGovernance: () => void;
+  isPersonalization: boolean;
+  personalizationSection: PersonalizationSection;
+  openPersonalization: (section?: PersonalizationSection) => void;
+  closePersonalization: () => void;
 }
+
+const readPersonalizationSection = (): PersonalizationSection => {
+  if (typeof window === 'undefined') return 'player';
+  const value = new URLSearchParams(window.location.search).get('section');
+  return value === 'avatar' || value === 'achievements' ? value : 'player';
+};
 
 const parseCollectionIdFromPath = () => {
   try {
@@ -129,6 +142,10 @@ export const useAppRoute = (): AppRouteState => {
   const [isMediaGovernance, setIsMediaGovernance] = useState(() => (
     typeof window !== 'undefined' && /^\/media-governance\/?$/i.test(window.location.pathname || '')
   ));
+  const [isPersonalization, setIsPersonalization] = useState(() => (
+    typeof window !== 'undefined' && /^\/personalization\/?$/i.test(window.location.pathname || '')
+  ));
+  const [personalizationSection, setPersonalizationSection] = useState<PersonalizationSection>(readPersonalizationSection);
 
   const setActiveTab = React.useCallback((tab: string) => {
     setActiveTabState(tab);
@@ -258,6 +275,30 @@ export const useAppRoute = (): AppRouteState => {
     try { window.history.replaceState(window.history.state, '', '/'); } catch {}
   }, []);
 
+  const openPersonalization = React.useCallback((section: PersonalizationSection = 'player') => {
+    setIsPersonalization(true);
+    setPersonalizationSection(section);
+    setIsListeningRecap(false);
+    setIsMediaGovernance(false);
+    setCollectionId(null);
+    const query = section === 'player' ? '' : `?section=${section}`;
+    try {
+      window.history.pushState({ type: 'personalization', pushed: true, section }, '', `${PERSONALIZATION_PATH}${query}`);
+    } catch {}
+  }, []);
+
+  const closePersonalization = React.useCallback(() => {
+    setIsPersonalization(false);
+    const state = window.history.state as { type?: string; pushed?: boolean } | null;
+    if (state?.type === 'personalization' && state.pushed) {
+      try {
+        window.history.back();
+        return;
+      } catch {}
+    }
+    try { window.history.replaceState(window.history.state, '', '/'); } catch {}
+  }, []);
+
   React.useEffect(() => {
     const initial = parseCollectionIdFromPath();
     if (initial) setCollectionId(initial);
@@ -266,6 +307,9 @@ export const useAppRoute = (): AppRouteState => {
       setCollectionId(id);
       syncListeningRecapRoute();
       setIsMediaGovernance(/^\/media-governance\/?$/i.test(window.location.pathname || ''));
+      const nextPersonalization = /^\/personalization\/?$/i.test(window.location.pathname || '');
+      setIsPersonalization(nextPersonalization);
+      if (nextPersonalization) setPersonalizationSection(readPersonalizationSection());
     };
     syncListeningRecapRoute();
     window.addEventListener('popstate', onPop);
@@ -277,6 +321,15 @@ export const useAppRoute = (): AppRouteState => {
     window.addEventListener(MEDIA_GOVERNANCE_NAVIGATION_EVENT, handler);
     return () => window.removeEventListener(MEDIA_GOVERNANCE_NAVIGATION_EVENT, handler);
   }, [openMediaGovernance]);
+
+  React.useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ section?: PersonalizationSection }>).detail;
+      openPersonalization(detail?.section);
+    };
+    window.addEventListener(PERSONALIZATION_NAVIGATION_EVENT, handler as EventListener);
+    return () => window.removeEventListener(PERSONALIZATION_NAVIGATION_EVENT, handler as EventListener);
+  }, [openPersonalization]);
 
   React.useEffect(() => {
     const handler = (e: Event) => {
@@ -334,5 +387,9 @@ export const useAppRoute = (): AppRouteState => {
     isMediaGovernance,
     openMediaGovernance,
     closeMediaGovernance,
+    isPersonalization,
+    personalizationSection,
+    openPersonalization,
+    closePersonalization,
   };
 };

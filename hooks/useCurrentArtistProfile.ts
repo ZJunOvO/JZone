@@ -4,7 +4,7 @@ import { hasSupabaseConfig } from '../supabaseClient';
 import { supabaseApi, type ProfileRow } from '../supabaseApi';
 import { getFallbackAvatarUrl, getQQAvatarUrl } from '../utils/avatar';
 
-export type CurrentArtistProfile = Pick<ProfileRow, 'id' | 'nickname' | 'avatar_url' | 'avatar_frame_id'>;
+export type CurrentArtistProfile = Pick<ProfileRow, 'id' | 'nickname' | 'avatar_url' | 'avatar_frame_id' | 'player_skin_id'>;
 
 type CachedProfile = {
   profile: CurrentArtistProfile | null;
@@ -78,6 +78,7 @@ export const useCurrentArtistProfile = () => {
           nickname: row.nickname,
           avatar_url: row.avatar_url,
           avatar_frame_id: row.avatar_frame_id ?? null,
+          player_skin_id: row.player_skin_id ?? null,
         } : null;
         setProfile(nextProfile);
         setIsProfileResolved(true);
@@ -97,7 +98,30 @@ export const useCurrentArtistProfile = () => {
     const cacheFresh = cached && Date.now() - cached.profileUpdatedAt < PROFILE_REFRESH_MS;
     if (!cacheFresh) void refresh();
     timer = window.setInterval(refresh, PROFILE_REFRESH_MS);
-    const onProfileChanged = () => void refresh();
+    const onProfileChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId?: string; updates?: Partial<ProfileRow> }>).detail;
+      if (detail?.userId && detail.userId !== user.id) return;
+      if (detail?.updates) {
+        setProfile((previous) => {
+          if (!previous) return previous;
+          const next = {
+            ...previous,
+            ...detail.updates,
+            id: previous.id,
+          } as CurrentArtistProfile;
+          const previousCache = readCache(user.id);
+          writeCache(user.id, {
+            profile: next,
+            profileUpdatedAt: Date.now(),
+            avatarRaw: previousCache?.avatarRaw,
+            avatarUrl: previousCache?.avatarUrl,
+            avatarExpiresAt: previousCache?.avatarExpiresAt,
+          });
+          return next;
+        });
+      }
+      void refresh();
+    };
     window.addEventListener('jzone:profile-changed', onProfileChanged);
 
     return () => {

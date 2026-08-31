@@ -1,5 +1,5 @@
 
-export type PlayerSkin = 'vinyl' | 'coverflow' | 'minimal';
+export type PlayerSkin = 'classic' | 'vinyl' | 'immersive';
 export type PlaybackMode = 'sequence' | 'repeat-one' | 'shuffle';
 
 export interface Song {

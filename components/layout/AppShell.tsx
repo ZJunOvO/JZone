@@ -44,6 +44,7 @@ const CollectionDetailPage = lazy(loadCollectionDetail);
 const loadListeningRecap = () => import('../../pages/ListeningRecap').then((module) => ({ default: module.ListeningRecap }));
 const ListeningRecapPage = lazy(loadListeningRecap);
 const MediaGovernancePage = lazy(() => import('../../pages/MediaGovernance').then((module) => ({ default: module.MediaGovernance })));
+const PersonalizationPage = lazy(() => import('../../pages/Personalization').then((module) => ({ default: module.Personalization })));
 const loadPlayerView = () => import('../../pages/PlayerView').then((module) => ({ default: module.PlayerView }));
 const PlayerView = lazy(loadPlayerView);
 
@@ -126,8 +127,11 @@ export const AppShell: React.FC = () => {
     replaceListeningRecapPeriod,
     isMediaGovernance,
     closeMediaGovernance,
+    isPersonalization,
+    personalizationSection,
+    closePersonalization,
   } = useAppRoute();
-  const currentRoute = isMediaGovernance ? 'media-governance' : isListeningRecap ? 'listening-recap' : activeTab;
+  const currentRoute = isMediaGovernance ? 'media-governance' : isPersonalization ? 'personalization' : isListeningRecap ? 'listening-recap' : activeTab;
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
   const [playerLyricsRequest, setPlayerLyricsRequest] = useState<{ songId: string; nonce: number } | null>(null);
   const [playerTransitionPhase, setPlayerTransitionPhase] = useState<PlayerTransitionPhase>('open');
@@ -482,6 +486,8 @@ export const AppShell: React.FC = () => {
         <Suspense fallback={isListeningRecap ? <ListeningRecapFallback onBack={closeListeningRecap} /> : <PageFallback />}>
           {isMediaGovernance ? (
             <MediaGovernancePage onBack={closeMediaGovernance} />
+          ) : isPersonalization ? (
+            <PersonalizationPage initialSection={personalizationSection} onBack={closePersonalization} />
           ) : isListeningRecap ? (
             <ListeningRecapPage
               period={listeningRecapPeriod ?? undefined}
@@ -568,7 +574,7 @@ export const AppShell: React.FC = () => {
       )}
       </AnimatePresence>
 
-      {!isListeningRecap && !isMediaGovernance && (
+      {!isListeningRecap && !isMediaGovernance && !isPersonalization && (
         <BottomNavigation
           currentTab={activeTab}
           profileAvatarUrl={profileAvatarUrl}
@@ -594,7 +600,7 @@ export const AppShell: React.FC = () => {
           />
         </Suspense>
       )}
-      {!isMediaGovernance && <PwaInstallPrompt />}
+      {!isMediaGovernance && !isPersonalization && <PwaInstallPrompt />}
       <ProfileAvatarRouteTransition activeTab={activeTab} />
       </SharedElementLayer>
     </div>

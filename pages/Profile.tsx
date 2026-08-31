@@ -6,7 +6,7 @@ import { useStore } from '../store';
 import { Icons } from '../components/Icons';
 import { CollectionRow, supabaseApi, ProfileRow } from '../supabaseApi';
 import { useModalPresence } from '../modalPresence';
-import { AvatarFrameModal } from '../components/AvatarFrameModal';
+import { PersonalizationEntry } from '../components/profile/PersonalizationEntry';
 import { ProfileContent } from '../components/profile/ProfileContent';
 import { ProfileBackgroundSheet } from '../components/profile/ProfileBackgroundSheet';
 import { ProfileSettingsSheet } from '../components/profile/ProfileSettingsSheet';
@@ -141,11 +141,26 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
     if (!hadCache || Date.now() - fetchedAt >= PROFILE_REFRESH_MS) void refresh();
     else setIsLoading(false);
     timer = window.setInterval(refresh, PROFILE_REFRESH_MS);
-    window.addEventListener('jzone:profile-changed', refresh);
+    const handleProfileChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId?: string; updates?: Partial<ProfileRow> }>).detail;
+      if (detail?.userId && detail.userId !== targetUserId) return;
+      if (detail?.updates) {
+        setProfileData((previous) => {
+          if (!previous) return previous;
+          const next = { ...previous, ...detail.updates } as ProfileRow;
+          try {
+            localStorage.setItem(`${PROFILE_CACHE_PREFIX}${targetUserId}`, JSON.stringify(next));
+          } catch {}
+          return next;
+        });
+      }
+      void refresh();
+    };
+    window.addEventListener('jzone:profile-changed', handleProfileChanged);
     return () => {
       cancelled = true;
       if (timer) window.clearInterval(timer);
-      window.removeEventListener('jzone:profile-changed', refresh);
+      window.removeEventListener('jzone:profile-changed', handleProfileChanged);
       window.removeEventListener('pagehide', handlePageHide);
     };
   }, [targetUserId]);
@@ -204,7 +219,6 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
     imageSrc: null,
   });
   const [isBackgroundManagerOpen, setIsBackgroundManagerOpen] = useState(false);
-  const [isAvatarFrameOpen, setIsAvatarFrameOpen] = useState(false);
   const [isStatusSelectorOpen, setIsStatusSelectorOpen] = useState(false);
   const [resolvedAvatarUrl, setResolvedAvatarUrl] = useState<string | undefined>(() => readProfileMediaCache(targetUserId)?.avatarUrl);
   const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(() => readProfileMediaCache(targetUserId)?.coverUrl);
@@ -216,7 +230,6 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
 
   useModalPresence(isSettingsOpen);
   useModalPresence(isBackgroundManagerOpen);
-  useModalPresence(isAvatarFrameOpen);
   useModalPresence(isStatusSelectorOpen);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -297,35 +310,6 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
 
   const handleSettings = () => {
     setIsSettingsOpen(true);
-  };
-
-  const handleAvatarFrameSave = async (frameId: string | null) => {
-    if (!targetUserId) return;
-    try {
-      await supabaseApi.updateProfile(targetUserId, { avatar_frame_id: frameId });
-      setProfileData((prev) => {
-        const base = prev ?? ({
-          id: targetUserId,
-          nickname: null,
-          avatar_url: null,
-          cover_url: null,
-          signature: null,
-          background_style: 'half',
-          followers_count: 0,
-          following_count: 0,
-        } satisfies ProfileRow);
-        const next = { ...base, avatar_frame_id: frameId } as ProfileRow;
-        try {
-          localStorage.setItem(`${PROFILE_CACHE_PREFIX}${targetUserId}`, JSON.stringify(next));
-        } catch {}
-        return next;
-      });
-      window.dispatchEvent(new CustomEvent('jzone:profile-changed'));
-    } catch (e) {
-      console.error(e);
-      feedback.error('保存失败，请重试');
-      throw e;
-    }
   };
 
   const handleEditProfile = async (data: { nickname: string; signature: string; avatarBlob?: Blob }) => {
@@ -549,9 +533,15 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
             onBack={onBack}
             onSettings={handleSettings}
             onEditProfile={handleEditProfile}
-            onAvatarFrameOpen={() => setIsAvatarFrameOpen(true)}
+            onAvatarFrameOpen={() => window.dispatchEvent(new CustomEvent('jzone:navigate-personalization', { detail: { section: 'avatar' } }))}
             onStatusClick={() => setIsStatusSelectorOpen(true)}
         />
+
+        {isCurrentUser && (
+          <PersonalizationEntry
+            onOpen={() => window.dispatchEvent(new CustomEvent('jzone:navigate-personalization'))}
+          />
+        )}
 
         {/* Sticky Tabs */}
         <div className={`sticky top-0 z-30 border-b border-white/5 transition-all duration-300 ${displayUser.backgroundStyle === 'full' ? 'bg-black/20 backdrop-blur-md' : 'bg-black/80 backdrop-blur-xl'}`}>
@@ -636,25 +626,6 @@ export const Profile: React.FC<ProfileProps> = ({ userId, onBack }) => {
         onCropComplete={handleCropComplete}
         mode="banner"
         aspectOverride={cropperState.aspectOverride}
-      />
-
-      <AvatarFrameModal
-        isOpen={isAvatarFrameOpen}
-        onClose={() => setIsAvatarFrameOpen(false)}
-        currentUser={{
-          id: displayUser.id,
-          nickname: displayUser.nickname,
-          avatarUrl: displayUser.avatarUrl,
-          avatarFrameId: displayUser.avatarFrameId ?? null,
-        }}
-        onSave={async (frameId) => {
-            if (!isCurrentUser) {
-                setIsAvatarFrameOpen(false);
-                setTimeout(() => setShowEasterEgg(true), 300);
-                return;
-            }
-            await handleAvatarFrameSave(frameId);
-        }}
       />
 
       <StatusSelector

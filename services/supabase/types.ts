@@ -158,6 +158,7 @@ export interface ProfileRow {
   title_text?: string | null;
   title_style?: string | null;
   avatar_frame_id?: string | null;
+  player_skin_id?: 'classic' | 'vinyl' | 'immersive' | null;
   followers_count: number;
   following_count: number;
 }
